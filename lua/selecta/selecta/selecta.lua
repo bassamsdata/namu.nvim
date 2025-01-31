@@ -701,17 +701,88 @@ local function calculate_max_prefix_width(items, display_mode)
   return max_width
 end
 
+---Get border characters configuration
+---@param border string|table
+---@return string|table
+local function get_prompt_border(border)
+  -- Handle predefined styles
+  if type(border) == "string" then
+    if border == "none" then
+      return "none"
+    end
+
+    local borders = {
+      rounded = { "╭", "─", "╮", "│", "", "", "", "│" },
+      single = { "┌", "─", "┐", "│", "", "", "", "│" },
+      double = { "╔", "═", "╗", "║", "", "", "", "║" },
+      solid = { "▛", "▀", "▜", "▌", "", "", "", "▐" },
+    }
+
+    -- If it's a predefined style
+    if borders[border] then
+      return borders[border]
+    end
+
+    -- If it's a single character for all borders
+    return { border, border, border, border, "", "", "", border }
+  elseif type(border) == "table" then
+    local config = vim.deepcopy(border)
+
+    -- Handle array of characters
+    if #config == 8 and type(config[1]) == "string" then
+      config[5] = "" -- bottom-right
+      config[6] = "" -- bottom
+      config[7] = "" -- bottom-left
+      return config
+    end
+
+    -- Handle full border spec with highlight groups
+    if #config == 8 and type(config[1]) == "table" then
+      config[5] = { "", config[5][2] } -- bottom-right
+      config[6] = { "", config[6][2] } -- bottom
+      config[7] = { "", config[7][2] } -- bottom-left
+      return config
+    end
+  end
+
+  -- Fallback to single border style if input is invalid
+  return { "┌", "─", "┐", "│", "", "", "", "│" }
+end
+
+local function get_border_with_footer(opts)
+  if opts.window.border == "none" then
+    -- Create invisible border with single spaces
+    -- Each element must be exactly one cell
+    return { "", "", "", "", "", " ", "", "" }
+  end
+
+  -- For predefined border styles, convert them to array format
+  local borders = {
+    single = { "┌", "─", "┐", "│", "┘", "─", "└", "│" },
+    double = { "╔", "═", "╗", "║", "╝", "═", "╚", "║" },
+    rounded = { "╭", "─", "╮", "│", "╯", "─", "╰", "│" },
+  }
+
+  return borders[opts.window.border] or opts.window.border
+end
+
 ---@param state SelectaState
 ---@param opts SelectaOptions
 local function update_prompt(state, opts)
   local before_cursor = table.concat(vim.list_slice(state.query, 1, state.cursor_pos - 1))
   local after_cursor = table.concat(vim.list_slice(state.query, state.cursor_pos))
-  local prompt_text = opts.window.title_prefix .. before_cursor .. "│" .. after_cursor
+  local raw_prmpt = opts.window.title_prefix .. before_cursor .. "│" .. after_cursor
 
   if vim.api.nvim_win_is_valid(state.win) then
-    pcall(vim.api.nvim_win_set_config, state.win, {
-      title = { { prompt_text, "SelectaPrompt" } },
-    })
+    if state.prompt_win and vim.api.nvim_win_is_valid(state.prompt_win) then
+      vim.api.nvim_buf_set_lines(state.prompt_buf, 0, -1, false, { raw_prmpt })
+      vim.api.nvim_buf_add_highlight(state.prompt_buf, -1, "SelectaPrompt", 0, 0, -1)
+      -- else
+      --   pcall(vim.api.nvim_win_set_config, state.win, {
+      --     title = { { raw_prmpt, "SelectaPrompt" } },
+      --     title_pos = opts.window.title_pos or M.config.window.title_pos,
+      --   })
+    end
   end
 end
 
@@ -744,6 +815,26 @@ function M.update_filtered_items(state, query, opts)
     state.filtered_items = state.items
     state.best_match_index = nil
   end
+end
+
+---@param state SelectaState
+---@param opts SelectaOptions
+local function create_prompt_window(state, opts)
+  state.prompt_buf = vim.api.nvim_create_buf(false, true)
+
+  local prompt_config = {
+    relative = opts.window.relative or M.config.window.relative,
+    row = state.row, -- this related to the zindex because this cover main menu
+    col = state.col,
+    width = state.width,
+    height = 1,
+    style = "minimal",
+    border = get_prompt_border(opts.window.border),
+    zindex = 60, -- related to row without rhis, row = row -1
+  }
+
+  state.prompt_win = vim.api.nvim_open_win(state.prompt_buf, false, prompt_config)
+  -- vim.api.nvim_win_set_option(state.prompt_win, "winhl", "Normal:SelectaPrompt")
 end
 
 ---Generate a unique ID for an item
@@ -885,18 +976,54 @@ local function resize_window(state, opts)
   -- Get current window config
   local current_config = vim.api.nvim_win_get_config(state.win)
 
-  -- Keep the same row (top position) from the current config
+  -- Calculate maximum height based on available space below the initial row
+  local max_available_height
+  if opts.row_position == "top10" or M.config.row_position == "top10" then
+    max_available_height = vim.o.lines - math.floor(vim.o.lines * 0.1) - vim.o.cmdheight - 4 -- Leave some space for status line
+  else
+    max_available_height = vim.o.lines - state.row - vim.o.cmdheight - 4 -- Leave some space for status line
+  end
+  new_height = math.min(new_height, max_available_height)
+
+  -- print(
+  --   string.format(
+  --     "Resizing window: row=%d, col=%d, width=%d, height=%d, max_available_height=%d, num_items=%d",
+  --     state.row,
+  --     state.col,
+  --     new_width,
+  --     new_height,
+  --     max_available_height,
+  --     #state.filtered_items
+  --   )
+  -- )
+  -- Main window config
   local win_config = {
     relative = current_config.relative,
-    row = current_config.row, -- Keep the same top position
-    col = current_config.col, -- Keep the same left position
+    row = current_config.row, -- or state.row
+    col = current_config.col, -- or state.col
     width = new_width,
     height = new_height,
     style = current_config.style,
-    border = opts.window.border or M.config.window.border,
+    border = opts.window.border,
+  }
+
+  -- Prompt window config
+  local prompt_config = {
+    relative = current_config.relative,
+    row = state.row,
+    col = state.col,
+    width = new_width,
+    height = 1,
+    style = "minimal",
+    border = get_prompt_border(opts.window.border),
+    zindex = 60,
   }
 
   vim.api.nvim_win_set_config(state.win, win_config)
+  if state.prompt_win and vim.api.nvim_win_is_valid(state.prompt_win) then
+    vim.api.nvim_win_set_config(state.prompt_win, prompt_config)
+  end
+end
 end
 
 -- Main update_display function using the split functions
@@ -909,33 +1036,73 @@ local function update_display(state, opts)
 
   local query = table.concat(state.query)
   update_prompt(state, opts)
-  update_filtered_items(state, query)
 
-  -- Resize window if auto_resize is enabled
-  if opts.window.auto_resize then
-    resize_window(state, opts)
-  end
+  if query ~= "" or not opts.initially_hidden then
+    M.update_filtered_items(state, query, opts)
 
-  -- Update buffer content
-  if vim.api.nvim_buf_is_valid(state.buf) then
-    vim.api.nvim_buf_clear_namespace(state.buf, ns_id, 0, -1)
-
-    local lines = {}
-    for i, item in ipairs(state.filtered_items) do
-      lines[i] = opts.formatter(item)
+    -- Call before render hook
+    if opts.hooks and opts.hooks.before_render then
+      opts.hooks.before_render(state.filtered_items, opts)
     end
 
-    vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
-
-    -- Apply highlights
-    for i, item in ipairs(state.filtered_items) do
-      local line_nr = i - 1
-      local line = lines[i]
-      local line_length = vim.api.nvim_strwidth(line)
-      apply_highlights(state.buf, line_nr, item, opts, query, line_length)
+    -- Update footer after filtered items are updated
+    if opts.window.show_footer then
+      update_footer(state, state.win, opts)
     end
 
-    update_cursor_position(state, opts)
+    if opts.window.auto_resize then
+      resize_window(state, opts)
+
+      -- Update prompt window size if it exists
+      if state.prompt_win and vim.api.nvim_win_is_valid(state.prompt_win) then
+        local main_win_config = vim.api.nvim_win_get_config(state.win)
+        pcall(vim.api.nvim_win_set_config, state.prompt_win, {
+          width = main_win_config.width,
+          col = main_win_config.col,
+        })
+      end
+    end
+
+    -- Update buffer content
+    if vim.api.nvim_buf_is_valid(state.buf) then
+      vim.api.nvim_buf_clear_namespace(state.buf, ns_id, 0, -1)
+
+      local lines = {}
+      for i, item in ipairs(state.filtered_items) do
+        lines[i] = opts.formatter and opts.formatter(item) or item.text
+      end
+
+      vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
+
+      -- Apply highlights
+      for i, item in ipairs(state.filtered_items) do
+        local line_nr = i - 1
+        local line = lines[i]
+        local line_length = vim.api.nvim_strwidth(line)
+        apply_highlights(state.buf, line_nr, item, opts, query, line_length, state)
+      end
+      -- Call render hook after highlights are applied
+      if opts.hooks and opts.hooks.on_render then
+        opts.hooks.on_render(state.buf, state.filtered_items, opts)
+      end
+
+      update_cursor_position(state, opts)
+    end
+  else
+    if vim.api.nvim_buf_is_valid(state.buf) then
+      vim.api.nvim_buf_clear_namespace(state.buf, ns_id, 0, -1)
+      vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, {})
+    end
+
+    -- Resize window to minimum dimensions using resize_window function
+    if opts.window.auto_resize then
+      -- Temporarily set filtered_items to an empty table to calculate minimum size
+      local original_filtered_items = state.filtered_items
+      state.filtered_items = {}
+      resize_window(state, opts)
+      -- Restore original filtered_items
+      state.filtered_items = original_filtered_items
+    end
   end
 end
 
