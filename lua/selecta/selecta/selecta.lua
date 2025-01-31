@@ -483,17 +483,55 @@ end
 ---@param text string The text to search in
 ---@param query string The query to search for
 ---@return MatchResult|nil
-local function get_match_positions(text, query)
+function M.get_match_positions(text, query)
   -- Work with raw text, no formatting adjustments here
   if query == "" then
     return nil
   end
+  -- Smart-case: check if query has any uppercase
+  local has_uppercase = query:match("[A-Z]") ~= nil
+
+  -- Helper function for smart-case comparison
+  local function smart_compare(a, b)
+    if has_uppercase then
+      return a == b -- Case-sensitive if query has uppercase
+    else
+      return a:lower() == b:lower() -- Case-insensitive otherwise
+    end
+  end
 
   -- Check for prefix match
-  if text:lower():sub(1, #query) == query:lower() then
+  local is_prefix = true
+  for i = 1, #query do
+    if not smart_compare(text:sub(i, i), query:sub(i, i)) then
+      is_prefix = false
+      break
+    end
+  end
+
+  -- Calculate position and length bonuses
+  local position_bonus = SCORE_ADJUSTMENTS.position_weight * 100 -- For prefix, always position 1
+  local length_bonus = (1 / math.max(#text, 1)) * SCORE_ADJUSTMENTS.length_weight * 100
+
+  -- Check for prefix match
+  if is_prefix then
+    -- Base score calculation
+    -- TEST: Testing this neo ones
+    local score = MATCH_SCORES.prefix
+      + SCORE_ADJUSTMENTS.exact_match_bonus
+      + SCORE_ADJUSTMENTS.word_boundary_bonus
+      + position_bonus
+      + length_bonus
+    -- Add special bonus for exact full-word matches
+    if #query == #text then
+      score = score + (SCORE_ADJUSTMENTS.exact_match_bonus * 2)
+      -- Optional: Add additional length bonus for perfect matches
+      score = score + (SCORE_ADJUSTMENTS.length_weight * 100)
+    end
     return {
-      positions = { { 1, #query } }, -- Raw positions in the text
-      score = MATCH_SCORES.prefix,
+      positions = { { 1, #query } },
+      -- TODO: this position bonus probably not needed, since pos = 1 is always
+      score = score, -- MATCH_SCORES.prefix + position_bonus + length_bonus,
       type = "prefix",
       matched_chars = #query,
       gaps = 0,
@@ -586,36 +624,58 @@ end
 ---sorter function
 ---@param items SelectaItem[]
 ---@param query string
-local function sort_items(items, query)
+---@param preserve_order boolean
+function M.sort_items(items, query, preserve_order)
   -- Store match results for each item
   local item_matches = {}
+  local best_score = -1
+  local best_index = 1
 
   -- Get match results for all items
-  for _, item in ipairs(items) do
-    local match = get_match_positions(item.text, query)
+  for i, item in ipairs(items) do
+    local match = M.get_match_positions(item.text, query)
     if match then
+      -- Log detailed scoring information
+      -- print(string.format("Item: %-30s Score: %d Type: %-8s Gaps: %d", item.text, match.score, match.type, match.gaps))
       table.insert(item_matches, {
         item = item,
         match = match,
+        original_index = i,
       })
+
+      -- Track best match for cursor positioning (only for preserve_order)
+      if preserve_order and match.score > best_score then
+        best_score = match.score
+        best_index = #item_matches
+      end
     end
   end
 
-  -- Sort based on match score and additional factors
-  table.sort(item_matches, function(a, b)
-    -- First compare by match type/score
-    if a.match.score ~= b.match.score then
-      return a.match.score > b.match.score
-    end
+  if preserve_order then
+    -- Sort only by original index
+    table.sort(item_matches, function(a, b)
+      return a.original_index < b.original_index
+    end)
+  else
+    -- Sort based on match score and additional factors
+    table.sort(item_matches, function(a, b)
+      -- First compare by match type/score
+      if a.match.score ~= b.match.score then
+        return a.match.score > b.match.score
+      end
 
-    -- Then by number of gaps (fewer is better)
-    if a.match.gaps ~= b.match.gaps then
-      return a.match.gaps < b.match.gaps
-    end
+      -- Then by number of gaps (fewer is better)
+      if a.match.gaps ~= b.match.gaps then
+        return a.match.gaps < b.match.gaps
+      end
 
-    -- Finally by text length (shorter is better)
-    return #a.item.text < #b.item.text
-  end)
+      -- Finally by text length (shorter is better)
+      return #a.item.text < #b.item.text
+    end)
+
+    -- When not preserving order, best match is always first item
+    best_index = 1
+  end
 
   -- Extract sorted items
   local sorted_items = {}
@@ -623,11 +683,13 @@ local function sort_items(items, query)
     table.insert(sorted_items, match.item)
   end
 
-  return sorted_items
+  return sorted_items, best_index
 end
 
 local function calculate_max_prefix_width(items, display_mode)
-  if display_mode == "icon" then
+  if display_mode == "raw" then
+    return 0 -- No prefix width needed for raw mode
+  elseif display_mode == "icon" then
     return 2 -- Fixed width for icons
   end
 
