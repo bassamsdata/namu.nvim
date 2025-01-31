@@ -545,12 +545,13 @@ end
 ---@class SelectaState
 ---@field buf number
 ---@field win number
----@field query string[]
----@field cursor_pos number
----@field items SelectaItem[]
----@field filtered_items SelectaItem[]
----@field active boolean
----@field initial_open boolean
+
+---Generate a unique ID for an item
+---@param item SelectaItem
+---@return string
+local function get_item_id(item)
+  return tostring(item.value or item.text)
+end
 
 ---@param buf number
 ---@param line_nr number
