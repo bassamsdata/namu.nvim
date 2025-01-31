@@ -39,6 +39,26 @@ require('selecta').pick(items, {
 ]]
 local M = {}
 
+---@class SelectaState
+---@field buf number Buffer handle
+---@field win number Window handle
+---@field prompt_buf number? Prompt buffer handle
+---@field prompt_win number? Prompt window handle
+---@field query string[] Current search query
+---@field cursor_pos number Cursor position in query
+---@field items SelectaItem[] All items
+---@field filtered_items SelectaItem[] Filtered items
+---@field active boolean Whether picker is active
+---@field initial_open boolean First open flag
+---@field best_match_index number? Index of best match
+---@field cursor_moved boolean Whether cursor has moved
+---@field row number Window row position
+---@field col number Window column position
+---@field width number Window width
+---@field height number Window height
+---@field selected table<string, boolean> Map of selected item ids
+---@field selected_count number Number of items currently selected
+
 ---@class SelectaItem
 ---@field text string Display text
 ---@field value any Actual value to return
@@ -49,7 +69,7 @@ local M = {}
 ---@field key string The key sequence
 ---@field handler fun(item: SelectaItem, state: SelectaState, close_fn: fun(state: SelectaState)): boolean? The handler function
 ---@field desc? string Optional description of what the keymap does
----@field children? LSPSymbol[] Child symbols
+
 ---@class SelectaWindowConfig
 ---@field relative? string
 ---@field border? string|table
@@ -64,6 +84,9 @@ local M = {}
 ---@field min_height? number
 ---@field padding? number
 ---@field override? table
+---@field show_footer? boolean
+---@field auto_resize? boolean
+---@field footer_pos? "left"|"center"|"right"
 
 ---@class SelectaOptions
 ---@field title? string
@@ -83,6 +106,9 @@ local M = {}
 ---@field multiselect? SelectaMultiselect Configuration for multiselect feature
 ---@field display? SelectaDisplay Configuration for display
 ---@field offset number Offset of the picker
+---@field hooks? SelectaHooks Hooks for custom behavior
+---@field initially_hidden? boolean Whether the picker should be initially hidden
+---@field initial_index? number Initial index to select
 
 ---@class SelectaHooks
 ---@field on_render? fun(buf: number, items: SelectaItem[], opts: SelectaOptions) Called after items are rendered
@@ -860,35 +886,101 @@ local function create_picker(items, opts)
     query = {},
     cursor_pos = 1,
     items = items,
-    filtered_items = items,
+    filtered_items = opts.initially_hidden and {} or items, -- Initialize filtered_items conditionally
     active = true,
     initial_open = true,
+    best_match_index = nil,
+    cursor_moved = false,
+    selected = {},
+    selected_count = 0,
   }
 
-  local width, height = calculate_window_size(items, opts, opts.formatter)
-  local row = math.floor((vim.o.lines - height) / 2)
+  local width, height
+  if opts.initially_hidden then
+    -- Use minimum width and height when initially hidden
+    width = opts.window.min_width or M.config.window.min_width
+    height = opts.window.min_height or M.config.window.min_height
+  else
+    width, height = calculate_window_size(items, opts, opts.formatter)
+  end
+
+  -- Calculate row position based on the selected preset
+  local row_position = opts.row_position or M.config.row_position
+  local row
+  if row_position == "top10" then
+    row = math.floor(vim.o.lines * 0.1)
+  else
+    row = math.floor((vim.o.lines - height) / 2)
+  end
+
   local col = math.floor((vim.o.columns - width) / 2)
+
+  -- Store position info in state
+  state.row = row
+  state.col = col
+  state.width = width
+  state.height = height
 
   local win_config = vim.tbl_deep_extend("force", {
     relative = opts.window.relative or M.config.window.relative,
-    row = row,
+    row = row + 1, -- Shift main window down by 1 to make room for prompt
     col = col,
     width = width,
     height = height,
     style = "minimal",
-    border = opts.window.border or M.config.window.border,
-    title = {
-      { opts.window.title_prefix or M.config.window.title_prefix, "SelectaPrompt" },
-    },
+    border = get_border_with_footer(opts),
+    -- title = { -- this for one window module
+    --   { opts.window.title_prefix or M.config.window.title_prefix, "SelectaPrompt" },
+    -- },
+    -- title_pos = "center",
   }, opts.window.override or {})
+
+  if opts.window.show_footer then
+    win_config.footer = {
+      { string.format(" %d/%d ", #items, #items), "SelectaFooter" },
+    }
+    win_config.footer_pos = opts.window.footer_pos or "right"
+  end
 
   -- Hide cursor before creating window
   hide_cursor()
+  -- Create windows and setup
   state.win = vim.api.nvim_open_win(state.buf, true, win_config)
 
-  vim.api.nvim_buf_set_option(state.buf, "bufhidden", "wipe")
-  vim.api.nvim_buf_set_option(state.buf, "buftype", "nofile")
+  -- Call window create hook
+  if opts.hooks and opts.hooks.on_window_create then
+    opts.hooks.on_window_create(state.win, state.buf, opts)
+  end
+
+  create_prompt_window(state, opts)
+
+  vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = state.buf })
+  vim.api.nvim_set_option_value("buftype", "nofile", { buf = state.buf })
   vim.wo[state.win].cursorline = true
+
+  -- First update the display
+  update_display(state, opts)
+
+  -- Handle initial cursor position if specified
+  if opts.initial_index and opts.initial_index <= #items then
+    local target_pos = math.min(opts.initial_index, #state.filtered_items)
+    if target_pos > 0 then
+      vim.schedule(function()
+        if vim.api.nvim_win_is_valid(state.win) then
+          -- Set cursor position
+          pcall(vim.api.nvim_win_set_cursor, state.win, { target_pos, 0 })
+          -- Force redraw to update highlight
+          vim.cmd("redraw")
+          -- Ensure cursorline is enabled and visible
+          vim.wo[state.win].cursorline = true
+          -- Trigger a manual cursor move to ensure everything is updated
+          if opts.on_move then
+            opts.on_move(state.filtered_items[target_pos])
+          end
+        end
+      end)
+    end
+  end
 
   return state
 end
@@ -1097,6 +1189,7 @@ end
 ---@param opts? SelectaOptions
 ---@return SelectaItem|nil
 function M.pick(items, opts)
+  -- Merge options with defaults
   opts = vim.tbl_deep_extend("force", {
     title = "Select",
     display = vim.tbl_deep_extend("force", M.config.display, {}),
@@ -1104,6 +1197,9 @@ function M.pick(items, opts)
       return query == "" or string.find(string.lower(item.text), string.lower(query))
     end,
     fuzzy = false,
+    offnet = 0,
+    keymaps = M.config.keymaps,
+    auto_select = M.config.auto_select,
     window = vim.tbl_deep_extend("force", M.config.window, {}),
   }, opts or {})
 
@@ -1111,10 +1207,12 @@ function M.pick(items, opts)
   local max_prefix_width = calculate_max_prefix_width(items, opts.display.mode)
   opts.display.prefix_width = max_prefix_width
 
-  -- Now create formatter with access to max_prefix_width
+  -- Set up formatter
   opts.formatter = opts.formatter
     or function(item)
-      if opts.display.mode == "icon" then
+      if opts.display.mode == "raw" then
+        return item.text
+      elseif opts.display.mode == "icon" then
         local icon = item.icon or "  "
         return icon .. string.rep(" ", opts.display.padding or 1) .. item.text
       else
@@ -1124,37 +1222,48 @@ function M.pick(items, opts)
       end
     end
 
+  -- Set up highlights
   setup_highlights()
 
   local state = create_picker(items, opts)
   update_display(state, opts)
   vim.cmd("redraw")
 
+  -- Handle initial cursor position
+  if opts.initial_index and opts.initial_index <= #items then
+    local target_pos = math.min(opts.initial_index, #state.filtered_items)
+    if target_pos > 0 then
+      vim.api.nvim_win_set_cursor(state.win, { target_pos, 0 })
+      if opts.on_move then
+        opts.on_move(state.filtered_items[target_pos])
+      end
+    end
+  end
+
+  -- Main input loop
   local ok, result = pcall(function()
     while state.active do
-      local ok, char = pcall(vim.fn.getchar)
-      if not ok then
-        close_picker(state)
-        return nil
-      end
-
-      char = type(char) == "number" and vim.fn.nr2char(char) or char
+      local char = vim.fn.getchar()
       local result = handle_char(state, char, opts)
       if result ~= nil then
         return result
       end
-
       vim.cmd("redraw")
     end
   end)
 
-  -- Ensure cursor is restored even if there was an error
-  if not ok then
-    restore_cursor()
-    error(result)
+  restore_cursor()
+  if state and state.active then
+    M.close_picker(state)
   end
 
-  return ok and result or nil
+  -- Ensure cursor is restored even if there was an error
+  if not ok then
+    error(result)
+    restore_cursor()
+  end
+
+  return result
 end
 
 ---@param opts? table
