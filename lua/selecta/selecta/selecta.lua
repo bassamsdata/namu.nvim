@@ -370,18 +370,20 @@ local function calculate_window_size(items, opts, formatter)
   return content_width, content_height
 end
 
+--- Fuzzy matches query characters in text with scoring
 ---@param text string
 ---@param query string
+---@param has_uppercase boolean
 ---@return number[][]|nil positions, number score, number gaps
-local function find_fuzzy_match(text, query)
+function M.find_fuzzy_match(text, query, has_uppercase)
   -- Validate input
   local is_valid, error_msg = validate_input(text, query)
   if not is_valid then
-    M.async_log("Fuzzy match error: " .. error_msg)
+    M.log("Fuzzy match error: " .. error_msg)
     return nil, 0, 0
   end
-  if #query > 3 then -- Only log for longer queries to reduce noise
-    M.async_log(string.format("Fuzzy: '%s' → '%s'", text, query))
+  if #query > 4 then -- Only log for longer queries to reduce noise
+    M.log(string.format("Fuzzy: '%s' → '%s'", text, query))
   end
 
   -- Initialize variables
@@ -390,21 +392,27 @@ local function find_fuzzy_match(text, query)
   local current_range = nil
   local score = MATCH_SCORES.fuzzy
   local gaps = 0
-
-  local lower_text = text:lower()
-  local lower_query = query:lower()
+  local consecutive_matches = 0 -- Track consecutive matches
 
   local text_pos = 1
   local query_pos = 1
 
   while query_pos <= #query and text_pos <= #text do
-    local query_char = lower_query:sub(query_pos, query_pos)
-    local text_char = lower_text:sub(text_pos, text_pos)
+    -- Add early exit if remaining text < remaining query
+    if (#text - text_pos) < (#query - query_pos) then
+      break
+    end
+    local query_char = has_uppercase and query:sub(query_pos, query_pos) or query:lower():sub(query_pos, query_pos)
+    local text_char = has_uppercase and text:sub(text_pos, text_pos) or text:lower():sub(text_pos, text_pos)
 
     if text_char == query_char then
       -- If this is consecutive with last match
       if last_match_pos and text_pos == last_match_pos + 1 then
-        score = score + SCORE_ADJUSTMENTS.consecutive_bonus
+        consecutive_matches = consecutive_matches + 1
+        -- Cap consecutive bonus to prevent over-scoring
+        if consecutive_matches <= 3 then
+          score = score + SCORE_ADJUSTMENTS.consecutive_bonus
+        end
         if current_range then
           current_range[2] = text_pos
         else
@@ -412,13 +420,17 @@ local function find_fuzzy_match(text, query)
         end
       else
         if last_match_pos then
-          gaps = gaps + (text_pos - last_match_pos - 1)
-          score = score + SCORE_ADJUSTMENTS.gap_penalty
+          local gap_size = text_pos - last_match_pos - 1
+          gaps = gaps + gap_size
+          -- Apply penalty with diminishing effect for larger gaps
+          local gap_penalty = math.max(SCORE_ADJUSTMENTS.max_gap_penalty, SCORE_ADJUSTMENTS.gap_penalty * gap_size)
+          score = score + gap_penalty
           if current_range then
             table.insert(positions, current_range)
           end
         end
         current_range = { text_pos, text_pos }
+        consecutive_matches = 1
       end
 
       -- Bonus for matching at word boundary
