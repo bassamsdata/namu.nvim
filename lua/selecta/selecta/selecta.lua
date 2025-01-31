@@ -893,63 +893,199 @@ local function create_picker(items, opts)
   return state
 end
 
----@param state SelectaState
----@param char string
----@param opts SelectaOptions
+-- Pre-compute the special keys once at module level
+local SPECIAL_KEYS = {
+  UP = vim.api.nvim_replace_termcodes("<Up>", true, true, true),
+  DOWN = vim.api.nvim_replace_termcodes("<Down>", true, true, true),
+  CTRL_P = vim.api.nvim_replace_termcodes("<C-p>", true, true, true),
+  CTRL_N = vim.api.nvim_replace_termcodes("<C-n>", true, true, true),
+  TAB = vim.api.nvim_replace_termcodes("<Tab>", true, true, true),
+  S_TAB = vim.api.nvim_replace_termcodes("<S-Tab>", true, true, true),
+  LEFT = vim.api.nvim_replace_termcodes("<Left>", true, true, true),
+  RIGHT = vim.api.nvim_replace_termcodes("<Right>", true, true, true),
+  CR = vim.api.nvim_replace_termcodes("<CR>", true, true, true),
+  ESC = vim.api.nvim_replace_termcodes("<ESC>", true, true, true),
+  BS = vim.api.nvim_replace_termcodes("<BS>", true, true, true),
+  MOUSE = vim.api.nvim_replace_termcodes("<LeftMouse>", true, true, true),
+}
+
+-- Simplified movement handler
+local function handle_movement(state, direction, opts)
+  -- Don't attempt movement if there are no items
+  if #state.filtered_items == 0 then
+    return
+  end
+  local cursor = vim.api.nvim_win_get_cursor(state.win)
+  local current_pos = cursor[1]
+  local total_items = #state.filtered_items
+
+  -- Simple cycling calculation
+  local new_pos = current_pos + direction
+  if new_pos < 1 then
+    new_pos = total_items
+  elseif new_pos > total_items then
+    new_pos = 1
+  end
+
+  vim.api.nvim_win_set_cursor(state.win, { new_pos, 0 })
+
+  if opts.on_move then
+    opts.on_move(state.filtered_items[new_pos])
+  end
+end
+
+---Handle character input in the picker
+---@param state SelectaState The current state of the picker
+---@param char string|number The character input
+---@param opts SelectaOptions The options for the picker
+---@return nil
 local function handle_char(state, char, opts)
   if not state.active then
     return nil
   end
 
-  if char == vim.api.nvim_replace_termcodes("<Left>", true, true, true) then
+  local char_key = type(char) == "number" and vim.fn.nr2char(char) or char
+
+  if opts.keymaps then
+    for _, keymap in ipairs(opts.keymaps) do
+      if char_key == vim.api.nvim_replace_termcodes(keymap.key, true, true, true) then
+        local selected = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
+        if selected then
+          -- Check for multiselect state
+          if opts.multiselect and opts.multiselect.enabled and state.selected_count > 0 then
+            -- Collect selected items
+            local selected_items = {}
+            for _, item in ipairs(state.filtered_items) do
+              if state.selected[tostring(item.value or item.text)] then
+                table.insert(selected_items, item)
+              end
+            end
+            -- Pass all selected items to handler if there are any
+            local should_close = keymap.handler(selected_items, state, M.close_picker)
+            if should_close == false then
+              M.close_picker(state)
+              return nil
+            end
+          else
+            -- Original single-item behavior
+            local should_close = keymap.handler(selected, state, M.close_picker)
+            if should_close == false then
+              M.close_picker(state)
+              return nil
+            end
+          end
+        end
+        return nil
+      end
+    end
+  end
+
+  if opts.multiselect and opts.multiselect.enabled then
+    local multiselect_keys = opts.multiselect.keymaps or M.config.multiselect.keymaps
+
+    -- Handle multiselect keymaps
+    if char_key == vim.api.nvim_replace_termcodes(multiselect_keys.toggle, true, true, true) then
+      local current_item = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
+      if current_item then
+        if toggle_selection(state, current_item, opts) then
+          handle_movement(state, 1, opts) -- Move to next item after selection
+          update_display(state, opts)
+        end
+      end
+      return nil
+    elseif char_key == vim.api.nvim_replace_termcodes(multiselect_keys.untoggle, true, true, true) then
+      local current_item = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
+      if current_item then
+        local item_id = get_item_id(current_item)
+        if state.selected[item_id] then
+          state.selected[item_id] = nil
+          state.selected_count = state.selected_count - 1
+          handle_movement(state, -1, opts) -- Move to next item after unselection
+          update_display(state, opts)
+        end
+      end
+      return nil
+    elseif char_key == vim.api.nvim_replace_termcodes(multiselect_keys.select_all, true, true, true) then
+      bulk_selection(state, opts, true)
+      update_display(state, opts)
+      return nil
+    elseif char_key == vim.api.nvim_replace_termcodes(multiselect_keys.clear_all, true, true, true) then
+      bulk_selection(state, opts, false)
+      update_display(state, opts)
+      return nil
+    end
+  end
+  -- Handle mouse clicks
+  if char_key == SPECIAL_KEYS.MOUSE and vim.v.mouse_win ~= state.win and vim.v.mouse_win ~= state.prompt_win then
+    if opts.on_cancel then
+      opts.on_cancel()
+    end
+    M.close_picker(state)
+    return nil
+  end
+
+  -- Movement keys lookup
+  local movement = ({
+    [SPECIAL_KEYS.UP] = -1,
+    [SPECIAL_KEYS.CTRL_P] = -1,
+    [SPECIAL_KEYS.S_TAB] = -1,
+    [SPECIAL_KEYS.DOWN] = 1,
+    [SPECIAL_KEYS.CTRL_N] = 1,
+    -- [SPECIAL_KEYS.TAB] = 1,
+  })[char_key]
+
+  if movement then
+    state.cursor_moved = true
+    state.initial_open = false
+    handle_movement(state, movement, opts)
+  elseif char_key == SPECIAL_KEYS.LEFT then
     state.cursor_pos = math.max(1, state.cursor_pos - 1)
-  elseif char == vim.api.nvim_replace_termcodes("<Right>", true, true, true) then
+  elseif char_key == SPECIAL_KEYS.RIGHT then
     state.cursor_pos = math.min(#state.query + 1, state.cursor_pos + 1)
-  elseif char == vim.api.nvim_replace_termcodes("<BS>", true, true, true) then
+  elseif char_key == SPECIAL_KEYS.BS then
     if state.cursor_pos > 1 then
       table.remove(state.query, state.cursor_pos - 1)
       state.cursor_pos = state.cursor_pos - 1
       state.initial_open = false
+      state.cursor_moved = false
     end
-  elseif char == vim.api.nvim_replace_termcodes("<CR>", true, true, true) then
-    local cursor = vim.api.nvim_win_get_cursor(state.win)
-    local selected = state.filtered_items[cursor[1]]
-    if selected and opts.on_select then
-      opts.on_select(selected)
+  elseif char_key == SPECIAL_KEYS.CR then
+    if opts.multiselect and opts.multiselect.enabled then
+      local selected_items = {}
+      for _, item in ipairs(state.items) do
+        if state.selected[get_item_id(item)] then
+          table.insert(selected_items, item)
+        end
+      end
+      if #selected_items > 0 and opts.multiselect.on_select then
+        opts.multiselect.on_select(selected_items)
+      elseif #selected_items == 0 then
+        -- If no items selected, treat as single select
+        local current = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
+        if current and opts.on_select then
+          opts.on_select(current)
+        end
+      end
+    else
+      -- Existing single-select behavior
+      local selected = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
+      if selected and opts.on_select then
+        opts.on_select(selected)
+      end
     end
-    close_picker(state)
-    return selected
-  elseif char == vim.api.nvim_replace_termcodes("<ESC>", true, true, true) then
+    M.close_picker(state)
+    return nil
+  elseif char_key == SPECIAL_KEYS.ESC then
     if opts.on_cancel then
       opts.on_cancel()
     end
-    close_picker(state)
+    M.close_picker(state)
     return nil
-  -- Up/Down navigation (including Ctrl-p/Ctrl-n)
-  elseif
-    char == vim.api.nvim_replace_termcodes("<Up>", true, true, true)
-    or char == vim.api.nvim_replace_termcodes("<Down>", true, true, true)
-    or char == vim.api.nvim_replace_termcodes("<C-p>", true, true, true)
-    or char == vim.api.nvim_replace_termcodes("<C-n>", true, true, true)
-  then
-    state.initial_open = false
-    local direction = (
-      char == vim.api.nvim_replace_termcodes("<Up>", true, true, true)
-      or char == vim.api.nvim_replace_termcodes("<C-p>", true, true, true)
-    )
-        and -1
-      or 1
-    local cursor = vim.api.nvim_win_get_cursor(state.win)
-    local new_pos = math.max(1, math.min(#state.filtered_items, cursor[1] + direction))
-    vim.api.nvim_win_set_cursor(state.win, { new_pos, cursor[2] })
-
-    if opts.on_move then
-      opts.on_move(state.filtered_items[new_pos])
-    end
-  else
-    table.insert(state.query, state.cursor_pos, char)
+  elseif type(char) == "number" and char >= 32 and char <= 126 then
+    table.insert(state.query, state.cursor_pos, vim.fn.nr2char(char))
     state.cursor_pos = state.cursor_pos + 1
     state.initial_open = false
+    state.cursor_moved = false
   end
 
   update_display(state, opts)
