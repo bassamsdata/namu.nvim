@@ -557,39 +557,99 @@ end
 ---@param item SelectaItem
 ---@param opts SelectaOptions
 ---@param query string
-local function apply_highlights(buf, line_nr, item, opts, query, line_length)
-  -- Get prefix width
-  local prefix_width = get_prefix_info(item, opts.display.prefix_width).width
+local function apply_highlights(buf, line_nr, item, opts, query, line_length, state)
+  -- Get the formatted display string
+  local display_str = opts.formatter(item)
+  if opts.display.mode == "raw" then
+    local offset = opts.offset and opts.offset(item) or 0
+    if query ~= "" then
+      local match = M.get_match_positions(item.text, query)
+      if match then
+        for _, pos in ipairs(match.positions) do
+          local start_col = offset + pos[1] - 1
+          local end_col = offset + pos[2]
 
-  -- Highlight prefix
-  vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, 0, {
-    end_col = prefix_width,
-    hl_group = "SelectaPrefix",
-    priority = 100,
-    hl_mode = "combine",
-  })
+          -- Ensure we don't exceed line length
+          end_col = math.min(end_col, line_length)
 
-  -- Highlight matches in the text
-  if query ~= "" then
-    local match = get_match_positions(item.text, query)
-    if match then
-      for _, pos in ipairs(match.positions) do
-        local start_col = prefix_width + pos[1] - 1
-        local end_col = prefix_width + pos[2]
-
-        -- Ensure within bounds
-        start_col = math.max(start_col, prefix_width)
-        end_col = math.min(end_col, line_length)
-
-        if end_col > start_col then
-          vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, start_col, {
-            end_col = opts.display.mode == "icon" and end_col + 2 or end_col,
-            hl_group = "SelectaMatch",
-            priority = 200,
-            hl_mode = "combine",
-          })
+          if end_col > start_col then
+            vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, start_col, {
+              end_col = end_col,
+              hl_group = "SelectaMatch",
+              priority = 200,
+              hl_mode = "combine",
+            })
+          end
         end
       end
+    end
+  else
+    -- Find the actual icon boundary by looking for the padding
+    local _, icon_end = display_str:find("^[^%s]+%s+")
+    if not icon_end then
+      icon_end = 2 -- fallback if pattern not found
+    end
+
+    -- Highlight prefix/icon
+    vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, 0, {
+      end_col = icon_end,
+      hl_group = get_prefix_info(item, opts.display.prefix_width).hl_group,
+      priority = 100,
+      hl_mode = "combine",
+    })
+
+    -- Debug log
+    M.log(
+      string.format(
+        "Highlighting item: %s\nFull display: '%s'\nIcon boundary: %d\nQuery: '%s'",
+        item.text,
+        display_str,
+        icon_end,
+        query
+      )
+    )
+    -- Calculate base offset for query highlights (icon + space)
+    local base_offset = item.icon and (vim.api.nvim_strwidth(item.icon) + 1) or 0
+
+    -- Highlight matches in the text
+    if query ~= "" then
+      local match = M.get_match_positions(item.text, query)
+      if match then
+        for _, pos in ipairs(match.positions) do
+          local start_col = icon_end + pos[1] - 1
+          local end_col = icon_end + pos[2]
+          -- BUG: after magnet update, end_col sometimes out of range when typing specific char like
+          -- "m" in the python file so this is temp solution.
+          if opts.display.mode == "text" then
+            end_col = math.min(end_col, line_length)
+          end
+
+          -- Debug log
+          M.log(string.format("Match position: [%d, %d]\nFinal position: [%d, %d]", pos[1], pos[2], start_col, end_col))
+
+          if end_col > start_col then
+            vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, start_col, {
+              end_col = end_col,
+              hl_group = "SelectaMatch",
+              priority = 200,
+              hl_mode = "combine",
+            })
+          end
+        end
+      end
+    end
+  end
+
+  local indicator = opts.display.mode == "text" and "• " or "●"
+  -- Add selection indicator if item is selected
+  if opts.multiselect and opts.multiselect.enabled then
+    local item_id = get_item_id(item)
+    if state.selected[item_id] then
+      vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, 0, {
+        virt_text = { { indicator, "SelectaSelected" } },
+        virt_text_pos = "inline",
+        priority = 300,
+      })
     end
   end
 end
