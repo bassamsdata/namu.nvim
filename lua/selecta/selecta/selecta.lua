@@ -60,12 +60,15 @@ local M = {}
 ---@field auto_size? boolean
 ---@field min_width? number
 ---@field max_width? number
+---@field max_height? number
+---@field min_height? number
 ---@field padding? number
 ---@field override? table
 
 ---@class SelectaOptions
 ---@field title? string
 ---@field formatter? fun(item: SelectaItem): string
+---@field on_render? fun(buf: number, items: SelectaItem[], opts: table) Function called after rendering items
 ---@field filter? fun(item: SelectaItem, query: string): boolean
 ---@field sorter? fun(items: SelectaItem[], query: string): SelectaItem[]
 ---@field on_select? fun(item: SelectaItem)
@@ -78,6 +81,13 @@ local M = {}
 ---@field auto_select? boolean -- Whether to auto-select when only one match remains
 ---@field row_position? "center"|"top10" -- Row position preset
 ---@field multiselect? SelectaMultiselect Configuration for multiselect feature
+---@field display? SelectaDisplay Configuration for display
+---@field offset number Offset of the picker
+
+---@class SelectaHooks
+---@field on_render? fun(buf: number, items: SelectaItem[], opts: SelectaOptions) Called after items are rendered
+---@field on_window_create? fun(win_id: number, buf_id: number, opts: SelectaOptions) Called after window creation
+---@field before_render? fun(items: SelectaItem[], opts: SelectaOptions) Called before rendering items
 
 -- Add new class definition after SelectaOptions
 ---@class SelectaMultiselect
@@ -409,6 +419,29 @@ local function find_fuzzy_match(text, query)
   return positions, score, gaps
 end
 
+local function is_word_boundary(text, pos)
+  -- Start of string is always a boundary
+  if pos == 1 then
+    return true
+  end
+
+  local prev_char = text:sub(pos - 1, pos - 1)
+  local curr_char = text:sub(pos, pos)
+
+  -- Check for traditional word boundaries (spaces, underscores, etc.)
+  if prev_char:match("[^%w]") ~= nil or prev_char == "_" then
+    return true
+  end
+
+  -- Check for camelCase and PascalCase boundaries
+  -- Current char is uppercase and previous char is lowercase
+  if curr_char:match("[A-Z]") and prev_char:match("[a-z]") then
+    return true
+  end
+
+  return false
+end
+
 ---@param text string The text to search in
 ---@param query string The query to search for
 ---@return MatchResult|nil
@@ -429,12 +462,63 @@ local function get_match_positions(text, query)
     }
   end
 
-  -- Check for substring match
-  local start_idx = text:lower():find(query:lower(), 1, true)
+  -- Enhanced substring match with word boundary detection
+  local function find_best_substring_match()
+    local best_start = nil
+    local best_score = -1
+    local curr_pos = 1
+
+    while true do
+      local start_idx
+      if has_uppercase then
+        start_idx = text:find(query, curr_pos, true) -- Case-sensitive
+      else
+        start_idx = text:lower():find(query:lower(), curr_pos, true) -- Case-insensitive
+      end
+
+      if not start_idx then
+        break
+      end
+
+      -- Calculate score for this match position
+      local curr_score = MATCH_SCORES.contains
+
+      -- Add exact match bonus
+      if #query > 1 then -- Only for queries longer than 1 char
+        curr_score = curr_score + SCORE_ADJUSTMENTS.exact_match_bonus
+      end
+
+      -- Add word boundary bonus with improved detection
+      if is_word_boundary(text, start_idx) then
+        curr_score = curr_score + SCORE_ADJUSTMENTS.word_boundary_bonus
+        -- Extra bonus if it matches at a word after a separator
+        if start_idx > 1 and text:sub(start_idx - 1, start_idx - 1):match("[:/_%-%.]") then
+          curr_score = curr_score + SCORE_ADJUSTMENTS.word_boundary_bonus * 0.5
+        end
+      end
+
+      -- Position bonus relative to start
+      curr_score = curr_score + (1 / start_idx) * SCORE_ADJUSTMENTS.position_weight * 100
+
+      if curr_score > best_score then
+        best_score = curr_score
+        best_start = start_idx
+      end
+
+      curr_pos = start_idx + 1
+    end
+
+    return best_start, best_score
+  end
+
+  -- Find best substring match
+  local start_idx, substring_score = find_best_substring_match()
   if start_idx then
+    position_bonus = (1 / start_idx) * SCORE_ADJUSTMENTS.position_weight * 100 -- Recalculate for non-prefix position
+
     return {
       positions = { { start_idx, start_idx + #query - 1 } },
-      score = MATCH_SCORES.contains,
+      score = substring_score + position_bonus + length_bonus,
       type = "contains",
       matched_chars = #query,
       gaps = 0,
@@ -442,11 +526,16 @@ local function get_match_positions(text, query)
   end
 
   -- Fuzzy match
-  local fuzzy_positions, fuzzy_score, fuzzy_gaps = find_fuzzy_match(text, query)
+  local fuzzy_positions, fuzzy_score, fuzzy_gaps = M.find_fuzzy_match(text, query, has_uppercase)
   if fuzzy_positions then
+    -- Get position of first match from fuzzy_positions
+    local first_match_pos = fuzzy_positions[1][1]
+    position_bonus = (1 / first_match_pos) * SCORE_ADJUSTMENTS.position_weight * 100
+    length_bonus = (1 / #text) * SCORE_ADJUSTMENTS.length_weight * 100
+
     return {
       positions = fuzzy_positions,
-      score = fuzzy_score,
+      score = fuzzy_score + position_bonus + length_bonus,
       type = "fuzzy",
       matched_chars = #query,
       gaps = fuzzy_gaps,
@@ -528,23 +617,34 @@ end
 
 ---@param state SelectaState
 ---@param query string
-local function update_filtered_items(state, query)
+---@param opts SelectaOptions
+function M.update_filtered_items(state, query, opts)
   if query ~= "" then
     state.filtered_items = {}
     for _, item in ipairs(state.items) do
-      local match = get_match_positions(item.text, query)
+      local match = M.get_match_positions(item.text, query)
       if match then
         table.insert(state.filtered_items, item)
       end
     end
-    state.filtered_items = sort_items(state.items, query)
+    local best_index
+    state.filtered_items, best_index = M.sort_items(state.filtered_items, query, opts.preserve_order)
+    -- Store best match index for cursor positioning
+    state.best_match_index = best_index
+
+    -- Handle auto-select here
+    if opts.auto_select and #state.filtered_items == 1 and not state.initial_open then
+      local selected = state.filtered_items[1]
+      if selected and opts.on_select then
+        opts.on_select(selected) -- Call directly without scheduling
+        M.close_picker(state)
+      end
+    end
   else
     state.filtered_items = state.items
+    state.best_match_index = nil
   end
 end
----@class SelectaState
----@field buf number
----@field win number
 
 ---Generate a unique ID for an item
 ---@param item SelectaItem
