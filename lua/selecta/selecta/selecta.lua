@@ -40,10 +40,16 @@ require('selecta').pick(items, {
 local M = {}
 
 ---@class SelectaItem
----@field text string -- Display text
----@field value any -- Actual value to return
----@field icon? string -- Optional icon
+---@field text string Display text
+---@field value any Actual value to return
+---@field icon? string Optional icon
+---@field hl_group? string Optional highlight group for the icon/text
 
+---@class SelectaKeymap
+---@field key string The key sequence
+---@field handler fun(item: SelectaItem, state: SelectaState, close_fn: fun(state: SelectaState)): boolean? The handler function
+---@field desc? string Optional description of what the keymap does
+---@field children? LSPSymbol[] Child symbols
 ---@class SelectaWindowConfig
 ---@field relative? string
 ---@field border? string|table
@@ -67,8 +73,22 @@ local M = {}
 ---@field on_move? fun(item: SelectaItem)
 ---@field fuzzy? boolean
 ---@field window? SelectaWindowConfig
+---@field preserve_order? boolean -- Whether to preserve original item order
+---@field keymaps? SelectaKeymap[] List of custom keymaps
+---@field auto_select? boolean -- Whether to auto-select when only one match remains
+---@field row_position? "center"|"top10" -- Row position preset
+---@field multiselect? SelectaMultiselect Configuration for multiselect feature
+
+-- Add new class definition after SelectaOptions
+---@class SelectaMultiselect
+---@field enabled boolean Whether multiselect is enabled
+---@field indicator string Character to show for selected items
+---@field on_select fun(items: SelectaItem[]) Callback for multiselect completion
+---@field max_items? number Maximum number of items that can be selected
+---@field keymaps? table<string, string> Custom keymaps for multiselect operations
+
 ---@class SelectaDisplay
----@field mode? "icon"|"text" -- Mode of display
+---@field mode? "icon"|"text"|"raw" -- Mode of display
 ---@field padding? number -- Padding after prefix
 ---@field prefix_width? number -- Fixed width for prefixes
 
@@ -79,11 +99,15 @@ local M = {}
 ---@field matched_chars number Number of matched characters
 ---@field gaps number Number of gaps in fuzzy match
 
+---@class CursorCache
+---@field guicursor string|nil The cached guicursor value
+
+-- Default configuration
 -- Default configuration
 M.config = {
   window = {
     relative = "editor",
-    border = "rounded",
+    border = "none",
     style = "minimal",
     title_prefix = "> ",
     width_ratio = 0.6,
@@ -95,33 +119,54 @@ M.config = {
     max_height = 30, -- Maximum height
     min_height = 2, -- Minimum height
     auto_resize = true, -- Enable dynamic resizing
+    title_pos = "left",
+    show_footer = true, -- Enable/disable footer
+    footer_pos = "right",
   },
   display = {
     mode = "icon",
     padding = 1,
   },
-  debug = true, -- Debug logging flag
+  offset = 0,
+  debug = false, -- Debug logging flag
+  preserve_order = false, -- Default to false unless the other module handle it
+  keymaps = {},
+  auto_select = false,
+  row_position = "center", -- options: "center"|"top10",
+  multiselect = {
+    enabled = false,
+    indicator = "●", -- or "✓"
+    keymaps = {
+      toggle = "<Tab>",
+      select_all = "<C-a>",
+      clear_all = "<C-l>",
+      untoggle = "<S-Tab>",
+    },
+    max_items = nil, -- No limit by default
+  },
 }
-
----@class CursorCache
----@field guicursor string|nil The cached guicursor value
 
 ---@type CursorCache
 local cursor_cache = {
   guicursor = nil,
 }
 
--- Add scoring constants
+-- Scoring constants (now properly localized)
 local MATCH_SCORES = {
   prefix = 100, -- Starts with the query
-  contains = 50, -- Contains the query somewhere
+  contains = 60, -- Contains the query somewhere
   fuzzy = 25, -- Fuzzy match
 }
 
 local SCORE_ADJUSTMENTS = {
-  gap_penalty = -2, -- Penalty for each gap in fuzzy match
-  consecutive_bonus = 10, -- Bonus for consecutive matches
-  start_bonus = 5, -- Bonus for matching at word start
+  gap_penalty = -3, -- Penalty for each gap in fuzzy match
+  consecutive_bonus = 7, -- Bonus for consecutive matches
+  start_bonus = 9, -- Bonus for matching at word start
+  word_boundary_bonus = 20, -- Bonus for matching at word boundaries
+  position_weight = 0.5, -- 0.5 points per position closer to start
+  length_weight = 1.5, -- 1.5 points per character shorter
+  max_gap_penalty = -20, -- Cap on total gap penalty
+  exact_match_bonus = 25, -- bonus for exact substring matches
 }
 
 -- At module level
@@ -140,7 +185,10 @@ end
 local function restore_cursor()
   -- Handle edge case where guicursor was empty
   if cursor_cache.guicursor == "" then
-    vim.cmd("set guicursor=a: | redraw")
+    vim.o.guicursor = "a:"
+    cursor_cache.guicursor = nil -- Prevent second block from executing
+    vim.cmd("redraw")
+    return
   end
 
   -- Restore original guicursor
@@ -150,21 +198,39 @@ local function restore_cursor()
   end
 end
 
----Set up the highlight groups including cursor hiding
----@return nil
-local function setup_highlights()
-  vim.api.nvim_set_hl(0, "SelectaPrefix", {
-    fg = "#89b4fa", -- Adjust colors as needed
+---TODO: add it later to the config
+local highlights = {
+  SelectaPrefix = {
+    fg = "#89b4fa",
     bold = true,
-  })
-  vim.api.nvim_set_hl(0, "SelectaMatch", {
+  },
+  SelectaMatch = {
     fg = "#89dceb",
     bold = true,
-  })
-  vim.api.nvim_set_hl(0, "SelectaCursor", {
+  },
+  SelectaCursor = {
     blend = 100,
     nocombine = true,
-  })
+  },
+  SelectaPrompt = {
+    link = "FloatTitle",
+  },
+  SelectaSelected = {
+    fg = "#b5581a",
+    bold = true,
+  },
+  SelectaFooter = {
+    fg = "#6c7086",
+    italic = true,
+  },
+}
+
+---Set up the highlight groups
+---@return nil
+local function setup_highlights()
+  for group, opts in pairs(highlights) do
+    vim.api.nvim_set_hl(0, group, opts)
+  end
 end
 
 -- Input validation functions
@@ -189,7 +255,7 @@ end
 
 ---@param message string
 ---@return nil
-function M.async_log(message)
+function M.log(message)
   if not M.config.debug then
     return
   end
@@ -198,12 +264,11 @@ function M.async_log(message)
   -- Create a temporary file handle
   local tmp_file = io.open(log_file, "a")
   if tmp_file then
-    -- Add timestamp
     local timestamp = os.date("%Y-%m-%d %H:%M:%S")
-    tmp_file:write(string.format("\n[%s] %s", timestamp, message))
+    tmp_file:write(string.format("\n[%s] [%s] %s", timestamp, message))
     tmp_file:close()
 
-    -- Schedule file writing asynchronously
+    -- Schedule file writing
     vim.schedule(function()
       local lines = vim.fn.readfile(log_file)
       if #lines > 1000 then
@@ -219,7 +284,6 @@ end
 ---@field raw_width number Width without padding
 ---@field padding number Padding after prefix
 ---@field hl_group string Highlight group to use
-
 local function get_prefix_info(item, max_prefix_width)
   local prefix_text = item.kind or ""
   local raw_width = vim.api.nvim_strwidth(prefix_text)
@@ -229,9 +293,8 @@ local function get_prefix_info(item, max_prefix_width)
     width = max_prefix_width + 1, -- Add padding
     raw_width = raw_width,
     padding = max_prefix_width - raw_width + 1,
-    hl_group = "SelectaPrefix",
+    hl_group = item.hl_group or "SelectaPrefix", -- Use item's highlight group or default
   }
-  -- end
 end
 
 ---@param items SelectaItem[]
@@ -256,8 +319,7 @@ local function calculate_window_size(items, opts, formatter)
     content_width = math.min(math.max(content_width, min_width), max_width)
   else
     -- Use ratio-based width
-    content_width =
-      math.floor(vim.o.columns * (opts.window.width_ratio or M.config.window.width_ratio))
+    content_width = math.floor(vim.o.columns * (opts.window.width_ratio or M.config.window.width_ratio))
   end
 
   -- Calculate height based on number of items
@@ -557,8 +619,7 @@ local function resize_window(state, opts)
   end
 
   -- Calculate new dimensions based on filtered items
-  local new_width, new_height =
-    calculate_window_size(state.filtered_items, opts, opts.formatter)
+  local new_width, new_height = calculate_window_size(state.filtered_items, opts, opts.formatter)
 
   -- Get current window config
   local current_config = vim.api.nvim_win_get_config(state.win)
@@ -703,7 +764,7 @@ local function handle_char(state, char, opts)
     end
     close_picker(state)
     return nil
-    -- Up/Down navigation (including Ctrl-p/Ctrl-n)
+  -- Up/Down navigation (including Ctrl-p/Ctrl-n)
   elseif
     char == vim.api.nvim_replace_termcodes("<Up>", true, true, true)
     or char == vim.api.nvim_replace_termcodes("<Down>", true, true, true)
