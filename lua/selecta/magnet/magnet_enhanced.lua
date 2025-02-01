@@ -580,8 +580,80 @@ end
 
 ---@param symbol table LSP symbol
 local function jumpToSymbol(symbol)
-    vim.cmd.normal({ "m`", bang = true }) -- set jump mark
-    vim.api.nvim_win_set_cursor(state.original_win, { symbol.lnum, symbol.col - 1 })
+  vim.cmd.normal({ "m`", bang = true }) -- set jump mark
+  vim.api.nvim_win_set_cursor(state.original_win, { symbol.lnum, symbol.col - 1 })
+end
+
+---Show the picker with the given items
+---@param selectaItems SelectaItem[]
+---@param notify_opts? {title: string, icon: string}
+local function show_picker(selectaItems, notify_opts)
+  if #selectaItems == 0 then
+    vim.notify("Current `kindFilter` doesn't match any symbols.", nil, notify_opts)
+    return
+  end
+
+  -- Find containing symbol for current cursor position
+  local current_symbol = find_containing_symbol(selectaItems)
+
+  local picker_win = selecta.pick(selectaItems, {
+    title = "LSP Symbols",
+    offset = 0,
+    fuzzy = false,
+    preserve_order = true,
+    window = vim.tbl_deep_extend("force", M.config.window, {
+      title_prefix = M.config.icon .. " ",
+      show_footer = true,
+    }),
+    auto_select = M.config.auto_select,
+    keymaps = M.config.keymaps,
+    -- TODO: Enable multiselect if configured
+    multiselect = {
+      enabled = true,
+      indicator = M.config.multiselect and M.config.multiselect.indicator or "◉ ",
+      on_select = function(selected_items)
+        -- TODO: we need smart mechanis on here.
+        M.clear_preview_highlight()
+        if type(selected_items) == "table" and selected_items[1] then
+          jumpToSymbol(selected_items[1].value)
+        end
+      end,
+    },
+    initial_index = M.config.focus_current_symbol and current_symbol and find_symbol_index(
+      selectaItems,
+      current_symbol
+    ) or nil,
+    on_select = function(item)
+      M.clear_preview_highlight()
+      jumpToSymbol(item.value)
+    end,
+    on_cancel = function()
+      M.clear_preview_highlight()
+      if state.original_win and state.original_pos and vim.api.nvim_win_is_valid(state.original_win) then
+        vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
+      end
+    end,
+    on_move = function(item)
+      if item then
+        highlight_symbol(item.value)
+      end
+    end,
+  })
+
+  -- Add cleanup autocmd after picker is created
+  if picker_win then
+    local augroup = vim.api.nvim_create_augroup("MagnetCleanup", { clear = true })
+    vim.api.nvim_create_autocmd("WinClosed", {
+      group = augroup,
+      pattern = tostring(picker_win),
+      callback = function()
+        M.clear_preview_highlight()
+        vim.api.nvim_del_augroup_by_name("MagnetCleanup")
+      end,
+      once = true,
+    })
+  end
+end
 end
 
 function M.jump()
