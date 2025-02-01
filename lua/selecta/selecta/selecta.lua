@@ -1024,6 +1024,23 @@ local function resize_window(state, opts)
     vim.api.nvim_win_set_config(state.prompt_win, prompt_config)
   end
 end
+
+-- Update the footer whenever filtered items change
+local function update_footer(state, win, opts)
+  if not vim.api.nvim_win_is_valid(win) or not opts.window.show_footer then
+    return
+  end
+
+  local footer_text = string.format(" %d/%d ", #state.filtered_items, #state.items)
+  local footer_pos = opts.window.footer_pos or "right"
+
+  -- Now we update the footer separately using win_set_config with footer option
+  pcall(vim.api.nvim_win_set_config, win, {
+    footer = {
+      { footer_text, "SelectaFooter" },
+    },
+    footer_pos = footer_pos,
+  })
 end
 
 -- Main update_display function using the split functions
@@ -1109,13 +1126,69 @@ end
 ---Close the picker and restore cursor
 ---@param state SelectaState
 ---@return nil
-local function close_picker(state)
-  if state.active and vim.api.nvim_win_is_valid(state.win) then
-    vim.api.nvim_buf_clear_namespace(state.buf, ns_id, 0, -1)
+function M.close_picker(state)
+  if not state then
+    return
+  end
+  state.active = false
+  if state.prompt_win and vim.api.nvim_win_is_valid(state.prompt_win) then
+    vim.api.nvim_win_close(state.prompt_win, true)
+  end
+  if state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_close(state.win, true)
-    state.active = false
-    -- Restore cursor after closing window
-    restore_cursor()
+  end
+  restore_cursor()
+end
+
+---Toggle selection of an item
+---@param state SelectaState
+---@param item SelectaItem
+---@param opts SelectaOptions
+---@return boolean Whether the operation was successful
+local function toggle_selection(state, item, opts)
+  if not opts.multiselect or not opts.multiselect.enabled then
+    return false
+  end
+
+  local item_id = get_item_id(item)
+  if state.selected[item_id] then
+    state.selected[item_id] = nil
+    state.selected_count = state.selected_count - 1
+    return true
+  else
+    if opts.multiselect.max_items and state.selected_count >= opts.multiselect.max_items then
+      return false
+    end
+    state.selected[item_id] = true
+    state.selected_count = state.selected_count + 1
+    return true
+  end
+end
+
+---Select or deselect all visible items
+---@param state SelectaState
+---@param opts SelectaOptions
+---@param select boolean Whether to select or deselect
+local function bulk_selection(state, opts, select)
+  if not opts.multiselect or not opts.multiselect.enabled then
+    return
+  end
+
+  if select and opts.multiselect.max_items and #state.filtered_items > opts.multiselect.max_items then
+    return
+  end
+
+  local new_count = select and #state.filtered_items or 0
+
+  -- Reset selection state
+  state.selected = {}
+  state.selected_count = 0
+
+  if select then
+    for _, item in ipairs(state.filtered_items) do
+      state.selected[get_item_id(item)] = true
+    end
+    state.selected_count = new_count
   end
 end
 
