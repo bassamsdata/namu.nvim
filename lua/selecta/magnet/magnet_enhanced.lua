@@ -654,6 +654,79 @@ local function show_picker(selectaItems, notify_opts)
     })
   end
 end
+
+---@param bufnr number
+---@return vim.lsp.Client|nil, string|nil
+local function get_client_with_symbols(bufnr)
+  local clients = vim.lsp.get_clients({ bufnr = bufnr })
+
+  if vim.tbl_isempty(clients) then
+    return nil, "No LSP client attached to buffer"
+  end
+
+  for _, client in ipairs(clients) do
+    if client and client.server_capabilities and client.server_capabilities.documentSymbolProvider then
+      return client, nil
+    end
+  end
+
+  return nil, "No LSP client supports document symbols"
+end
+
+-- Add the new request_symbols function
+---@param bufnr number
+---@param callback fun(err: any, result: any, ctx: any)
+local function request_symbols(bufnr, callback)
+  -- Cancel any existing request
+  if state.current_request then
+    local client = state.current_request.client
+    local request_id = state.current_request.request_id
+    -- Check if client and cancel_request are valid before calling
+    if client and type(client.cancel_request) == "function" and request_id then
+      client:cancel_request(request_id)
+    end
+    state.current_request = nil
+  end
+
+  -- Create params manually instead of using make_position_params
+  local params = {
+    textDocument = vim.lsp.util.make_text_document_params(bufnr),
+  }
+
+  -- Get client with document symbols
+  local client, err = get_client_with_symbols(bufnr)
+  if err then
+    callback(err, nil, nil)
+    return
+  end
+
+  -- Send the request to the LSP server
+  ---@diagnostic disable-next-line: undefined-field
+  local success, actual_request_id
+  if client then
+    success, actual_request_id = client:request(
+      "textDocument/documentSymbol",
+      params,
+      function(request_err, result, ctx)
+        state.current_request = nil
+        callback(request_err, result, ctx)
+      end,
+      bufnr
+    )
+  end
+  -- Check if the request was successful and that the request_id is not nil
+  if success and actual_request_id then
+    -- Store the client and request_id
+    state.current_request = {
+      client = client,
+      request_id = actual_request_id,
+    }
+  else
+    -- Handle the case where the request was not successful
+    callback("Request failed or request_id was nil", nil, nil)
+  end
+
+  return state.current_request
 end
 
 function M.jump()
