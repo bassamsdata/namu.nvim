@@ -469,52 +469,113 @@ local function highlight_symbol(symbol)
         -- Center the view on the node
         vim.api.nvim_win_set_cursor(state.original_win, { srow + 1, scol })
         vim.cmd("normal! zz")
+---Determines if a symbol should be included based on its kind and configured filters
+---@param symbol LSPSymbol
+---@return boolean
+local function should_include_symbol(symbol)
+  local kind = M.symbol_kind(symbol.kind)
+  local includeKinds = M.config.AllowKinds[vim.bo.filetype] or M.config.AllowKinds.default
+  local excludeResults = M.config.BlockList[vim.bo.filetype] or M.config.BlockList.default
+
+  local include = vim.tbl_contains(includeKinds, kind)
+  local exclude = vim.iter(excludeResults):any(function(pattern)
+    return symbol.name:find(pattern) ~= nil
+  end)
+
+  return include and not exclude
+end
+
+---Transforms LSP symbols into SelectaItem format with caching, nesting, and filtering
+---@param raw_symbols LSPSymbol[]
+---@return SelectaItem[]
+local function symbols_to_selecta_items(raw_symbols)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local cache_key = string.format("%d_%d", bufnr, vim.b[bufnr].changedtick or 0)
+
+  if M.symbol_cache and M.symbol_cache.key == cache_key then
+    return M.symbol_cache.items
+  end
+
+  local items = {}
+  local STYLE = 2 -- TODO: move it to config later
+
+  ---[local] Recursively processes each symbol and its children into SelectaItem format with proper indentation
+  ---@param result LSPSymbol
+  ---@param depth number Current depth level
+  local function processSymbolResult(result, depth)
+    if not result or not result.name then
+      return
     end
 
-    vim.api.nvim_set_current_win(picker_win)
-end
-
-local function clear_preview_highlight()
-    if state.preview_ns and state.original_win then
-        -- Get the buffer number from the original window
-        local bufnr = vim.api.nvim_win_get_buf(state.original_win)
-        vim.api.nvim_buf_clear_namespace(bufnr, state.preview_ns, 0, -1)
+    if not should_include_symbol(result) then
+      if result.children then
+        for _, child in ipairs(result.children) do
+          processSymbolResult(child, depth)
+        end
+      end
+      return
     end
+
+    local clean_name = result.name:match("^([^%s%(]+)") or result.name
+    local prefix = depth == 0 and ""
+      or (
+        STYLE == 1 and string.rep("  ", depth)
+        or STYLE == 2 and string.rep("  ", depth - 1) .. ".."
+        or STYLE == 3 and string.rep("  ", depth - 1) .. " →"
+        or string.rep("  ", depth)
+      )
+
+    local display_text = prefix .. clean_name
+
+    local item = {
+      text = display_text,
+      value = {
+        text = clean_name,
+        name = clean_name,
+        kind = M.symbol_kind(result.kind),
+        lnum = result.range.start.line + 1,
+        col = result.range.start.character + 1,
+        end_lnum = result.range["end"].line + 1,
+        end_col = result.range["end"].character + 1,
+      },
+      icon = M.config.kindIcons[M.symbol_kind(result.kind)] or M.config.icon,
+      kind = M.symbol_kind(result.kind),
+      depth = depth,
+    }
+
+    table.insert(items, item)
+
+    if result.children then
+      for _, child in ipairs(result.children) do
+        processSymbolResult(child, depth + 1)
+      end
+    end
+  end
+
+  for _, symbol in ipairs(raw_symbols) do
+    processSymbolResult(symbol, 0)
+  end
+
+  M.symbol_cache = { key = cache_key, items = items }
+  update_symbol_ranges_cache(items)
+  return items
 end
 
----@param symbols table[] LSP symbols
-local function filterSymbols(symbols)
-    local includeKinds = M.config.includeKinds[vim.bo.filetype]
-        or M.config.includeKinds.default
-    local excludeResults = M.config.excludeResults[vim.bo.filetype]
-        or M.config.excludeResults.default
+-- Cache for symbol kinds
+local symbol_kinds = nil
 
-    return vim
-        .iter(symbols)
-        :map(function(symbol)
-            symbol.text = symbol.text:gsub("%[%w+%] ", "")
-            return symbol
-        end)
-        :filter(function(symbol)
-            local exclude = vim.iter(excludeResults):any(function(pattern)
-                return symbol.text:find(pattern)
-            end)
-            local include = vim.tbl_contains(includeKinds, symbol.kind)
-            return include and not exclude
-        end)
-        :totable()
-end
-
----@param symbols table[] LSP symbols
-local function symbolsToSelectaItems(symbols)
-    return vim.tbl_map(function(symbol)
-        return {
-            text = symbol.text,
-            value = symbol,
-            icon = M.config.kindIcons[symbol.kind] or M.config.icon, -- Fallback to magnet icon if kind icon not found
-            kind = symbol.kind,
-        }
-    end, symbols)
+---@param kind number
+---@return LSPSymbolKind
+function M.symbol_kind(kind)
+  if not symbol_kinds then
+    symbol_kinds = {}
+    for k, v in pairs(vim.lsp.protocol.SymbolKind) do
+      if type(v) == "number" then
+        symbol_kinds[v] = k
+      end
+    end
+  end
+  return symbol_kinds[kind] or "Unknown"
 end
 
 ---@param symbol table LSP symbol
