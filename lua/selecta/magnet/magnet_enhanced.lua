@@ -66,109 +66,301 @@ vim.keymap.set('n', 'gs', require('magnet').jump, {
 ```
 ]]
 
-local selecta = require("localModules.selecta.selecta")
+local selecta = require("selecta.selecta")
 local M = {}
 
+---@alias LSPSymbolKind string
+-- ---@alias TSNode userdata
+-- ---@alias vim.lsp.Client table
+
+---@class LSPSymbol
+---@field name string Symbol name
+---@field kind number LSP symbol kind number
+---@field range table<string, table> Symbol range in the document
+---@field children? LSPSymbol[] Child symbols
+
 ---@class MagnetConfig
----@field includeKinds table<string, string[]> Symbol kinds to include
----@field excludeResults table<string, string[]> Patterns to exclude
+---@field AllowKinds table<string, string[]> Symbol kinds to include
+---@field display table<string, string|number> Display configuration
+---@field kindText table<string, string> Text representation of kinds
+---@field kindIcons table<string, string> Icons for kinds
+---@field BlockList table<string, string[]> Patterns to exclude
 ---@field icon string Icon for the picker
 ---@field highlight string Highlight group for preview
+---@field highlights table<string, string> Highlight groups
 ---@field window table Window configuration
+---@field debug boolean Enable debug logging
+---@field focus_current_symbol boolean Focus the current symbol
+---@field auto_select boolean Auto-select single matches
+---@field row_position "center"|"top10" Window position preset
+---@field multiselect table Multiselect configuration
+---@field keymaps table Keymap configuration
 
-M.config = {
-    includeKinds = {
-        -- LSP symbol kinds: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#symbolKind
-        default = { "Function", "Method", "Class", "Module" },
-        -- Filetype-specific kinds
-        yaml = { "Object", "Array" },
-        json = { "Module" },
-        toml = { "Object" },
-        markdown = { "String" }, -- String = Markdown headings
-    },
-    display = {
-        mode = "text", -- or "icon"
-        padding = 2,
-    },
-    kindText = {
-        Function = "function",
-        Method = "method",
-        Class = "class",
-        Module = "module",
-        Constructor = "constructor",
-        Interface = "interface",
-        Property = "property",
-        Field = "field",
-        Enum = "enum",
-        Constant = "constant",
-        Variable = "variable",
-    },
-    kindIcons = {
-        File = "󰈙",
-        Module = "󰏗",
-        Namespace = "󰌗",
-        Package = "󰏖",
-        Class = "󰌗",
-        Method = "󰆧",
-        Property = "󰜢",
-        Field = "󰜢",
-        Constructor = "󰆧",
-        Enum = "󰒻",
-        Interface = "󰕘",
-        Function = "󰊕",
-        Variable = "󰀫",
-        Constant = "󰏿",
-        String = "󰀬",
-        Number = "󰎠",
-        Boolean = "󰨙",
-        Array = "󰅪",
-        Object = "󰅩",
-        Key = "󰌋",
-        Null = "󰟢",
-        EnumMember = "󰒻",
-        Struct = "󰌗",
-        Event = "󰉁",
-        Operator = "󰆕",
-        TypeParameter = "󰊄",
-    },
-    excludeResults = {
-        default = { "^_" }, -- ignores private symbols
-        -- Filetype-specific exclusions
-        lua = {
-            "^vim%.",     -- anonymous functions passed to nvim api
-            "%.%.%. :",   -- vim.iter functions
-            ":gsub",      -- lua string.gsub
-            "^callback$", -- nvim autocmds
-            "^filter$",
-        },
-    },
-    icon = "󰍇",
-    highlight = "MagnetPreview",
-    window = {
-        auto_size = true,
-        min_width = 40,
-        padding = 4,
-        border = "rounded",
-    },
-    debug = true, -- Debug flag for both magnet and selecta
-}
+---@class MagnetState
+---@field original_win number|nil Original window
+---@field original_buf number|nil Original buffer
+---@field original_ft string|nil Original filetype
+---@field original_pos table|nil Original cursor position
+---@field preview_ns number|nil Preview namespace
+---@field current_request table|nil Current LSP request ID
 
 -- Store original window and position for preview
+---@type MagnetState
 local state = {
-    original_win = nil,
-    original_pos = nil,
-    preview_ns = vim.api.nvim_create_namespace("magnet_preview"),
+  original_win = nil,
+  original_buf = nil,
+  original_pos = nil,
+  preview_ns = vim.api.nvim_create_namespace("magnet_preview"),
+  current_request = nil,
 }
 
-local function debug_node(node)
-    if not node then return "nil" end
-    return string.format("%s [%d,%d]-[%d,%d]",
-        node:type(),
-        node:range())
+---@type MagnetConfig
+M.config = {
+  AllowKinds = {
+    default = {
+      "Function",
+      "Method",
+      "Class",
+      "Module",
+      "Property",
+      "Variable",
+      "Constant",
+      "Enum",
+      "Interface",
+      "Field",
+    },
+    -- Filetype specific
+    yaml = { "Object", "Array" },
+    json = { "Module" },
+    toml = { "Object" },
+    markdown = { "String" },
+  },
+  display = {
+    mode = "text", -- or "icon"
+    padding = 2,
+  },
+  kindText = {
+    Function = "function",
+    Method = "method",
+    Class = "class",
+    Module = "module",
+    Constructor = "constructor",
+    Interface = "interface",
+    Property = "property",
+    Field = "field",
+    Enum = "enum",
+    Constant = "constant",
+    Variable = "variable",
+  },
+  kindIcons = {
+    File = "󰈙",
+    Module = "󰏗",
+    Namespace = "󰌗",
+    Package = "󰏖",
+    Class = "󰌗",
+    Method = "󰆧",
+    Property = "󰜢",
+    Field = "󰜢",
+    Constructor = "󰆧",
+    Enum = "󰒻",
+    Interface = "󰕘",
+    Function = "󰊕",
+    Variable = "󰀫",
+    Constant = "󰏿",
+    String = "󰀬",
+    Number = "󰎠",
+    Boolean = "󰨙",
+    Array = "󰅪",
+    Object = "󰅩",
+    Key = "󰌋",
+    Null = "󰟢",
+    EnumMember = "󰒻",
+    Struct = "󰌗",
+    Event = "󰉁",
+    Operator = "󰆕",
+    TypeParameter = "󰊄",
+  },
+  BlockList = {
+    default = {},
+    -- Filetype-specific
+    lua = {
+      "^vim%.", -- anonymous functions passed to nvim api
+      "%.%.%. :", -- vim.iter functions
+      ":gsub", -- lua string.gsub
+      "^callback$", -- nvim autocmds
+      "^filter$",
+      "^map$", -- nvim keymaps
+    },
+    -- python = {},
+    -- rust = {}
+  },
+  icon = "󱠦", -- 󱠦 -  -  -- 󰚟
+  highlight = "MagnetPreview",
+  highlights = {
+    parent = "MagnetParent",
+    nested = "MagnetNested",
+    style = "MagnetStyle",
+  },
+  window = {
+    auto_size = true,
+    min_width = 30,
+    padding = 4,
+    border = "rounded",
+    show_footer = true,
+    footer_pos = "right",
+  },
+  debug = false, -- Debug flag for both magnet and selecta
+  focus_current_symbol = true, -- Add this option to control the feature
+  auto_select = false,
+  row_position = "center", -- options: "center"|"top10",
+  multiselect = {
+    enabled = true,
+    indicator = "●", -- or "✓"
+    keymaps = {
+      toggle = "<Tab>",
+      select_all = "<C-a>",
+      clear_all = "<C-l>",
+    },
+    max_items = nil, -- No limit by default
+  },
+  keymaps = {
+    {
+      key = "<C-o>",
+      handler = function(items_or_item)
+        if type(items_or_item) == "table" and items_or_item[1] then
+          M.add_symbol_to_codecompanion(items_or_item, state.original_buf)
+        else
+          -- Single item case
+          M.add_symbol_to_codecompanion({ items_or_item }, state.original_buf)
+        end
+      end,
+      desc = "Add symbol to CodeCompanion",
+    },
+  },
+}
 end
 
--- TODO: simplify that in lua, if the line has `=`, assignment_statement then take the range
--- from it and keep the one for rust.
+---Find the symbol that contains the cursor position
+---@param items table[] Selecta items list
+---@return table|nil symbol The matching symbol if found
+local function find_containing_symbol(items)
+  -- Cache cursor position
+  local cursor_pos = vim.api.nvim_win_get_cursor(0)
+  local cursor_line, cursor_col = cursor_pos[1], cursor_pos[2] + 1
+
+  -- Early exit if no items
+  if #items == 0 then
+    return nil
+  end
+
+  -- Binary search optimization for initial range
+  ---@diagnostic disable-next-line: redefined-local
+  local function binary_search_range(items, target_line)
+    local left, right = 1, #items
+    while left <= right do
+      local mid = math.floor((left + right) / 2)
+      local symbol = items[mid].value
+
+      if symbol.lnum <= target_line and symbol.end_lnum >= target_line then
+        return mid
+      elseif symbol.lnum > target_line then
+        right = mid - 1
+      else
+        left = mid + 1
+      end
+    end
+    return left
+  end
+
+  -- Find approximate position using binary search
+  local start_index = binary_search_range(items, cursor_line)
+
+  -- Search window size
+  local WINDOW_SIZE = 10
+  local start_pos = math.max(1, start_index - WINDOW_SIZE)
+  local end_pos = math.min(#items, start_index + WINDOW_SIZE)
+
+  -- Find the most specific symbol within the window
+  local matching_symbol = nil
+  local smallest_area = math.huge
+
+  for i = start_pos, end_pos do
+    local item = items[i]
+    local symbol = item.value
+
+    -- Quick bounds check
+    if not (symbol.lnum and symbol.end_lnum and symbol.col and symbol.end_col) then
+      goto continue
+    end
+
+    -- Fast range check
+    if cursor_line < symbol.lnum or cursor_line > symbol.end_lnum then
+      goto continue
+    end
+
+    -- Detailed position check
+    local in_range = (
+      (cursor_line > symbol.lnum or (cursor_line == symbol.lnum and cursor_col >= symbol.col))
+      and (cursor_line < symbol.end_lnum or (cursor_line == symbol.end_lnum and cursor_col <= symbol.end_col))
+    )
+
+    if in_range then
+      -- Optimize area calculation
+      local area = (symbol.end_lnum - symbol.lnum + 1) * 1000 + (symbol.end_col - symbol.col)
+      if area < smallest_area then
+        smallest_area = area
+        matching_symbol = item
+      end
+    end
+
+    ::continue::
+  end
+
+  return matching_symbol
+end
+
+-- Cache for symbol ranges
+local symbol_range_cache = {}
+
+-- Function to update symbol ranges cache
+local function update_symbol_ranges_cache(items)
+  symbol_range_cache = {}
+  for i, item in ipairs(items) do
+    local symbol = item.value
+    if symbol.lnum and symbol.end_lnum then
+      table.insert(symbol_range_cache, {
+        index = i,
+        start_line = symbol.lnum,
+        end_line = symbol.end_lnum,
+        item = item,
+      })
+    end
+  end
+  -- Sort by start line for binary search
+  table.sort(symbol_range_cache, function(a, b)
+    return a.start_line < b.start_line
+  end)
+end
+
+---Find the index of a symbol in the filtered items list
+---@param items SelectaItem[] The filtered items list
+---@param symbol SelectaItem table The symbol to find
+---@return number|nil index The index of the symbol if found
+local function find_symbol_index(items, symbol)
+  for i, item in ipairs(items) do
+    -- Compare the essential properties to find a match
+    if
+      item.value.lnum == symbol.value.lnum
+      and item.value.col == symbol.value.col
+      and item.value.name == symbol.value.name
+    then
+      return i
+    end
+  end
+  return nil
+end
+
+---Find Node for Preview
 ---@param node TSNode The treesitter node
 ---@param lnum number The line number (0-based)
 local function find_meaningful_node(node, lnum)
