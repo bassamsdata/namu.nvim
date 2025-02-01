@@ -91,7 +91,6 @@ local M = {}
 ---@class SelectaOptions
 ---@field title? string
 ---@field formatter? fun(item: SelectaItem): string
----@field on_render? fun(buf: number, items: SelectaItem[], opts: table) Function called after rendering items
 ---@field filter? fun(item: SelectaItem, query: string): boolean
 ---@field sorter? fun(items: SelectaItem[], query: string): SelectaItem[]
 ---@field on_select? fun(item: SelectaItem)
@@ -950,15 +949,27 @@ end
 ---@param opts SelectaOptions
 local function update_cursor_position(state, opts)
   if #state.filtered_items > 0 then
-    local cur_pos = vim.api.nvim_win_get_cursor(state.win)
-    if cur_pos[1] > #state.filtered_items then
-      cur_pos = { 1, 0 }
+    local new_pos
+    -- Only use best_match_index if we haven't moved the cursor manually
+    -- and we're not in initial state
+    if opts.preserve_order and state.best_match_index and not state.initial_open and not state.cursor_moved then
+      new_pos = { state.best_match_index, 0 }
+    else
+      -- When not preserving order, always start at first item (best match)
+      -- unless cursor has been manually moved
+      if not opts.preserve_order and not state.cursor_moved then
+        new_pos = { 1, 0 }
+      else
+        -- Use current cursor position
+        local cur_pos = vim.api.nvim_win_get_cursor(state.win)
+        new_pos = { math.min(cur_pos[1], #state.filtered_items), 0 }
+      end
     end
-    vim.api.nvim_win_set_cursor(state.win, cur_pos)
+    vim.api.nvim_win_set_cursor(state.win, new_pos)
 
     -- Only trigger on_move if not in initial state
     if opts.on_move and not state.initial_open then
-      opts.on_move(state.filtered_items[cur_pos[1]])
+      opts.on_move(state.filtered_items[new_pos[1]])
     end
   end
 end
