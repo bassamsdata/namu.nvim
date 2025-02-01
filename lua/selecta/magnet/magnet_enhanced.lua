@@ -363,90 +363,71 @@ end
 ---Find Node for Preview
 ---@param node TSNode The treesitter node
 ---@param lnum number The line number (0-based)
+---@return TSNode|nil
 local function find_meaningful_node(node, lnum)
-    if not node then return nil end
+  if not node then
+    return nil
+  end
+  -- Helper to check if a node starts at our target line
+  local function starts_at_line(n)
+    local start_row = select(1, n:range())
+    return start_row == lnum
+  end
+  -- Get the root-most node that starts at our line
+  local current = node
+  local target_node = node
+  while current and starts_at_line(current) do
+    target_node = current
+    ---@diagnostic disable-next-line: undefined-field
+    current = current:parent()
+  end
 
-    -- Store the original node
-    local original_node = node
+  -- Now we have the largest node that starts at our line
+  ---@diagnostic disable-next-line: undefined-field
+  local type = target_node:type()
 
-    -- Common declaration types across languages
-    local declaration_types = {
-        "function_declaration",
-        "function_definition",
-        "function_item",
-        "method_declaration",
-        "class_declaration",
-        "class_definition",
-        "module",
-        "mod_item",
-        "struct_declaration",
-        "interface_declaration",
-        "trait_item",
-        "impl_item",
-    }
+  -- Quick check if we're already at the right node type
+  if type == "function_definition" then
+    return node
+  end
 
-    -- Special handling for Lua assignments
-    local function find_lua_function(node)
-        -- If we're already at a function_definition, return it
-        if node:type() == "function_definition" then
-            return node
+  -- Handle assignment cases (like MiniPick.stop = function())
+  if type == "assignment_statement" then
+    -- First try to get the function from the right side
+    ---@diagnostic disable-next-line: undefined-field
+    local expr_list = target_node:field("rhs")[1]
+    if expr_list then
+      for i = 0, expr_list:named_child_count() - 1 do
+        local child = expr_list:named_child(i)
+        if child and child:type() == "function_definition" then
+          -- For assignments, we want to include the entire assignment
+          -- not just the function definition
+          return target_node
         end
-
-        -- If we're in an assignment statement
-        if node:type() == "assignment_statement" then
-            -- Look for function_definition in expression_list
-            for child in node:iter_children() do
-                if child:type() == "expression_list" then
-                    for expr in child:iter_children() do
-                        if expr:type() == "function_definition" then
-                            return expr
-                        end
-                    end
-                end
-            end
-            -- If no function found, return the whole assignment
-            return node
-        end
-
-        -- If we're at an identifier or dot_index_expression,
-        -- try to find the parent assignment
-        local current = node
-        while current do
-            if current:type() == "assignment_statement" then
-                -- Recursively search this assignment
-                return find_lua_function(current)
-            end
-            current = current:parent()
-        end
-
-        return nil
+      end
     end
+  end
 
-    -- Try to find a meaningful parent node that starts on the same line
-    local current = node
-    while current do
-        -- For Lua, handle assignments specially
-        if vim.bo.filetype == "lua" then
-            local lua_node = find_lua_function(current)
-            if lua_node then return lua_node end
-        end
+  -- Handle local function declarations
+  if type == "local_function" or type == "function_declaration" then
+    return target_node
+  end
 
-        -- General case
-        if vim.tbl_contains(declaration_types, current:type())
-            and select(1, current:range()) == lnum then
-            return current
-        end
-
-        current = current:parent()
-
-        -- Stop if we reach a node that starts on a different line
-        if current and select(1, current:range()) ~= lnum then
-            break
-        end
+  -- Handle local assignments with functions
+  if type == "local_declaration" then
+    ---@diagnostic disable-next-line: undefined-field
+    local values = target_node:field("values")
+    if values and values[1] and values[1]:type() == "function_definition" then
+      return target_node
     end
+  end
 
-    -- Fallback to original node if we couldn't find a better match
-    return original_node
+  -- Handle method definitions
+  if type == "method_definition" then
+    return target_node
+  end
+
+  return target_node
 end
 
 ---@param symbol table LSP symbol item
