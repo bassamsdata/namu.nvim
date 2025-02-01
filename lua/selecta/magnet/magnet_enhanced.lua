@@ -238,9 +238,59 @@ M.config = {
     },
   },
 }
+
+---Sends current symbol context to CodeCompanion for AI assistance
+---@param items table[] Array of selected items from selecta
+---@param bufnr number The buffer number of the original buffer
+function M.add_symbol_to_codecompanion(items, bufnr)
+  if not items or #items == 0 then
+    print("No items received")
+    return
+  end
+  -- Collect all content
+  local all_content = {}
+  local sorted_symbols = {}
+  -- First pass: collect and sort symbols by line number
+  for _, item in ipairs(items) do
+    table.insert(sorted_symbols, item.value)
+  end
+  table.sort(sorted_symbols, function(a, b)
+    return a.lnum < b.lnum
+  end)
+
+  -- Second pass: collect content with no duplicates
+  local last_end_lnum = -1
+  for _, symbol in ipairs(sorted_symbols) do
+    -- Only add if this section doesn't overlap with the previous one
+    if symbol.lnum > last_end_lnum then
+      local lines = vim.api.nvim_buf_get_lines(bufnr, symbol.lnum - 1, symbol.end_lnum, false)
+      table.insert(all_content, table.concat(lines, "\n"))
+      last_end_lnum = symbol.end_lnum
+    end
+  end
+
+  local chat = require("codecompanion").last_chat()
+  if not chat then
+    chat = require("codecompanion").chat()
+    if not chat then
+      return vim.notify("Could not create chat buffer", vim.log.levels.WARN)
+    end
+  end
+
+  chat:add_buf_message({
+    role = require("codecompanion.config").constants.USER_ROLE,
+    content = "Here is some code from "
+      .. vim.api.nvim_buf_get_name(bufnr)
+      .. ":\n\n```"
+      .. vim.api.nvim_get_option_value("filetype", { buf = bufnr })
+      .. "\n"
+      .. table.concat(all_content, "\n\n")
+      .. "\n```\n",
+  })
+  chat.ui:open()
 end
 
----Find the symbol that contains the cursor position
+---find_containing_symbol: Locates the symbol that contains the current cursor position
 ---@param items table[] Selecta items list
 ---@return table|nil symbol The matching symbol if found
 local function find_containing_symbol(items)
@@ -253,7 +303,7 @@ local function find_containing_symbol(items)
     return nil
   end
 
-  -- Binary search optimization for initial range
+  ---[local] Helper function to efficiently search through symbol ranges
   ---@diagnostic disable-next-line: redefined-local
   local function binary_search_range(items, target_line)
     local left, right = 1, #items
@@ -322,7 +372,7 @@ end
 -- Cache for symbol ranges
 local symbol_range_cache = {}
 
--- Function to update symbol ranges cache
+--Maintains a cache of symbol ranges for quick lookup
 local function update_symbol_ranges_cache(items)
   symbol_range_cache = {}
   for i, item in ipairs(items) do
@@ -342,7 +392,7 @@ local function update_symbol_ranges_cache(items)
   end)
 end
 
----Find the index of a symbol in the filtered items list
+---Finds index of symbol at current cursor position
 ---@param items SelectaItem[] The filtered items list
 ---@param symbol SelectaItem table The symbol to find
 ---@return number|nil index The index of the symbol if found
@@ -360,7 +410,7 @@ local function find_symbol_index(items, symbol)
   return nil
 end
 
----Find Node for Preview
+---Traverses syntax tree to find significant nodes for better symbol context
 ---@param node TSNode The treesitter node
 ---@param lnum number The line number (0-based)
 ---@return TSNode|nil
@@ -368,7 +418,7 @@ local function find_meaningful_node(node, lnum)
   if not node then
     return nil
   end
-  -- Helper to check if a node starts at our target line
+  -- [local] Helper to check if a node starts at our target line
   local function starts_at_line(n)
     local start_row = select(1, n:range())
     return start_row == lnum
@@ -430,46 +480,56 @@ local function find_meaningful_node(node, lnum)
   return target_node
 end
 
+---Handles visual highlighting of selected symbols in preview
 ---@param symbol table LSP symbol item
 local function highlight_symbol(symbol)
-    local picker_win = vim.api.nvim_get_current_win()
-    vim.api.nvim_set_current_win(state.original_win)
-    vim.api.nvim_buf_clear_namespace(0, state.preview_ns, 0, -1)
+  local picker_win = vim.api.nvim_get_current_win()
+  vim.api.nvim_set_current_win(state.original_win)
+  vim.api.nvim_buf_clear_namespace(0, state.preview_ns, 0, -1)
 
-    -- Get the line content
-    local bufnr = vim.api.nvim_win_get_buf(state.original_win)
-    local line = vim.api.nvim_buf_get_lines(bufnr, symbol.lnum - 1, symbol.lnum, false)[1]
+  -- Get the line content
+  local bufnr = vim.api.nvim_win_get_buf(state.original_win)
+  local line = vim.api.nvim_buf_get_lines(bufnr, symbol.lnum - 1, symbol.lnum, false)[1]
 
-    -- Find first non-whitespace character position
-    local first_char_col = line:find("%S")
-    if not first_char_col then return end
-    first_char_col = first_char_col - 1 -- Convert to 0-based index
+  -- Find first non-whitespace character position
+  local first_char_col = line:find("%S")
+  if not first_char_col then
+    return
+  end
+  first_char_col = first_char_col - 1 -- Convert to 0-based index
 
-    -- Get node at the first non-whitespace character
-    local node = vim.treesitter.get_node({
-        pos = { symbol.lnum - 1, first_char_col },
-        ignore_injections = false,
-    })
-    -- Try to find a more meaningful node
+  -- Get node at the first non-whitespace character
+  local node = vim.treesitter.get_node({
+    pos = { symbol.lnum - 1, first_char_col },
+    ignore_injections = false,
+  })
+  -- Try to find a more meaningful node
+  if node then
     node = find_meaningful_node(node, symbol.lnum - 1)
+  end
 
-    if node then
-        local srow, scol, erow, ecol = node:range()
+  if node then
+    local srow, scol, erow, ecol = node:range()
 
-        -- Create extmark for the entire node range
-        vim.api.nvim_buf_set_extmark(bufnr, state.preview_ns, srow, 0, {
-            end_row = erow,
-            end_col = ecol,
-            hl_group = M.config.highlight,
-            hl_eol = true,
-            priority = 100,
-            strict = false -- Allow marks beyond EOL
-        })
+    -- Create extmark for the entire node range
+    vim.api.nvim_buf_set_extmark(bufnr, state.preview_ns, srow, 0, {
+      end_row = erow,
+      end_col = ecol,
+      hl_group = M.config.highlight,
+      hl_eol = true,
+      priority = 100,
+      strict = false, -- Allow marks beyond EOL
+    })
 
-        -- Center the view on the node
-        vim.api.nvim_win_set_cursor(state.original_win, { srow + 1, scol })
-        vim.cmd("normal! zz")
----Determines if a symbol should be included based on its kind and configured filters
+    -- Center the view on the node
+    vim.api.nvim_win_set_cursor(state.original_win, { srow + 1, scol })
+    vim.cmd("normal! zz")
+  end
+
+  vim.api.nvim_set_current_win(picker_win)
+end
+
+---Filters symbols based on configured kinds and blocklist
 ---@param symbol LSPSymbol
 ---@return boolean
 local function should_include_symbol(symbol)
@@ -485,7 +545,7 @@ local function should_include_symbol(symbol)
   return include and not exclude
 end
 
----Transforms LSP symbols into SelectaItem format with caching, nesting, and filtering
+---Converts LSP symbols to selecta-compatible items with proper formatting
 ---@param raw_symbols LSPSymbol[]
 ---@return SelectaItem[]
 local function symbols_to_selecta_items(raw_symbols)
@@ -564,6 +624,7 @@ end
 -- Cache for symbol kinds
 local symbol_kinds = nil
 
+---Converts LSP symbol kind numbers to readable strings
 ---@param kind number
 ---@return LSPSymbolKind
 function M.symbol_kind(kind)
@@ -578,13 +639,14 @@ function M.symbol_kind(kind)
   return symbol_kinds[kind] or "Unknown"
 end
 
+---Performs the actual jump to selected symbol location
 ---@param symbol table LSP symbol
-local function jumpToSymbol(symbol)
+local function jump_to_symbol(symbol)
   vim.cmd.normal({ "m`", bang = true }) -- set jump mark
   vim.api.nvim_win_set_cursor(state.original_win, { symbol.lnum, symbol.col - 1 })
 end
 
----Show the picker with the given items
+---Displays the fuzzy finder UI with symbol list
 ---@param selectaItems SelectaItem[]
 ---@param notify_opts? {title: string, icon: string}
 local function show_picker(selectaItems, notify_opts)
@@ -615,7 +677,7 @@ local function show_picker(selectaItems, notify_opts)
         -- TODO: we need smart mechanis on here.
         M.clear_preview_highlight()
         if type(selected_items) == "table" and selected_items[1] then
-          jumpToSymbol(selected_items[1].value)
+          jump_to_symbol(selected_items[1].value)
         end
       end,
     },
@@ -625,7 +687,7 @@ local function show_picker(selectaItems, notify_opts)
     ) or nil,
     on_select = function(item)
       M.clear_preview_highlight()
-      jumpToSymbol(item.value)
+      jump_to_symbol(item.value)
     end,
     on_cancel = function()
       M.clear_preview_highlight()
@@ -655,6 +717,7 @@ local function show_picker(selectaItems, notify_opts)
   end
 end
 
+---Finds appropriate LSP client with symbol support
 ---@param bufnr number
 ---@return vim.lsp.Client|nil, string|nil
 local function get_client_with_symbols(bufnr)
@@ -673,7 +736,7 @@ local function get_client_with_symbols(bufnr)
   return nil, "No LSP client supports document symbols"
 end
 
--- Add the new request_symbols function
+--Fetches symbols from LSP server
 ---@param bufnr number
 ---@param callback fun(err: any, result: any, ctx: any)
 local function request_symbols(bufnr, callback)
@@ -729,119 +792,75 @@ local function request_symbols(bufnr, callback)
   return state.current_request
 end
 
+---Main entry point for symbol jumping functionality
 function M.jump()
-    -- Store current window and position
-    state.original_win = vim.api.nvim_get_current_win()
-    state.original_pos = vim.api.nvim_win_get_cursor(state.original_win)
+  -- Store current window and position
+  state.original_win = vim.api.nvim_get_current_win()
+  state.original_buf = vim.api.nvim_get_current_buf()
+  state.original_ft = vim.bo.filetype
+  state.original_pos = vim.api.nvim_win_get_cursor(state.original_win)
 
-    -- Set up highlight group
-    vim.api.nvim_set_hl(0, M.config.highlight, {
-        background = "#2a2a2a", -- Adjust color to match your theme
-        bold = true,
-    })
+  vim.api.nvim_set_hl(0, M.config.highlight, {
+    link = "Visual",
+  })
 
-    -- Create autocmd for cleanup
-    local augroup = vim.api.nvim_create_augroup("MagnetCleanup", { clear = true })
+  local notify_opts = { title = "Magnet", icon = M.config.icon }
 
-    local params = vim.lsp.util.make_position_params(0, "utf-8")
+  -- Use cached symbols if available
+  local bufnr = vim.api.nvim_get_current_buf()
+  local cache_key = string.format("%d_%d", bufnr, vim.b[bufnr].changedtick or 0)
 
-    vim.lsp.buf_request(
-        0,
-        "textDocument/documentSymbol",
-        params,
-        function(err, result, _, _)
-            if err then
-                vim.notify(
-                    "Error fetching symbols: " .. err.message,
-                    vim.log.levels.ERROR,
-                    { title = "Magnet", icon = M.config.icon }
-                )
-                return
-            end
-            if not result or #result == 0 then
-                vim.notify(
-                    "No results.",
-                    vim.log.levels.WARN,
-                    { title = "Magnet", icon = M.config.icon }
-                )
-                return
-            end
+  if M.symbol_cache and M.symbol_cache.key == cache_key then
+    show_picker(M.symbol_cache.items, notify_opts)
+    return
+  end
 
-            local items = vim.lsp.util.symbols_to_items(result or {}, 0) or {}
-            local symbols = filterSymbols(items)
+  request_symbols(state.original_buf, function(err, result, _)
+    if err then
+      local error_message = type(err) == "table" and err.message or err
+      vim.notify("Error fetching symbols: " .. error_message, vim.log.levels.ERROR, notify_opts)
+      return
+    end
+    if not result or #result == 0 then
+      vim.notify("No results.", vim.log.levels.WARN, notify_opts)
+      return
+    end
 
-            if #symbols == 0 then
-                vim.notify(
-                    "Current `kindFilter` doesn't match any symbols.",
-                    nil,
-                    { title = "Magnet", icon = M.config.icon }
-                )
-                return
-            end
+    -- Convert directly to selecta items preserving hierarchy
+    local selectaItems = symbols_to_selecta_items(result)
 
-            -- Convert symbols to selecta items
-            local selectaItems = symbolsToSelectaItems(symbols)
-            -- local prefix_width = calculate_prefix_width(selectaItems)
+    -- Update cache
+    M.symbol_cache = {
+      key = cache_key,
+      items = selectaItems,
+    }
 
-            local picker_win = selecta.pick(selectaItems, {
-                title = "LSP Symbols",
-                fuzzy = true,
-                window = vim.tbl_deep_extend("force", M.config.window, {
-                    title_prefix = M.config.icon .. " ",
-                }),
-                on_select = function(item)
-                    clear_preview_highlight()
-                    jumpToSymbol(item.value)
-                end,
-                on_cancel = function()
-                    clear_preview_highlight()
-                    if state.original_win and state.original_pos and vim.api.nvim_win_is_valid(state.original_win) then
-                        vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
-                    end
-                end,
-                on_move = function(item)
-                    if item then
-                        highlight_symbol(item.value)
-                    end
-                end,
-            })
-
-            -- Add cleanup autocmd after picker is created
-            if picker_win then
-                vim.api.nvim_create_autocmd("WinClosed", {
-                    group = augroup,
-                    pattern = tostring(picker_win),
-                    callback = function()
-                        clear_preview_highlight()
-                        vim.api.nvim_del_augroup_by_name("MagnetCleanup")
-                    end,
-                    once = true,
-                })
-            end
-        end
-    )
+    show_picker(selectaItems, notify_opts)
+  end)
 end
 
----@param opts? table
+---Initializes the module with user configuration
+---@param opts? MagnetConfig
 function M.setup(opts)
-    M.config = vim.tbl_deep_extend("force", M.config, opts or {})
-    -- Configure selecta with appropriate options
-    selecta.setup({
-        debug = M.config.debug,
-        display = {
-            mode = M.config.display.mode,
-            padding = M.config.display.padding
-        },
-        window = vim.tbl_deep_extend("force", {}, M.config.window)
-    })
+  M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+  -- Configure selecta with appropriate options
+  selecta.setup({
+    debug = M.config.debug,
+    display = {
+      mode = M.config.display.mode,
+      padding = M.config.display.padding,
+    },
+    window = vim.tbl_deep_extend("force", {}, M.config.window),
+    row_position = M.config.row_position,
+  })
 end
 
--- Optional: Add commands or keymaps in setup
+--Sets up default keymappings for symbol navigation
 function M.setup_keymaps()
-    vim.keymap.set("n", "<leader>ss", M.jump, {
-        desc = "Jump to LSP symbol",
-        silent = true,
-    })
+  vim.keymap.set("n", "<leader>ss", M.jump, {
+    desc = "Jump to LSP symbol",
+    silent = true,
+  })
 end
 
 return M
