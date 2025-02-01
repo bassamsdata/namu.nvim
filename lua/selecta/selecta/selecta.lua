@@ -775,7 +775,7 @@ local function update_prompt(state, opts)
   if vim.api.nvim_win_is_valid(state.win) then
     if state.prompt_win and vim.api.nvim_win_is_valid(state.prompt_win) then
       vim.api.nvim_buf_set_lines(state.prompt_buf, 0, -1, false, { raw_prmpt })
-      vim.api.nvim_buf_add_highlight(state.prompt_buf, -1, "SelectaPrompt", 0, 0, -1)
+      -- vim.api.nvim_buf_add_highlight(state.prompt_buf, -1, "SelectaPrompt", 0, 0, -1)
       -- else
       --   pcall(vim.api.nvim_win_set_config, state.win, {
       --     title = { { raw_prmpt, "SelectaPrompt" } },
