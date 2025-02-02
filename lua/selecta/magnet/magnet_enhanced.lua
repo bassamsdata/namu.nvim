@@ -66,7 +66,7 @@ vim.keymap.set('n', 'gs', require('magnet').jump, {
 ```
 ]]
 
-local selecta = require("selecta.selecta")
+local selecta = require("selecta.selecta.selecta")
 local M = {}
 
 ---@alias LSPSymbolKind string
@@ -212,7 +212,7 @@ M.config = {
   debug = false, -- Debug flag for both magnet and selecta
   focus_current_symbol = true, -- Add this option to control the feature
   auto_select = false,
-  row_position = "center", -- options: "center"|"top10",
+  row_position = "top10", -- options: "center"|"top10",
   multiselect = {
     enabled = true,
     indicator = "●", -- or "✓"
@@ -517,7 +517,7 @@ local function highlight_symbol(symbol)
       end_col = ecol,
       hl_group = M.config.highlight,
       hl_eol = true,
-      priority = 100,
+      priority = 1,
       strict = false, -- Allow marks beyond EOL
     })
 
@@ -637,6 +637,14 @@ function M.symbol_kind(kind)
     end
   end
   return symbol_kinds[kind] or "Unknown"
+end
+
+function M.clear_preview_highlight()
+  if state.preview_ns and state.original_win then
+    -- Get the buffer number from the original window
+    local bufnr = vim.api.nvim_win_get_buf(state.original_win)
+    vim.api.nvim_buf_clear_namespace(bufnr, state.preview_ns, 0, -1)
+  end
 end
 
 ---Performs the actual jump to selected symbol location
