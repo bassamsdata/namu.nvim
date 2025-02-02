@@ -114,7 +114,6 @@ local M = {}
 ---@field on_window_create? fun(win_id: number, buf_id: number, opts: SelectaOptions) Called after window creation
 ---@field before_render? fun(items: SelectaItem[], opts: SelectaOptions) Called before rendering items
 
--- Add new class definition after SelectaOptions
 ---@class SelectaMultiselect
 ---@field enabled boolean Whether multiselect is enabled
 ---@field indicator string Character to show for selected items
@@ -137,7 +136,6 @@ local M = {}
 ---@class CursorCache
 ---@field guicursor string|nil The cached guicursor value
 
--- Default configuration
 -- Default configuration
 M.config = {
   window = {
@@ -909,11 +907,7 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
         for _, pos in ipairs(match.positions) do
           local start_col = icon_end + pos[1] - 1
           local end_col = icon_end + pos[2]
-          -- BUG: after magnet update, end_col sometimes out of range when typing specific char like
-          -- "m" in the python file so this is temp solution.
-          if opts.display.mode == "text" then
-            end_col = math.min(end_col, line_length)
-          end
+          end_col = math.min(end_col, line_length)
 
           -- Debug log
           M.log(string.format("Match position: [%d, %d]\nFinal position: [%d, %d]", pos[1], pos[2], start_col, end_col))
