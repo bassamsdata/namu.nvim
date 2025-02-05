@@ -23,7 +23,7 @@ M.setup = function(opts)
   end
 
   if M.config.selecta_colorscheme.enable then
-    require("my_plugin.selecta_colorscheme").setup(M.config.selecta_colorscheme.options)
+    require("selecta.selecta_colorscheme")
   end
 
   if M.config.cc_codecompanion.enable then

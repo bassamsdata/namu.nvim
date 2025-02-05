@@ -1273,9 +1273,10 @@ local function create_picker(items, opts)
 
   create_prompt_window(state, opts)
 
+  vim.wo[state.win].cursorline = true
+  vim.wo[state.win].cursorlineopt = "both"
   vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = state.buf })
   vim.api.nvim_set_option_value("buftype", "nofile", { buf = state.buf })
-  vim.wo[state.win].cursorline = true
 
   -- First update the display
   update_display(state, opts)
