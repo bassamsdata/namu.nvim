@@ -114,6 +114,8 @@ local state = {
   current_request = nil,
 }
 
+local ns_id = vim.api.nvim_create_namespace("magnet_symbols")
+
 ---@type MagnetConfig
 M.config = {
   AllowKinds = {
@@ -128,6 +130,15 @@ M.config = {
       "Enum",
       "Interface",
       "Field",
+    },
+    go = {
+      "Function",
+      "Method",
+      "Struct", -- For struct definitions
+      "Field", -- For struct fields
+      "Interface",
+      "Constant",
+      "Property",
     },
     -- Filetype specific
     yaml = { "Object", "Array" },
@@ -194,12 +205,34 @@ M.config = {
     -- python = {},
     -- rust = {}
   },
+  preview = {
+    highlight_on_move = true, -- Whether to highlight symbols as you move through them
+    -- TODO: still needs implmenting, keep it always now
+    highlight_mode = "always", -- "always" | "select" (only highlight when selecting)
+  },
   icon = "󱠦", -- 󱠦 -  -  -- 󰚟
   highlight = "MagnetPreview",
   highlights = {
     parent = "MagnetParent",
     nested = "MagnetNested",
     style = "MagnetStyle",
+  },
+  kinds = {
+    prefix_kind_colors = true,
+    enable_highlights = true,
+    highlights = {
+      PrefixSymbol = "MagnetPrefixSymbol",
+      Function = "MagnetSymbolFunction",
+      Method = "MagnetSymbolMethod",
+      Class = "MagnetSymbolClass",
+      Interface = "MagnetSymbolInterface",
+      Variable = "MagnetSymbolVariable",
+      Constant = "MagnetSymbolConstant",
+      Property = "MagnetSymbolProperty",
+      Field = "MagnetSymbolField",
+      Enum = "MagnetSymbolEnum",
+      Module = "MagnetSymbolModule",
+    },
   },
   window = {
     auto_size = true,
@@ -213,6 +246,7 @@ M.config = {
   focus_current_symbol = true, -- Add this option to control the feature
   auto_select = false,
   row_position = "top10", -- options: "center"|"top10",
+  initially_hidden = true,
   multiselect = {
     enabled = true,
     indicator = "●", -- or "✓"
@@ -223,7 +257,57 @@ M.config = {
     },
     max_items = nil, -- No limit by default
   },
+  actions = {
+    close_on_yank = false, -- Whether to close picker after yanking
+    close_on_delete = true, -- Whether to close picker after deleting
+  },
   keymaps = {
+    {
+      key = "<C-y>",
+      handler = function(items_or_item, state)
+        local success = M.yank_symbol_text(items_or_item, state)
+        -- Only close if yanking was successful and config says to close
+        if success and M.config.actions.close_on_yank then
+          M.clear_preview_highlight()
+          return false -- This should close the picker
+        end
+      end,
+      desc = "Yank symbol text",
+    },
+    {
+      key = "<C-d>",
+      handler = function(items_or_item, state)
+        local deleted = M.delete_symbol_text(items_or_item, state)
+        -- Only close if deletion was successful and config says to close
+        if deleted and M.config.actions.close_on_delete then
+          M.clear_preview_highlight()
+          return false
+        end
+      end,
+      desc = "Delete symbol text",
+    },
+    {
+      key = "<C-v>",
+      handler = function(item, state)
+        if not state.original_buf then
+          vim.notify("No original buffer available", vim.log.levels.ERROR)
+          return
+        end
+
+        local new_win = selecta.open_in_split(state, item, "vertical")
+        if new_win then
+          local symbol = item.value
+          if symbol and symbol.lnum and symbol.col then
+            -- Set cursor to symbol position
+            pcall(vim.api.nvim_win_set_cursor, new_win, { symbol.lnum, symbol.col - 1 })
+            vim.cmd("normal! zz")
+          end
+          M.clear_preview_highlight()
+          return false
+        end
+      end,
+      desc = "Open in vertical split",
+    },
     {
       key = "<C-o>",
       handler = function(items_or_item)
@@ -236,20 +320,151 @@ M.config = {
       end,
       desc = "Add symbol to CodeCompanion",
     },
+    {
+      key = "<C-t>",
+      handler = function(items_or_item)
+        if type(items_or_item) == "table" and items_or_item[1] then
+          M.add_symbol_to_avante(items_or_item, state.original_buf)
+        else
+          -- Single item case
+          M.add_symbol_to_avante({ items_or_item }, state.original_buf)
+        end
+      end,
+      desc = "Add symbol to Avante",
+    },
   },
 }
 
----Sends current symbol context to CodeCompanion for AI assistance
----@param items table[] Array of selected items from selecta
----@param bufnr number The buffer number of the original buffer
-function M.add_symbol_to_codecompanion(items, bufnr)
-  if not items or #items == 0 then
-    print("No items received")
+function M.setup_highlights()
+  local highlights = {
+    MagnetPrefixSymbol = { link = "@Comment" }, -- or "@lsp.type.symbol"
+    MagnetSymbolFunction = { link = "@function" },
+    MagnetSymbolMethod = { link = "@variable" },
+    MagnetSymbolClass = { link = "@lsp.type.class" },
+    MagnetSymbolInterface = { link = "@lsp.type.interface" },
+    MagnetSymbolVariable = { link = "@lsp.type.variable" },
+    MagnetSymbolConstant = { link = "@lsp.type.constant" },
+    MagnetSymbolProperty = { link = "@lsp.type.property" },
+    MagnetSymbolField = { link = "@lsp.type.field" },
+    MagnetSymbolEnum = { link = "@lsp.type.enum" },
+    MagnetSymbolModule = { link = "@lsp.type.module" },
+  }
+
+  for name, attrs in pairs(highlights) do
+    vim.api.nvim_set_hl(0, name, attrs)
+  end
+end
+
+---Yank the symbol text to registers
+---@param items table|table[] Single item or array of selected items
+---@param state table The picker state
+function M.yank_symbol_text(items, state)
+  if not state.original_buf or not vim.api.nvim_buf_is_valid(state.original_buf) then
+    vim.notify("Invalid buffer", vim.log.levels.ERROR)
     return
   end
-  -- Collect all content
-  local all_content = {}
+
+  -- Convert single item to array for consistent handling
+  local symbols = type(items) == "table" and items[1] and items or { items }
+  local all_text = {}
+
+  -- Sort symbols by line number to maintain order
+  table.sort(symbols, function(a, b)
+    return a.value.lnum < b.value.lnum
+  end)
+
+  for _, item in ipairs(symbols) do
+    local symbol = item.value
+    if symbol and symbol.lnum and symbol.end_lnum then
+      -- Get the text content
+      local lines = vim.api.nvim_buf_get_lines(state.original_buf, symbol.lnum - 1, symbol.end_lnum, false)
+
+      if #lines > 0 then
+        -- Handle single line case
+        if #lines == 1 then
+          lines[1] = lines[1]:sub(symbol.col, symbol.end_col)
+        else
+          -- Handle multi-line case
+          lines[1] = lines[1]:sub(symbol.col)
+          lines[#lines] = lines[#lines]:sub(1, symbol.end_col)
+        end
+        table.insert(all_text, table.concat(lines, "\n"))
+      end
+    else
+      vim.notify("Invalid symbol found, skipping", vim.log.levels.WARN)
+    end
+  end
+
+  if #all_text > 0 then
+    local final_text = table.concat(all_text, "\n\n")
+    vim.fn.setreg('"', final_text) -- Set to unnamed register
+    vim.fn.setreg("+", final_text) -- Set to system clipboard if unnamed register is not supported
+    vim.notify(string.format("Yanked %d symbol(s) to clipboard", #symbols), vim.log.levels.INFO)
+    return true
+  end
+  return false
+end
+
+---Delete the symbol text from buffer
+---@param items table|table[] Single item or array of selected items
+---@param state table The picker state
+function M.delete_symbol_text(items, state)
+  if not state.original_buf or not vim.api.nvim_buf_is_valid(state.original_buf) then
+    vim.notify("Invalid buffer", vim.log.levels.ERROR)
+    return
+  end
+
+  -- Convert single item to array for consistent handling
+  local symbols = type(items) == "table" and items[1] and items or { items }
+
+  -- Sort symbols by line number in reverse order (to delete from bottom up)
+  table.sort(symbols, function(a, b)
+    return a.value.lnum > b.value.lnum
+  end)
+
+  -- Confirm deletion
+  local confirm = vim.fn.confirm(string.format("Delete %d selected symbol(s)?", #symbols), "&Yes\n&No", 2)
+
+  if confirm ~= 1 then
+    return
+  end
+
+  -- Create undo block
+  vim.cmd("undojoin")
+
+  local deleted_count = 0
+  for _, item in ipairs(symbols) do
+    local symbol = item.value
+    if symbol and symbol.lnum and symbol.end_lnum then
+      -- Delete the text
+      vim.api.nvim_buf_set_lines(state.original_buf, symbol.lnum - 1, symbol.end_lnum, false, {})
+      deleted_count = deleted_count + 1
+    else
+      vim.notify("Invalid symbol found, skipping", vim.log.levels.WARN)
+    end
+  end
+
+  if deleted_count > 0 then
+    vim.notify(string.format("Deleted %d symbol(s)", deleted_count), vim.log.levels.INFO)
+    M.clear_preview_highlight()
+    return true
+  end
+  return false
+end
+
+---Process and collect symbol text content
+---@param items table[] Array of selected items
+---@param bufnr number Buffer number
+---@return table|nil {text: string, symbols: table[], content: string[]} Processed content and metadata
+local function process_symbol_content(items, bufnr)
+  if not items or #items == 0 then
+    vim.notify("No items received", vim.log.levels.WARN)
+    return nil
+  end
+
   local sorted_symbols = {}
+  local all_content = {}
+
   -- First pass: collect and sort symbols by line number
   for _, item in ipairs(items) do
     table.insert(sorted_symbols, item.value)
@@ -269,7 +484,24 @@ function M.add_symbol_to_codecompanion(items, bufnr)
     end
   end
 
+  return {
+    text = table.concat(all_content, "\n\n"),
+    symbols = sorted_symbols,
+    content = all_content,
+  }
+end
+
+---Add symbol text to CodeCompanion chat buffer
+---@param items table[] Array of selected items from selecta
+---@param bufnr number The buffer number of the original buffer
+function M.add_symbol_to_codecompanion(items, bufnr)
+  local result = process_symbol_content(items, bufnr)
+  if not result then
+    return
+  end
+
   local chat = require("codecompanion").last_chat()
+
   if not chat then
     chat = require("codecompanion").chat()
     if not chat then
@@ -284,10 +516,42 @@ function M.add_symbol_to_codecompanion(items, bufnr)
       .. ":\n\n```"
       .. vim.api.nvim_get_option_value("filetype", { buf = bufnr })
       .. "\n"
-      .. table.concat(all_content, "\n\n")
+      .. result.text
       .. "\n```\n",
   })
   chat.ui:open()
+end
+
+---BUG: This function doesn't work as expected - need to check with Avante
+---Add symbol text to Avante sidebar
+---@param items table[] Array of selected items from selecta
+---@param bufnr number The buffer number of the original buffer
+function M.add_symbol_to_avante(items, bufnr)
+  local result = process_symbol_content(items, bufnr)
+  if not result then
+    return
+  end
+
+  -- Create the selection object that Avante expects
+  local selection = {
+    text = result.text,
+    range = {
+      start = {
+        line = result.symbols[1].lnum - 1,
+        character = result.symbols[1].col - 1,
+      },
+      ["end"] = {
+        line = result.symbols[#result.symbols].end_lnum - 1,
+        character = result.symbols[#result.symbols].end_col - 1,
+      },
+    },
+  }
+
+  -- Call Avante's ask function with the selection
+  require("avante.api").ask({
+    selection = selection,
+    floating = true,
+  })
 end
 
 ---find_containing_symbol: Locates the symbol that contains the current cursor position
@@ -545,6 +809,25 @@ local function should_include_symbol(symbol)
   return include and not exclude
 end
 
+-- Choose your style here: 1, 2, or 3
+local STYLE = 2 -- TODO: move it to config later
+
+-- Style options for nested items
+---@param depth number
+---@param style number 1: Just indentation, 2: Dot style, 3: Arrow style
+---@return string
+local function get_prefix(depth, style)
+  local prefix = depth == 0 and ""
+    or (
+      style == 1 and string.rep("  ", depth)
+      or style == 2 and string.rep("  ", depth - 1) .. ".."
+      or style == 3 and string.rep("  ", depth - 1) .. " →"
+      or string.rep("  ", depth)
+    )
+
+  return prefix
+end
+
 ---Converts LSP symbols to selecta-compatible items with proper formatting
 ---@param raw_symbols LSPSymbol[]
 ---@return SelectaItem[]
@@ -557,7 +840,6 @@ local function symbols_to_selecta_items(raw_symbols)
   end
 
   local items = {}
-  local STYLE = 2 -- TODO: move it to config later
 
   ---[local] Recursively processes each symbol and its children into SelectaItem format with proper indentation
   ---@param result LSPSymbol
@@ -577,14 +859,7 @@ local function symbols_to_selecta_items(raw_symbols)
     end
 
     local clean_name = result.name:match("^([^%s%(]+)") or result.name
-    local prefix = depth == 0 and ""
-      or (
-        STYLE == 1 and string.rep("  ", depth)
-        or STYLE == 2 and string.rep("  ", depth - 1) .. ".."
-        or STYLE == 3 and string.rep("  ", depth - 1) .. " →"
-        or string.rep("  ", depth)
-      )
-
+    local prefix = get_prefix(depth, STYLE)
     local display_text = prefix .. clean_name
 
     local item = {
@@ -619,6 +894,57 @@ local function symbols_to_selecta_items(raw_symbols)
   M.symbol_cache = { key = cache_key, items = items }
   update_symbol_ranges_cache(items)
   return items
+end
+
+local function apply_kind_highlights(buf, items)
+  vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
+
+  for idx, item in ipairs(items) do
+    local line = idx - 1
+    local kind = item.kind
+    local hl_group = M.config.kinds.highlights[kind]
+
+    if hl_group then
+      local line_text = vim.api.nvim_buf_get_lines(buf, line, line + 1, false)[1]
+      if not line_text then
+        goto continue
+      end
+
+      -- First highlight the prefix symbol if it exists
+      if item.depth and item.depth > 0 then
+        local prefix = getPrefix(item.depth, STYLE)
+        local prefix_symbol = STYLE == 2 and ".." or (STYLE == 3 and "→" or nil)
+
+        if prefix_symbol then
+          local symbol_pos = line_text:find(prefix_symbol, 1, true)
+          if symbol_pos then
+            vim.api.nvim_buf_set_extmark(buf, ns_id, line, symbol_pos - 1, {
+              end_row = line,
+              end_col = symbol_pos - 1 + #prefix_symbol,
+              hl_group = M.config.kinds.highlights.PrefixSymbol,
+              priority = 91, -- Slightly lower priority than the main highlight
+              strict = false,
+            })
+          end
+        end
+      end
+
+      -- Then highlight the main symbol
+      local full_name = item.value.name
+      local symbol_pos = line_text:find(full_name, 1, true)
+
+      if symbol_pos then
+        vim.api.nvim_buf_set_extmark(buf, ns_id, line, symbol_pos - 1, {
+          end_row = line,
+          end_col = symbol_pos - 1 + #full_name,
+          hl_group = hl_group,
+          priority = 90,
+          strict = false,
+        })
+      end
+      ::continue::
+    end
+  end
 end
 
 -- Cache for symbol kinds
@@ -665,17 +991,29 @@ local function show_picker(selectaItems, notify_opts)
 
   -- Find containing symbol for current cursor position
   local current_symbol = find_containing_symbol(selectaItems)
-
-  local picker_win = selecta.pick(selectaItems, {
+  local picker_opts = {
     title = "LSP Symbols",
-    offset = 0,
     fuzzy = false,
     preserve_order = true,
     window = vim.tbl_deep_extend("force", M.config.window, {
       title_prefix = M.config.icon .. " ",
       show_footer = true,
+      min_height = 1,
     }),
     auto_select = M.config.auto_select,
+    initially_hidden = M.config.initially_hidden,
+
+    hooks = {
+      on_render = function(buf, filtered_items)
+        apply_kind_highlights(buf, filtered_items)
+      end,
+      on_buffer_clear = function()
+        M.clear_preview_highlight()
+        if state.original_win and state.original_pos and vim.api.nvim_win_is_valid(state.original_win) then
+          vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
+        end
+      end,
+    },
     keymaps = M.config.keymaps,
     -- TODO: Enable multiselect if configured
     multiselect = {
@@ -683,7 +1021,12 @@ local function show_picker(selectaItems, notify_opts)
       indicator = M.config.multiselect and M.config.multiselect.indicator or "◉ ",
       on_select = function(selected_items)
         -- TODO: we need smart mechanis on here.
-        M.clear_preview_highlight()
+        if M.config.preview.highlight_mode == "select" then
+          M.clear_preview_highlight()
+          if type(selected_items) == "table" and selected_items[1] then
+            highlight_symbol(selected_items[1].value)
+          end
+        end
         if type(selected_items) == "table" and selected_items[1] then
           jump_to_symbol(selected_items[1].value)
         end
@@ -704,11 +1047,28 @@ local function show_picker(selectaItems, notify_opts)
       end
     end,
     on_move = function(item)
-      if item then
-        highlight_symbol(item.value)
+      if M.config.preview.highlight_on_move and M.config.preview.highlight_mode == "always" then
+        if item then
+          highlight_symbol(item.value)
+        end
       end
     end,
-  })
+  }
+  if M.config.kinds.prefix_kind_colors then
+    picker_opts.prefix_highlighter = function(buf, line_nr, item, icon_end, ns_id)
+      local kind_hl = M.config.kinds.highlights[item.kind]
+      if kind_hl then
+        vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, 0, {
+          end_col = icon_end,
+          hl_group = kind_hl,
+          priority = 100,
+          hl_mode = "combine",
+        })
+      end
+    end
+  end
+
+  local picker_win = selecta.pick(selectaItems, picker_opts)
 
   -- Add cleanup autocmd after picker is created
   if picker_win then
@@ -851,6 +1211,18 @@ end
 ---@param opts? MagnetConfig
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+  -- Create autocmd for colorscheme changes
+  local group = vim.api.nvim_create_augroup("MagnetHighlights", { clear = true })
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    group = group,
+    callback = function()
+      vim.schedule(function()
+        if M.config.kinds.enable_highlights then
+          M.setup_highlights()
+        end
+      end)
+    end,
+  })
   -- Configure selecta with appropriate options
   selecta.setup({
     debug = M.config.debug,
