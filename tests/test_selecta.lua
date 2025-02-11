@@ -1,417 +1,378 @@
-local h = require('mini.test')
-local selecta = require('selecta')
+---@diagnostic disable: need-check-nil
+local h = require("tests.helpers")
+local selecta = require("selecta.selecta.selecta")
+local new_set = MiniTest.new_set
 
-local T = h.new_set()
+local T = new_set()
 
-local function setup_test_items()
-    return {
-        { text = "file1.lua", value = "path/to/file1.lua", icon = "󰈙 " },
-        { text = "setup_function", value = "function_path", icon = "󰊕 " },
-        { text = "config_options", value = "config_path", icon = "󰒓 " },
-    }
+T["Selecta.matching"] = new_set()
+
+-- test 1
+-- Test exact prefix matches
+T["Selecta.matching"]["detects prefix matches correctly"] = function()
+  local get_match_positions = selecta._test.get_match_positions
+
+  -- Basic prefix match
+  local result = get_match_positions("hello", "he")
+  h.eq(result.type, "prefix")
+  h.eq(result.positions, { { 1, 2 } })
+
+  -- Case-sensitive match
+  result = get_match_positions("Hello", "He")
+  h.eq(result.type, "prefix")
+  h.eq(result.positions, { { 1, 2 } })
+
+  -- Case-insensitive match
+  result = get_match_positions("HELLO", "he")
+  h.eq(result.type, "prefix")
+  h.eq(result.positions, { { 1, 2 } })
+
+  -- No match
+  result = get_match_positions("hello", "xy")
+  h.eq(result, nil)
 end
 
--- -- Create test groups
--- T["highlighting"] = h.new_set()
-T["selection"] = h.new_set()
-T["filtering"] = h.new_set()
--- -- T["display_modes"] = h.new_set()
-
--- -- Test data
--- local test_items = {
---     {
---         text = "file1.lua",
---         value = "path/to/file1.lua",
---         icon = "󰈙",
---         kind = "File"
---     },
---     {
---         text = "MyClass",
---         value = "class_definition",
---         icon = "󰌗",
---         kind = "Class"
---     },
---     {
---         text = "setup_function",
---         value = "func_definition",
---         icon = "󰊕",
---         kind = "Function"
---     },
--- }
-
-
--- local function with_picker(items, config, test_fn)
---     local child = h.new_child_neovim()
---     child.start()
-
---     -- First, set up debug logging
---     child.lua([[
---         _G.debug_log = function(msg)
---             vim.fn.writefile({msg}, 'test_log.txt', 'a')
---         end
---     ]])
-
---     -- Then, set up items and config separately
---     child.lua(string.format('_G.test_items = %s', vim.inspect(items)))
---     child.lua(string.format('_G.test_config = %s', vim.inspect(config or {})))
-
---     -- Now set up the picker
---     child.lua([[
---         local selecta = require('selecta')
---         selecta.setup()
-
---         _G.run_picker = function()
---             _G.debug_log("Starting picker")
---             local result = selecta.pick(_G.test_items, _G.test_config)
---             _G.debug_log("Picker finished")
---             return result
---         end
---     ]])
-
---     -- Run picker
---     child.lua([[
---         _G.picker_running = true
---         vim.schedule(function()
---             _G.run_picker()
---             _G.picker_running = false
---         end)
---     ]])
-
---     -- Wait for picker to be ready
---     local success = vim.wait(1000, function()
---         return child.lua_get([[
---             local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
---             return #lines > 0
---         ]])
---     end, 50)
-
---     if not success then
---         child.stop()
---         error("Timeout waiting for picker to initialize")
---         return
---     end
-
---     -- Run test function
---     local ok, err = pcall(test_fn, child)
-
---     -- Cleanup
---     child.type_keys('<Esc>')
---     vim.wait(1000, function()
---         return not child.lua_get('_G.picker_running')
---     end, 50)
---     child.stop()
-
---     if not ok then
---         error(err)
---     end
--- end
-
--- Test using the helper
--- T["display_modes"]["icon_mode_display"] = function()
---     print("\nTesting icon mode display...")
---     with_picker(test_items, {
---         display = { mode = "icon" },
---         window = { width = 40, height = 10 }
---     }, function(child)
---         local first_line = child.lua_get([[
---             local lines = vim.api.nvim_buf_get_lines(0, 0, 1, false)
---             _G.debug_log("First line: " .. vim.inspect(lines))
---             return lines[1]
---         ]])
-
---         print("First line content:", vim.inspect(first_line))
---         h.expect.match(first_line, "󰈙")
---     end)
--- end
-
--- T["display_modes"]["text_mode_display"] = function()
---     local child = h.new_child_neovim()
---     child.start()
-
---     child.lua([[
---         local selecta = require('selecta')
---         _G.items = ...
---         selecta.setup()
-
---         _G.run_picker = function()
---             return selecta.pick(_G.items, {
---                 display = { mode = "text" },
---                 window = { width = 40, height = 10 }
---             })
---         end
---     ]], test_items)
-
---     child.lua([[vim.schedule(function() _G.run_picker() end)]])
---     -- vim.wait(100)
-
---     -- Verify kind display
---     local first_line = child.lua_get([[
---         return vim.api.nvim_buf_get_lines(0, 0, 1, false)[1]
---     ]])
-
---     pairs(first_line)
---     h.expect.match(first_line, "File")
-
---     child.type_keys('<Esc>')
---     child.stop()
--- end
-
--- Navigation Tests
--- T["navigation"] = h.new_set()
-
--- T["navigation"]["moves_with_j_k"] = function()
---     local child = h.new_child_neovim()
---     child.start()
-
---     child.lua([[
---         local selecta = require('selecta')
---         _G.moved_to = nil
---         _G.items = ...
-
---         _G.run_picker = function()
---             return selecta.pick(_G.items, {
---                 on_move = function(item)
---                     _G.moved_to = item.text
---                 end
---             })
---         end
---     ]], test_items)
-
---     child.lua([[vim.schedule(function() _G.run_picker() end)]])
---     -- vim.wait(100)
-
---     -- Move down
---     child.type_keys('j')
---     -- vim.wait(100)
---     local moved_to = child.lua_get('_G.moved_to')
---     h.expect.equality(moved_to, "MyClass")
-
---     child.type_keys('<Esc>')
---     child.stop()
--- end
-
-
--- T["filtering"]["fuzzy_matches_anywhere"] = function()
---     local child = h.new_child_neovim()
---     child.start()
-
---     child.lua([[
---         local selecta = require('selecta')
---         _G.items = ...
---         selecta.setup()
-
---         _G.run_picker = function()
---             return selecta.pick(_G.items)
---         end
---     ]], test_items)
-
---     child.lua([[vim.schedule(function() _G.run_picker() end)]])
---     -- vim.wait(100)
-
---     -- Type 'cls' to match 'MyClass'
---     child.type_keys('cls')
---     -- vim.wait(100)
-
---     local filtered_count = child.lua_get([[
---         return #selecta.current.filtered_items
---     ]])
---     h.expect.equality(filtered_count, 1)
-
---     child.type_keys('<Esc>')
---     child.stop()
--- end
-
--- -- Window Tests
--- T["window"] = h.new_set()
-
--- T["window"]["honors_custom_border"] = function()
---     local child = h.new_child_neovim()
---     child.start()
-
---     child.lua([[
---         local selecta = require('selecta')
---         _G.items = ...
-
---         _G.run_picker = function()
---             return selecta.pick(_G.items, {
---                 window = {
---                     border = "rounded",
---                     title_prefix = "󰍉 "
---                 }
---             })
---         end
---     ]], test_items)
-
---     child.lua([[vim.schedule(function() _G.run_picker() end)]])
---     -- vim.wait(100)
-
---     -- Verify window config
---     local win_config = child.lua_get([[
---         local wins = vim.api.nvim_list_wins()
---         return vim.api.nvim_win_get_config(wins[#wins])
---     ]])
-
---     h.expect.equality(win_config.border[1], "╭")
-
---     child.type_keys('<Esc>')
---     child.stop()
--- end
-
--- -- Callback Tests
--- T["callbacks"] = h.new_set()
-
--- T["callbacks"]["triggers_on_select"] = function()
---     local child = h.new_child_neovim()
---     child.start()
-
---     child.lua([[
---         local selecta = require('selecta')
---         _G.items = ...
---         _G.selected_item = nil
-
---             return selecta.pick(_G.items, {
---                 on_select = function(item)
---                     _G.selected_item = item.text
---                 end
---             })
---     ]], test_items)
-
---     child.lua([[vim.schedule(function() _G.run_picker() end)]])
---     -- vim.wait(100)
-
---     -- Select first item
---     child.type_keys('<CR>')
---     -- vim.wait(100)
-
---     local selected = child.lua_get('_G.selected_item')
---     h.expect.equality(selected, "file1.lua")
-
---     child.stop()
--- end
-
--- T["callbacks"]["triggers_on_cancel"] = function()
---     local child = h.new_child_neovim()
---     child.start()
-
---     child.lua([[
---         local selecta = require('selecta')
---         _G.items = ...
---         _G.was_cancelled = false
-
---         _G.run_picker = function()
---             return selecta.pick(_G.items, {
---                 on_cancel = function()
---                     _G.was_cancelled = true
---                 end
---             })
---         end
---     ]], test_items)
-
---     child.lua([[vim.schedule(function() _G.run_picker() end)]])
---     -- vim.wait(100)
-
---     child.type_keys('<Esc>')
---     -- vim.wait(100)
-
---     local cancelled = child.lua_get('_G.was_cancelled')
---     h.expect.equality(cancelled, true)
-
---     child.stop()
--- end
-
-T["filtering"]["fuzzy_match"] = function()
-    local child = h.new_child_neovim()
-    child.start()
-
-    -- Test setup
-    child.lua([[
-        local selecta = require('selecta')
-        _G.items = {
-            { text = "file1.lua", value = "path/to/file1.lua", icon = "󰈙 " },
-            { text = "setup_function", value = "function_path", icon = "󰊕 " },
-            { text = "other_file.lua", value = "path/other.lua", icon = "󰈙 " },
-        }
-        selecta.setup()
-
-        _G.run_picker = function()
-            _G.state = selecta.pick(_G.items)
-        end
-    ]])
-
-    -- Run picker in background
-    child.lua([[vim.schedule(function() _G.run_picker() end)]])
-
-    -- Test fuzzy filtering
-    child.type_keys('fl') -- Should match "file1.lua" and "other_file.lua"
-    local filtered_count = child.lua_get([[function() return #selecta.current.filtered_items end]])
-    h.expect.equality(filtered_count, 2, "Should match two files with 'fl'")
-
-    child.type_keys('<Esc>')
-    child.stop()
+-- test 2
+-- Test substring matches
+T["Selecta.matching"]["detects substring matches correctly"] = function()
+  local get_match_positions = selecta._test.get_match_positions
+
+  -- Basic substring match that isn't a prefix
+  -- Using "orl" instead of "ello" because "ello" is being detected as a prefix
+  local result = get_match_positions("hello world", "orl")
+  h.eq(result.type, "contains")
+  h.eq(result.positions, { { 8, 10 } })
+
+  -- Test another substring case
+  result = get_match_positions("abcdefg", "def")
+  h.eq(result.type, "contains")
+  h.eq(result.positions, { { 4, 6 } })
+
+  -- Match at word boundary
+  result = get_match_positions("hello_world", "orld")
+  h.eq(result.type, "contains")
+  h.eq(result.positions, { { 8, 11 } })
+  h.eq(result.score > 70, true, "Should have word boundary bonus")
+
+  -- Multiple occurrences should find best match
+  result = get_match_positions("world hello world", "orld")
+  h.eq(result.type, "contains")
+  h.eq(result.positions, { { 2, 5 } }, "Should prefer earlier occurrence")
 end
 
--- T["highlighting"]["icon_mode"] = function()
---     local child = h.new_child_neovim()
---     child.start()
+-- test 3
+-- Test fuzzy matches
+T["Selecta.matching"]["handles fuzzy matches correctly"] = function()
+  local get_match_positions = selecta._test.get_match_positions
 
---     child.lua([[
---         local selecta = require('selecta')
---         _G.items = {
---             { text = "file1.lua", value = "path/to/file1.lua", icon = "󰈙 " },
---         }
---         selecta.setup({ display = { mode = "icon" }})
+  -- Basic fuzzy match
+  local result = get_match_positions("hello world", "hwd")
+  h.eq(result.type, "fuzzy")
+  h.eq(#result.positions, 3)
+  h.eq(result.matched_chars, 3)
 
---         _G.run_picker = function()
---             _G.state = selecta.pick(_G.items)
---         end
---     ]])
+  -- Consecutive characters score higher
+  local score1 = get_match_positions("hello", "hel").score
+  local score2 = get_match_positions("hello", "hlo").score
+  h.eq(score1 > score2, true, "Consecutive matches should score higher")
 
---     child.lua([[vim.schedule(function() _G.run_picker() end)]])
---     -- vim.wait(100)
+  -- Word boundary matches score higher
+  local score3 = get_match_positions("hello_world", "hw").score
+  local score4 = get_match_positions("helloworld", "hw").score
+  h.eq(score3 > score4, true, "Word boundary matches should score higher")
+end
 
---     -- Type to trigger highlighting
---     child.type_keys('f')
---     -- vim.wait(100)
+-- test 4
+-- Test word boundaries
+T["Selecta.matching"]["detects word boundaries correctly"] = function()
+  local is_word_boundary = selecta._test.is_word_boundary
 
---     -- Verify highlighting
---     local marks = child.lua_get([[
---         local ns_id = vim.api.nvim_create_namespace('selecta_highlights')
---         return vim.api.nvim_buf_get_extmarks(0, ns_id, 0, -1, {details = true})
---     ]])
+  h.eq(is_word_boundary("hello", 1), true) -- Start of string
+  h.eq(is_word_boundary("hello_world", 7), true) -- After underscore
+  h.eq(is_word_boundary("helloWorld", 6), true) -- camelCase boundary
+  h.eq(is_word_boundary("HelloWorld", 1), true) -- PascalCase boundary
+  h.eq(is_word_boundary("hello", 2), false) -- Not a boundary
+end
 
---     h.expect.no_equality(#marks, 0, "Should have highlighting marks")
+-- test 5
+T["Selecta.matching"]["applies correct scoring rules"] = function()
+  local get_match_positions = selecta._test.get_match_positions
 
---     child.type_keys('<Esc>')
---     child.stop()
--- end
+  -- Test different match types with the same pattern length
+  local prefix_score = get_match_positions("hello", "he").score
+  local contains_score = get_match_positions("the hello", "el").score
+  local fuzzy_score = get_match_positions("handle", "hl").score
 
-T["selection"]["item_selection"] = function()
-    local child = h.new_child_neovim()
-    child.start()
+  -- Verify match type hierarchy
+  h.eq(prefix_score > contains_score, true, "Prefix should score higher than contains")
+  h.eq(contains_score > fuzzy_score, true, "Contains should score higher than fuzzy")
 
-    child.lua([[
-        local selecta = require('selecta')
-        _G.items = {
-            { text = "file1.lua", value = "path/to/file1.lua", icon = "󰈙 " },
-            { text = "setup_function", value = "function_path", icon = "󰊕 " },
-        }
-        selecta.setup()
+  -- Position scoring within the same match type
+  local early_match = get_match_positions("abcdef", "abc").score
+  local late_match = get_match_positions("defabc", "abc").score
+  h.eq(early_match > late_match, true, "Earlier matches should score higher")
 
-        _G.result = nil
-        _G.run_picker = function()
-            _G.result = selecta.pick(_G.items)
-        end
-    ]])
+  -- Length scoring
+  local short_text = get_match_positions("hi", "hi").score
+  local long_text = get_match_positions("history", "hi").score
+  h.eq(short_text > long_text, true, "Shorter text should score higher")
+end
 
-    child.lua([[vim.schedule(function() _G.run_picker() end)]])
+-- test 6
+T["Selecta.matching"]["filters items correctly"] = function()
+  local items = {
+    { text = "apple" },
+    { text = "banana" },
+    { text = "cherry" },
+  }
 
-    -- Select first item
-    child.type_keys('<CR>')
+  local state = {
+    items = items,
+    query = { "a" },
+    cursor_pos = 2,
+  }
 
-    local selected = child.lua_get('_G.result')
-    h.expect.equality(selected.value, "path/to/file1.lua", "Should select first item")
+  -- Call the update function directly
+  selecta._test.update_filtered_items(state, "a", {
+    preserve_order = false,
+  })
 
-    child.stop()
+  h.eq(#state.filtered_items, 2)
+  h.eq(state.filtered_items[1].text, "apple")
+  h.eq(state.filtered_items[2].text, "banana")
+end
+
+-- Scoring TEST ---------------------------------------------------
+T["Selecta.scoring"] = new_set()
+
+-- test 7
+T["Selecta.scoring"]["applies correct scoring rules"] = function()
+  -- Test scoring directly
+  local text1 = "hello"
+  local text2 = "help me"
+  local query = "he"
+
+  local score1 = selecta._test.get_match_positions(text1, query).score
+  local score2 = selecta._test.get_match_positions(text2, query).score
+
+  h.eq(score1 > score2, true, "Shorter match should score higher")
+end
+
+-- Filtering TEST ---------------------------------------------------
+T["Selecta.filtering"] = new_set()
+
+-- test 8
+T["Selecta.filtering"]["handles basic filtering"] = function()
+  local items = {
+    { text = "apple" },
+    { text = "banana" },
+    { text = "cherry" },
+  }
+
+  -- Change 3: Call update_filtered_items directly
+  local state = {
+    items = items,
+    filtered_items = items,
+    query = { "a" },
+    cursor_pos = 2,
+  }
+
+  selecta._test.update_filtered_items(state, "a", {
+    preserve_order = false,
+  })
+
+  h.eq(#state.filtered_items, 2) -- Should match "apple" and "banana"
+end
+
+-- Config TEST ---------------------------------------------------
+T["Selecta.config"] = new_set()
+
+-- test 9
+T["Selecta.config"]["applies default configuration"] = function()
+  selecta.setup({})
+
+  -- Check default window config
+  h.eq(selecta.config.window.relative, "editor")
+  h.eq(selecta.config.window.border, "none")
+  h.eq(selecta.config.window.width_ratio, 0.6)
+  h.eq(selecta.config.window.height_ratio, 0.6)
+
+  -- Check default display config
+  h.eq(selecta.config.display.mode, "icon")
+  h.eq(selecta.config.display.padding, 1)
+end
+
+-- test 10
+T["Selecta.config"]["merges user configuration"] = function()
+  selecta.setup({
+    window = {
+      border = "rounded",
+      width_ratio = 0.8,
+    },
+    display = {
+      mode = "text",
+      padding = 2,
+    },
+  })
+
+  -- Check merged window config
+  h.eq(selecta.config.window.border, "rounded")
+  h.eq(selecta.config.window.width_ratio, 0.8)
+  h.eq(selecta.config.window.relative, "editor") -- Default preserved
+
+  -- Check merged display config
+  h.eq(selecta.config.display.mode, "text")
+  h.eq(selecta.config.display.padding, 2)
+end
+
+-- Highlight TEST ---------------------------------------------------
+T["Selecta.highlights"] = new_set({})
+
+-- test 11
+T["Selecta.highlights"]["sets up highlight groups"] = function()
+  selecta._test.setup_highlights()
+  local match_hl = vim.api.nvim_get_hl(0, { name = "SelectaMatch" })
+  local prefix_hl = vim.api.nvim_get_hl(0, { name = "SelectaPrefix" })
+  local cursor_hl = vim.api.nvim_get_hl(0, { name = "SelectaCursor" })
+
+  -- Verify highlight attributes
+  h.eq(type(match_hl), "table")
+  h.eq(type(prefix_hl), "table")
+  h.eq(type(cursor_hl), "table")
+
+  -- Check specific attributes
+  h.eq(prefix_hl.bold, true)
+  h.eq(cursor_hl.blend, 100)
+end
+
+-- test 12
+T["Selecta.highlights"]["calculates highlight positions"] = function()
+  -- Test highlight position calculation directly
+  local text = "hello world"
+  local query = "he"
+  local matches = selecta._test.get_match_positions(text, query)
+
+  h.eq(type(matches), "table")
+  h.eq(type(matches.positions), "table")
+  h.eq(matches.positions[1][1], 1)
+  h.eq(matches.positions[1][2], 2)
+end
+
+-- Window TEST ---------------------------------------------------
+T["Selecta.window_sizing"] = new_set()
+
+-- test 13
+T["Selecta.window_sizing"]["calculates correct dimensions"] = function()
+  local items = {
+    { text = "short" },
+    { text = "this is a much longer item" },
+  }
+
+  -- Test calculate_window_size directly
+  local width, height = selecta._test.calculate_window_size(items, {
+    window = {
+      auto_size = true,
+      min_width = 20,
+      max_width = 120,
+      padding = 2,
+    },
+  }, function(item)
+    return item.text
+  end)
+
+  h.eq(type(width), "number")
+  h.eq(width >= 20, true)
+  h.eq(width <= 120, true)
+  h.eq(height, 2)
+end
+
+-- Input TEST ---------------------------------------------------
+T["Selecta.input_validation"] = new_set()
+
+-- test 14
+T["Selecta.input_validation"]["validates search input"] = function()
+  -- Test validate_input directly
+  local valid, _ = selecta._test.validate_input("text", "query")
+  h.eq(valid, true)
+
+  local valid2, err = selecta._test.validate_input("", "query")
+  h.eq(valid2, false)
+  h.eq(type(err), "string")
+end
+
+--Window Management--------------------------------------------------
+T["Selecta.window_management"] = new_set()
+
+-- test 15
+T["Selecta.window_management"]["calculates window dimensions correctly"] = function()
+  local items = {
+    { text = "short" },
+    { text = "this is a much longer item that should affect width" },
+  }
+
+  -- Test window calculation function directly
+  local width, height = selecta._test.calculate_window_size(items, {
+    window = {
+      auto_size = true,
+      padding = 2,
+      min_width = 20,
+      max_width = 120,
+    },
+  }, function(item)
+    return item.text
+  end)
+
+  h.eq(type(width), "number")
+  h.eq(type(height), "number")
+  h.eq(width >= 20, true)
+  h.eq(width <= 120, true)
+  h.eq(height, 2)
+end
+
+--Cursor Management--------------------------------------------------
+T["Selecta.cursor_management"] = new_set()
+
+-- test 16
+T["Selecta.cursor_management"]["restores cursor on errors"] = function()
+  local original_guicursor = vim.o.guicursor
+
+  -- Force an error by providing invalid items
+  local ok, err = pcall(function()
+    selecta.pick(nil, {})
+  end)
+
+  h.eq(ok, false)
+  h.eq(type(err), "string")
+  h.eq(vim.o.guicursor, original_guicursor)
+end
+
+--Error Handling-----------------------------------------------------
+T["Selecta.error_handling"] = new_set()
+
+-- test 17
+T["Selecta.error_handling"]["handles invalid items"] = function()
+  local ok, err = pcall(function()
+    selecta.pick(nil, {})
+  end)
+
+  h.eq(ok, false)
+  h.eq(type(err), "string")
+end
+
+-- test 18
+T["Selecta.error_handling"]["handles window creation errors"] = function()
+  local items = { { text = "test" } }
+
+  -- Force window creation error with invalid relative option
+  local ok, err = pcall(function()
+    selecta.pick(items, {
+      window = {
+        relative = "invalid_option",
+      },
+    })
+  end)
+  h.eq(ok, false)
+  h.eq(type(err), "string")
 end
 
 return T

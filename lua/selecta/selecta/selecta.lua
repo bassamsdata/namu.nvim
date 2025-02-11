@@ -1616,6 +1616,16 @@ function M.pick(items, opts)
   return result
 end
 
+M._test = {
+  get_match_positions = M.get_match_positions,
+  is_word_boundary = is_word_boundary,
+  update_filtered_items = M.update_filtered_items,
+  calculate_window_size = calculate_window_size,
+  validate_input = validate_input,
+  apply_highlights = apply_highlights,
+  setup_highlights = setup_highlights,
+}
+
 ---@param opts? table
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
