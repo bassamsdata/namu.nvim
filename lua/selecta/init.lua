@@ -6,6 +6,7 @@ M.config = {
   selecta = { enable = true, options = {} },
   selecta_colorscheme = { enable = false, options = {} },
   cc_codecompanion = { enable = false, options = {} },
+  ui_select = { enable = true, options = {} },
 }
 
 M.setup = function(opts)
@@ -28,6 +29,10 @@ M.setup = function(opts)
 
   if M.config.cc_codecompanion.enable then
     require("selecta.cc_codecompanion").setup(M.config.cc_codecompanion.options)
+  end
+
+  if M.config.ui_select.enable then
+    require("selecta.ui_select").setup(M.config.ui_select.options)
   end
 end
 
