@@ -209,6 +209,9 @@ local ns_id = vim.api.nvim_create_namespace("selecta_highlights")
 ---Hide the cursor by setting guicursor and caching the original value
 ---@return nil
 local function hide_cursor()
+  if vim.o.guicursor == "a:MiniPickCursor" then
+    return
+  end
   cursor_cache.guicursor = vim.o.guicursor
   vim.o.guicursor = "a:SelectaCursor"
 end
@@ -879,13 +882,18 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
       icon_end = 2 -- fallback if pattern not found
     end
 
-    -- Highlight prefix/icon
-    vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, 0, {
-      end_col = icon_end,
-      hl_group = get_prefix_info(item, opts.display.prefix_width).hl_group,
-      priority = 100,
-      hl_mode = "combine",
-    })
+    -- Allow modules to customize prefix highlighting
+    if opts.prefix_highlighter then
+      opts.prefix_highlighter(buf, line_nr, item, icon_end, ns_id)
+    else
+      -- Highlight prefix/icon
+      vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, 0, {
+        end_col = icon_end,
+        hl_group = get_prefix_info(item, opts.display.prefix_width).hl_group,
+        priority = 100,
+        hl_mode = "combine",
+      })
+    end
 
     -- Debug log
     M.log(
@@ -905,14 +913,23 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
       local match = M.get_match_positions(item.text, query)
       if match then
         for _, pos in ipairs(match.positions) do
-          local start_col = icon_end + pos[1] - 1
-          local end_col = icon_end + pos[2]
-          end_col = math.min(end_col, line_length)
+          -- Get the matched text
+          local match_text = item.text:sub(pos[1], pos[2])
 
-          -- Debug log
-          M.log(string.format("Match position: [%d, %d]\nFinal position: [%d, %d]", pos[1], pos[2], start_col, end_col))
+          -- Find this text in the display string after the icon
+          local display_content = display_str:sub(icon_end + 1)
+          local match_in_display = display_content:find(vim.pesc(match_text), 1, true)
 
-          if end_col > start_col then
+          if match_in_display then
+            local start_col = icon_end + match_in_display - 1
+            local end_col = start_col + #match_text
+            local highlight_text = display_str:sub(start_col + 1, end_col)
+
+            -- Debug log
+            M.log(
+              string.format("Match position: [%d, %d]\nFinal position: [%d, %d]", pos[1], pos[2], start_col, end_col)
+            )
+
             vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, start_col, {
               end_col = end_col,
               hl_group = "SelectaMatch",
@@ -1114,6 +1131,9 @@ local function update_display(state, opts)
     if vim.api.nvim_buf_is_valid(state.buf) then
       vim.api.nvim_buf_clear_namespace(state.buf, ns_id, 0, -1)
       vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, {})
+      if opts.hooks and opts.hooks.on_buffer_clear then
+        opts.hooks.on_buffer_clear()
+      end
     end
 
     -- Resize window to minimum dimensions using resize_window function
@@ -1202,6 +1222,7 @@ end
 local function create_picker(items, opts)
   local state = {
     buf = vim.api.nvim_create_buf(false, true),
+    original_buf = vim.api.nvim_get_current_buf(),
     query = {},
     cursor_pos = 1,
     items = items,
@@ -1323,8 +1344,13 @@ local SPECIAL_KEYS = {
 
 -- Simplified movement handler
 local function handle_movement(state, direction, opts)
-  -- Don't attempt movement if there are no items
-  if #state.filtered_items == 0 then
+  -- Early return if there are no items or initially hidden with empty query
+  if #state.filtered_items == 0 or (opts.initially_hidden and #table.concat(state.query) == 0) then
+    return
+  end
+
+  -- Make sure the window is still valid before attempting to get/set cursor
+  if not vim.api.nvim_win_is_valid(state.win) then
     return
   end
   local cursor = vim.api.nvim_win_get_cursor(state.win)
@@ -1339,7 +1365,7 @@ local function handle_movement(state, direction, opts)
     new_pos = 1
   end
 
-  vim.api.nvim_win_set_cursor(state.win, { new_pos, 0 })
+  pcall(vim.api.nvim_win_set_cursor, state.win, { new_pos, 0 })
 
   if opts.on_move then
     opts.on_move(state.filtered_items[new_pos])
@@ -1572,15 +1598,19 @@ function M.pick(items, opts)
     end
   end)
 
-  restore_cursor()
+  vim.schedule(function()
+    restore_cursor()
+  end)
   if state and state.active then
     M.close_picker(state)
   end
 
   -- Ensure cursor is restored even if there was an error
   if not ok then
+    vim.schedule(function()
+      restore_cursor()
+    end)
     error(result)
-    restore_cursor()
   end
 
   return result
