@@ -167,7 +167,13 @@ M.config = {
   preserve_order = false, -- Default to false unless the other module handle it
   keymaps = {},
   auto_select = false,
-  row_position = "center", -- options: "center"|"top10",
+  row_position = "top10", -- options: "center"|"top10",
+  right_position = { -- only works when row_position is one of right aligned
+    -- If set to false, it plays nicly with initially_hidden option is on
+    fixed = false, -- true for percentage-based, false for flexible width-based
+    ratio = 0.7, -- percentage of screen width where right-aligned windows start
+  },
+  ow_position = "center", -- options: "center"|"top10",
   multiselect = {
     enabled = false,
     indicator = "●", -- or "✓"
@@ -335,6 +341,12 @@ local function get_prefix_info(item, max_prefix_width)
   }
 end
 
+local POSITION_RATIOS = {
+  top10 = 0.1,
+  bottom = 0.8,
+  center = 0.5,
+  right = 0.7,
+}
 ---@param items SelectaItem[]
 ---@param opts SelectaOptions
 ---@param formatter fun(item: SelectaItem): string
@@ -354,14 +366,38 @@ local function calculate_window_size(items, opts, formatter)
       content_width = math.max(content_width, width)
     end
     content_width = content_width + padding
-    content_width = math.min(math.max(content_width, min_width), max_width)
+    -- Calculate max available width based on position
+    local max_available_width
+    if opts.row_position:match("_right") then
+      if M.config.right_position.fixed then
+        -- For right-aligned windows, available width is from right position to screen edge
+        local right_col = math.floor(vim.o.columns * M.config.right_position.ratio)
+        max_available_width = vim.o.columns - right_col - padding
+      else
+        -- For flexible position, use full screen width with padding
+        max_available_width = vim.o.columns - (padding * 2)
+      end
+    else
+      max_available_width = vim.o.columns - (padding * 2)
+    end
+
+    content_width = math.min(math.max(content_width, min_width), max_width, max_available_width)
   else
     -- Use ratio-based width
     content_width = math.floor(vim.o.columns * (opts.window.width_ratio or M.config.window.width_ratio))
   end
 
   -- Calculate height based on number of items
-  local max_available_height = vim.o.lines - vim.o.cmdheight - 4 -- Leave some space for status line
+  local row_position = opts.row_position
+  local lines = vim.o.lines
+  local max_available_height
+  if row_position == "top10" or row_position == "top10_right" then
+    max_available_height = lines - math.floor(lines * 0.1) - vim.o.cmdheight - 4
+  elseif row_position == "bottom" then
+    max_available_height = math.floor(vim.o.lines * 0.2)
+  else
+    max_available_height = lines - math.floor(lines / 2) - 4
+  end
   local content_height = #items
 
   -- Constrain height between min and max values
@@ -1219,6 +1255,46 @@ local function bulk_selection(state, opts, select)
   end
 end
 
+---Calculate window position based on preset
+---@param row_position? "center"|"top10"|"top10_right"|"center_right"|"bottom"
+---@param width number
+---@return number row
+---@return number col
+local function get_window_position(width, row_position)
+  local lines = vim.o.lines
+  local columns = vim.o.columns
+  local cmdheight = vim.o.cmdheight
+  local available_lines = lines - cmdheight - 2
+
+  -- Calculate column position once
+  local is_right = row_position:match("_right")
+  local col
+  if is_right then
+    if M.config.right_position.fixed then
+      -- Fixed right position regardless of width
+      col = math.floor(columns * M.config.right_position.ratio)
+    else
+      -- Center position
+      col = columns - width - 4
+    end
+  else
+    -- Center position remains unchanged
+    col = math.floor((columns - width) / 2)
+  end
+
+  -- Calculate row position
+  local row
+  if row_position:match("top") then
+    row = math.floor(lines * POSITION_RATIOS.top10)
+  elseif row_position == "bottom" then
+    row = math.floor(lines * POSITION_RATIOS.bottom) - 4
+  else -- center positions
+    row = math.max(1, math.floor(available_lines * POSITION_RATIOS.center))
+  end
+
+  return row, col
+end
+
 ---@param items SelectaItem[]
 ---@param opts SelectaOptions
 local function create_picker(items, opts)
@@ -1246,16 +1322,18 @@ local function create_picker(items, opts)
     width, height = calculate_window_size(items, opts, opts.formatter)
   end
 
-  -- Calculate row position based on the selected preset
-  local row_position = opts.row_position or M.config.row_position
-  local row
-  if row_position == "top10" then
-    row = math.floor(vim.o.lines * 0.1)
-  else
-    row = math.floor((vim.o.lines - height) / 2)
-  end
+  local row, col = get_window_position(width, opts.row_position)
 
-  local col = math.floor((vim.o.columns - width) / 2)
+  -- print(string.format(
+  --   "Initial position:  row=%d, column=%d, height=%d, position=%s, total_lines=%d, scrolloff=%d",
+  --   -- available_lines,
+  --   row,
+  --   col,
+  --   height,
+  --   opts.row_position,
+  --   vim.o.lines,
+  --   vim.opt.scrolloff._value
+  -- ))
 
   -- Store position info in state
   state.row = row
@@ -1549,6 +1627,7 @@ function M.pick(items, opts)
     keymaps = M.config.keymaps,
     auto_select = M.config.auto_select,
     window = vim.tbl_deep_extend("force", M.config.window, {}),
+    row_position = M.config.row_position,
   }, opts or {})
 
   -- Calculate max_prefix_width before creating formatter

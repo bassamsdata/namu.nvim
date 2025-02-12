@@ -21,7 +21,7 @@ Think of it as a smart compass for your codebase that shows you where you're goi
   - Customizable window style and behavior
   - All features are configurable
 
-### 🧩 Other Modules
+## 🧩 Other Modules
 
 Namu is powered by Selecta, a minimal and flexible fuzzy finder that's also used by:
 - 🎨 **Colorscheme Picker**: live preview with your code  and switch themes with persistant
