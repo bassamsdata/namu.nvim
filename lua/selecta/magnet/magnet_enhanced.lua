@@ -1090,11 +1090,56 @@ local function show_picker(selectaItems, notify_opts)
   end
 end
 
----Finds appropriate LSP client with symbol support
+---Thanks to @folke snacks lsp for this handling, basically this function mostly borrowed from him
+---Fixes old style clients
+---@param client vim.lsp.Client
+---@return vim.lsp.Client
+local function ensure_client_compatibility(client)
+  -- If client already has the new-style API, return it as-is
+  if getmetatable(client) and getmetatable(client).request then
+    return client
+  end
+
+  -- If we've already wrapped this client, don't wrap it again
+  if client.magnet_wrapped then
+    return client
+  end
+
+  -- Create a wrapper for older style clients
+  local wrapped = {
+    magnet_wrapped = true,
+  }
+
+  return setmetatable(wrapped, {
+    __index = function(_, key)
+      -- Special handling for supports_method in older versions
+      if key == "supports_method" then
+        return function(_, method)
+          return client.supports_method(method)
+        end
+      end
+
+      -- Handle request and cancel_request methods
+      if key == "request" or key == "cancel_request" then
+        return function(_, ...)
+          return client[key](...)
+        end
+      end
+
+      -- Pass through all other properties
+      return client[key]
+    end,
+  })
+end
+
+---Returns the LSP client with document symbols support
 ---@param bufnr number
 ---@return vim.lsp.Client|nil, string|nil
 local function get_client_with_symbols(bufnr)
-  local clients = vim.lsp.get_clients({ bufnr = bufnr })
+  ---@diagnostic disable-next-line: deprecated
+  local get_clients_fn = vim.lsp.get_clients or vim.lsp.get_active_clients
+
+  local clients = vim.tbl_map(ensure_client_compatibility, get_clients_fn({ bufnr = bufnr }))
 
   if vim.tbl_isempty(clients) then
     return nil, "No LSP client attached to buffer"
@@ -1109,7 +1154,7 @@ local function get_client_with_symbols(bufnr)
   return nil, "No LSP client supports document symbols"
 end
 
---Fetches symbols from LSP server
+-- Add the new request_symbols function
 ---@param bufnr number
 ---@param callback fun(err: any, result: any, ctx: any)
 local function request_symbols(bufnr, callback)
@@ -1124,11 +1169,6 @@ local function request_symbols(bufnr, callback)
     state.current_request = nil
   end
 
-  -- Create params manually instead of using make_position_params
-  local params = {
-    textDocument = vim.lsp.util.make_text_document_params(bufnr),
-  }
-
   -- Get client with document symbols
   local client, err = get_client_with_symbols(bufnr)
   if err then
@@ -1136,26 +1176,22 @@ local function request_symbols(bufnr, callback)
     return
   end
 
+  -- Create params manually instead of using make_position_params
+  local params = {
+    textDocument = vim.lsp.util.make_text_document_params(bufnr) or { uri = vim.uri_from_bufnr(bufnr) },
+  }
+
   -- Send the request to the LSP server
-  ---@diagnostic disable-next-line: undefined-field
-  local success, actual_request_id
-  if client then
-    success, actual_request_id = client:request(
-      "textDocument/documentSymbol",
-      params,
-      function(request_err, result, ctx)
-        state.current_request = nil
-        callback(request_err, result, ctx)
-      end,
-      bufnr
-    )
-  end
+  local success, request_id = client:request("textDocument/documentSymbol", params, function(request_err, result, ctx)
+    state.current_request = nil
+    callback(request_err, result, ctx)
+  end)
   -- Check if the request was successful and that the request_id is not nil
-  if success and actual_request_id then
+  if success and request_id then
     -- Store the client and request_id
     state.current_request = {
       client = client,
-      request_id = actual_request_id,
+      request_id = request_id,
     }
   else
     -- Handle the case where the request was not successful
