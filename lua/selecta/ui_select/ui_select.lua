@@ -15,8 +15,7 @@ M.config = {
 }
 
 ---@param items any[]
----@diagnostic disable-next-line: undefined-doc-name
----@param opts { prompt?: string, format_item?: fun(item: any): string, kind?: string }
+---@param opts SelectaOptions
 ---@param on_choice fun(item: any?, idx: number?)
 function M.select(items, opts, on_choice)
   opts = opts or {}
@@ -24,6 +23,7 @@ function M.select(items, opts, on_choice)
   -- Convert items to SelectaItem format
   local selecta_items = {}
   for i, item in ipairs(items) do
+    ---@diagnostic disable-next-line: undefined-field
     local formatted = (opts.format_item and opts.format_item(item)) or tostring(item)
     table.insert(selecta_items, {
       text = formatted,

@@ -126,10 +126,11 @@ M.config = {
       "Module",
       "Property",
       "Variable",
-      "Constant",
-      "Enum",
-      "Interface",
-      "Field",
+      -- "Constant",
+      -- "Enum",
+      -- "Interface",
+      -- "Field",
+      -- "Struct",
     },
     go = {
       "Function",
@@ -138,16 +139,34 @@ M.config = {
       "Field", -- For struct fields
       "Interface",
       "Constant",
+      -- "Variable",
       "Property",
+      -- "TypeParameter", -- For type parameters if using generics
     },
+    lua = { "Function", "Method", "Table", "Module" },
+    python = { "Function", "Class", "Method" },
     -- Filetype specific
     yaml = { "Object", "Array" },
     json = { "Module" },
     toml = { "Object" },
     markdown = { "String" },
   },
+  BlockList = {
+    default = {},
+    -- Filetype-specific
+    lua = {
+      "^vim%.", -- anonymous functions passed to nvim api
+      "%.%.%. :", -- vim.iter functions
+      ":gsub", -- lua string.gsub
+      "^callback$", -- nvim autocmds
+      "^filter$",
+      "^map$", -- nvim keymaps
+    },
+    -- another example:
+    -- python = { "^__" }, -- ignore __init__ functions
+  },
   display = {
-    mode = "text", -- or "icon"
+    mode = "text", -- "icon" or "raw"
     padding = 2,
   },
   kindText = {
@@ -191,20 +210,6 @@ M.config = {
     Operator = "󰆕",
     TypeParameter = "󰊄",
   },
-  BlockList = {
-    default = {},
-    -- Filetype-specific
-    lua = {
-      "^vim%.", -- anonymous functions passed to nvim api
-      "%.%.%. :", -- vim.iter functions
-      ":gsub", -- lua string.gsub
-      "^callback$", -- nvim autocmds
-      "^filter$",
-      "^map$", -- nvim keymaps
-    },
-    -- python = {},
-    -- rust = {}
-  },
   preview = {
     highlight_on_move = true, -- Whether to highlight symbols as you move through them
     -- TODO: still needs implmenting, keep it always now
@@ -246,7 +251,7 @@ M.config = {
   focus_current_symbol = true, -- Add this option to control the feature
   auto_select = false,
   row_position = "top10", -- options: "center"|"top10",
-  initially_hidden = true,
+  initially_hidden = false,
   multiselect = {
     enabled = true,
     indicator = "●", -- or "✓"
@@ -912,7 +917,7 @@ local function apply_kind_highlights(buf, items)
 
       -- First highlight the prefix symbol if it exists
       if item.depth and item.depth > 0 then
-        local prefix = getPrefix(item.depth, STYLE)
+        local prefix = get_prefix(item.depth, STYLE)
         local prefix_symbol = STYLE == 2 and ".." or (STYLE == 3 and "→" or nil)
 
         if prefix_symbol then
@@ -1211,6 +1216,9 @@ end
 ---@param opts? MagnetConfig
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+  if M.config.kinds.enable_highlights then
+    M.setup_highlights()
+  end
   -- Create autocmd for colorscheme changes
   local group = vim.api.nvim_create_augroup("MagnetHighlights", { clear = true })
   vim.api.nvim_create_autocmd("ColorScheme", {

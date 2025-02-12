@@ -87,6 +87,7 @@ local M = {}
 ---@field show_footer? boolean
 ---@field auto_resize? boolean
 ---@field footer_pos? "left"|"center"|"right"
+---@field title_pos? "left"|string
 
 ---@class SelectaOptions
 ---@field title? string
@@ -98,16 +99,17 @@ local M = {}
 ---@field on_move? fun(item: SelectaItem)
 ---@field fuzzy? boolean
 ---@field window? SelectaWindowConfig
----@field preserve_order? boolean -- Whether to preserve original item order
----@field keymaps? SelectaKeymap[] List of custom keymaps
----@field auto_select? boolean -- Whether to auto-select when only one match remains
----@field row_position? "center"|"top10" -- Row position preset
----@field multiselect? SelectaMultiselect Configuration for multiselect feature
----@field display? SelectaDisplay Configuration for display
----@field offset number Offset of the picker
----@field hooks? SelectaHooks Hooks for custom behavior
----@field initially_hidden? boolean Whether the picker should be initially hidden
----@field initial_index? number Initial index to select
+---@field preserve_order? boolean
+---@field keymaps? SelectaKeymap[]
+---@field auto_select? boolean
+---@field row_position? "center"|"top10"
+---@field multiselect? SelectaMultiselect
+---@field display? SelectaDisplay
+---@field offset? number
+---@field hooks? SelectaHooks
+---@field initially_hidden? boolean
+---@field initial_index? number
+---@field debug? boolean
 
 ---@class SelectaHooks
 ---@field on_render? fun(buf: number, items: SelectaItem[], opts: SelectaOptions) Called after items are rendered
@@ -118,7 +120,7 @@ local M = {}
 ---@field enabled boolean Whether multiselect is enabled
 ---@field indicator string Character to show for selected items
 ---@field on_select fun(items: SelectaItem[]) Callback for multiselect completion
----@field max_items? number Maximum number of items that can be selected
+---@field max_items? number|nil Maximum number of items that can be selected
 ---@field keymaps? table<string, string> Custom keymaps for multiselect operations
 
 ---@class SelectaDisplay
