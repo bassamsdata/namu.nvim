@@ -39,7 +39,7 @@ Namu is powered by Selecta, a minimal and flexible fuzzy finder that's also used
 
 ## ⚡ Requirements
 - Neovim >= 0.10.0
-- Configured LSP server for your language
+- Configured LSP server for your language (Treesitter fallback coming soon)
 - Treesitter (for live preview functionality)
 
 ## Installation
