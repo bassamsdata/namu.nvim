@@ -1,7 +1,7 @@
 # Namu.nvim
 
-Jump to symbols in your code with live preview and fuzzy finding. Inspired by Zed.
-Think of it as a smart compass for your codebase that shows you where you're going.
+🌿 Jump to symbols in your code with live preview, built-in fuzzy finding, and other modules.
+Inspired by Zed, it preserves symbol order while guiding you through your codebase.
 
 
 
@@ -74,7 +74,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
         }
       },
       -- Optional: Enable other modules if needed
-      selecta_colorscheme = { enable = false },
+      colorscheme = { enable = false },
       ui_select = { enable = false }, -- vim.ui.select() wrapper
     })
   end
@@ -118,7 +118,7 @@ Here's the full setup with defaults:
 
 <details>
   <summary>🌳 Order Preservation</summary>
-  
+
 
 https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
 
@@ -127,7 +127,7 @@ https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
 
 <details>
   <summary>🌑 Initially Hidden Mode</summary>
-  
+
 
 https://github.com/user-attachments/assets/e279b785-5fcf-4c2c-8cb5-b0467d850dd0
 
@@ -135,7 +135,7 @@ https://github.com/user-attachments/assets/e279b785-5fcf-4c2c-8cb5-b0467d850dd0
 </details>
 
 <details>
-  <summary>🔍 Live Preview & Context Aware</summary>  
+  <summary>🔍 Live Preview & Context Aware</summary>
 
 https://github.com/user-attachments/assets/292a94f3-264a-4ffa-9203-407bd101e35c
 
@@ -143,7 +143,7 @@ https://github.com/user-attachments/assets/292a94f3-264a-4ffa-9203-407bd101e35c
 </details>
 
 <details>
-  <summary>⚡ Auto-select</summary>  
+  <summary>⚡ Auto-select</summary>
 
 https://github.com/user-attachments/assets/a8768aae-e190-4707-989a-0ee909380a5d
 
@@ -158,7 +158,7 @@ Any suggestions to improve and integrate with other plugins are also welcome.
 
 ## Credits & Acknowledgements
 
-- Zed editor for the idea.
-- Mini.pick @echasnovski for the idea of `getchar()`, without which this plugin wouldn't exist.
+- [Zed](https://zed.dev) editor for the idea.
+- [Mini.pick](https://github.com/echasnovski/mini.nvim) @echasnovski for the idea of `getchar()`, without which this plugin wouldn't exist.
 - Magnet module from (couldn’t find it anymore on GitHub), which intrigued me a lot.
-- @folke for handling multiple versions of Neovim LSP requests.
+- @folke for handling multiple versions of Neovim LSP requests in [Snacks.nvim](https://github.com/folke/snacks.nvim).
