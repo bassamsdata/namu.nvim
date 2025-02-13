@@ -804,6 +804,7 @@ local function get_border_with_footer(opts)
   return borders[opts.window.border] or opts.window.border
 end
 
+---@thanks to mini.pick @echasnovski for the idea and basically this function as well
 ---@param state SelectaState
 ---@param opts SelectaOptions
 local function update_prompt(state, opts)

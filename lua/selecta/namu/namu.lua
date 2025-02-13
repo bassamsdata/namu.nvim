@@ -1,4 +1,4 @@
---[[ magnet.lua
+--[[ namu.lua
 Quick LSP symbol jumping with live preview and fuzzy finding.
 
 Features:
@@ -11,7 +11,7 @@ Features:
 
 ```lua
 -- Configure Namu 
-require('magnet').setup({
+require('namu').setup({
     -- Optional: Override default config
     includeKinds = {
         -- Add custom kinds per filetype
@@ -27,7 +27,7 @@ require('magnet').setup({
 })
 
 -- set your own keymap
-vim.keymap.set('n', 'gs', require('magnet').jump, {
+vim.keymap.set('n', 'gs', require('namu').jump, {
     desc = "Jump to symbol"
 })
 ```
@@ -77,11 +77,11 @@ local state = {
   original_win = nil,
   original_buf = nil,
   original_pos = nil,
-  preview_ns = vim.api.nvim_create_namespace("magnet_preview"),
+  preview_ns = vim.api.nvim_create_namespace("namu_preview"),
   current_request = nil,
 }
 
-local ns_id = vim.api.nvim_create_namespace("magnet_symbols")
+local ns_id = vim.api.nvim_create_namespace("namu_symbols")
 
 ---@type MagnetConfig
 M.config = {
@@ -214,7 +214,7 @@ M.config = {
     show_footer = true,
     footer_pos = "right",
   },
-  debug = false, -- Debug flag for both magnet and selecta
+  debug = false, -- Debug flag for both namu and selecta
   focus_current_symbol = true, -- Add this option to control the feature
   auto_select = false,
   row_position = "top10", -- options: "center"|"top10",
@@ -224,6 +224,7 @@ M.config = {
     indicator = "●", -- or "✓"
     keymaps = {
       toggle = "<Tab>",
+      untoggle = "<S-Tab>",
       select_all = "<C-a>",
       clear_all = "<C-l>",
     },
@@ -1068,13 +1069,13 @@ local function ensure_client_compatibility(client)
   end
 
   -- If we've already wrapped this client, don't wrap it again
-  if client.magnet_wrapped then
+  if client.namu_wrapped then
     return client
   end
 
   -- Create a wrapper for older style clients
   local wrapped = {
-    magnet_wrapped = true,
+    namu_wrapped = true,
   }
 
   return setmetatable(wrapped, {

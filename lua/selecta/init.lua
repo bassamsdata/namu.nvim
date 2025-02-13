@@ -2,7 +2,7 @@ local M = {}
 
 -- Default configuration
 M.config = {
-  magnet = { enable = true, options = {} },
+  namu = { enable = true, options = {} },
   selecta = { enable = true, options = {} },
   colorscheme = { enable = false, options = {} },
   cc_codecompanion = { enable = false, options = {} },
@@ -19,8 +19,8 @@ M.setup = function(opts)
   end
 
   -- Load modules only if enabled
-  if opts.magnet and M.config.magnet.enable then
-    require("selecta.magnet").setup(M.config.magnet.options)
+  if opts.namu and M.config.namu.enable then
+    require("selecta.namu").setup(M.config.namu.options)
   end
 
   if M.config.colorscheme.enable then

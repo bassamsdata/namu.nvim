@@ -5,7 +5,7 @@ vim.g.selecta_loaded = true
 
 -- Command documentation
 local command_descriptions = {
-  magnet = "Jump to location using magnet functionality",
+  namu = "Jump to location using namu functionality",
   selecta = "Open the selecta picker",
   sel_colorscheme = "Select and apply colorscheme",
   zoxide = "Navigate using zoxide",
@@ -13,15 +13,15 @@ local command_descriptions = {
 }
 -- Command aliases
 local command_aliases = {
-  mg = "magnet",
+  mg = "namu",
   sel = "selecta",
   sc = "sel_colorscheme",
   z = "zoxide",
 }
 -- Argument validators
 local command_validators = {
-  magnet = function(args)
-    return #args == 0, "magnet doesn't accept arguments"
+  namu = function(args)
+    return #args == 0, "namu doesn't accept arguments"
   end,
   selecta = function(args)
     return #args == 0, "selecta doesn't accept arguments"
@@ -34,8 +34,8 @@ local command_validators = {
   end,
 }
 local registry = {
-  magnet = function(opts)
-    require("selecta.magnet").jump()
+  namu = function(opts)
+    require("selecta.namu").jump()
   end,
   selecta = function(opts)
     require("selecta.selecta").pick()

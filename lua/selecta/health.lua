@@ -8,7 +8,7 @@ local error = vim.health.error or vim.health.report_error
 local validate_picker_options = require("selecta.validate").validate_picker_options
 
 local function validate_config()
-  local user_config = require("selecta").config.magnet.options
+  local user_config = require("selecta").config.namu.options
   local is_valid, issues = validate_picker_options(user_config)
   if is_valid then
     ok("Selecta User configuration is valid")
@@ -41,7 +41,7 @@ function M.check()
 
   -- TODO: check lsp capabilities
 
-  -- TODO: check magnet options
+  -- TODO: check namu options
 end
 
 return M

@@ -10,6 +10,7 @@
 
 local M = {}
 local fn = vim.fn
+local fs = vim.fs
 local uv = vim.uv or vim.loop
 
 ---@type SelectaColorschemeConfig
@@ -21,9 +22,12 @@ M.config = {
 ---@param callback? fun(success: boolean, error_message?: string) Callback function after setup is complete
 ---@diagnostic disable-next-line: unused-local
 local function setup_persistence(callback)
-  local config_dir = fn.stdpath("config")
-  local plugin_dir = config_dir .. "/plugin"
-  local selecta_color_persist = plugin_dir .. "/selecta_colorscheme_persist.lua"
+  local stdpath = fn.stdpath("config")
+  ---@type string
+  ---@diagnostic disable-next-line: param-type-mismatch
+  local config_dir = fs.normalize(stdpath)
+  local plugin_dir = fs.normalize(config_dir .. "/plugin")
+  local selecta_color_persist = fs.normalize(plugin_dir .. "/selecta_colorscheme_persist.lua")
 
   -- Create plugin directory asynchronously
   uv.fs_mkdir(plugin_dir, 493, function(err) -- 493 is equivalent to 0755 permissions
@@ -102,30 +106,13 @@ function M.show(opts)
   -- Get a list of available colorschemes
   local colorschemes = vim.fn.getcompletion("", "color")
 
+  -- stylua: ignore start 
   local default_colorschemes = {
-    "vim",
-    "blue",
-    "darkblue",
-    "default",
-    "delek",
-    "desert",
-    "elflord",
-    "evening",
-    "habamax",
-    "industry",
-    "koehler",
-    "lunaperche",
-    "morning",
-    "murphy",
-    "pablo",
-    "peachpuff",
-    "quiet",
-    "ron",
-    "shine",
-    "slate",
-    "torte",
-    "zellner",
+    "blue", "darkblue", "default", "delek", "desert", "elflord", "evening",
+    "habamax", "industry", "koehler", "lunaperche", "morning", "murphy", "pablo",
+    "peachpuff", "quiet", "ron", "shine", "slate", "torte", "zellner",
   }
+  -- stylua: ignore end
 
   -- Filter out default colorschemes except "default"
   colorschemes = vim.tbl_filter(function(scheme)
