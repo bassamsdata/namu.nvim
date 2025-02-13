@@ -5,7 +5,10 @@ Think of it as a smart compass for your codebase that shows you where you're goi
 
 
 
-https://github.com/user-attachments/assets/51801fd3-c879-4461-a589-64a3a5478259
+
+https://github.com/user-attachments/assets/a28a43d9-a477-4b92-89f3-c40479c7801b
+
+
 
 
 
