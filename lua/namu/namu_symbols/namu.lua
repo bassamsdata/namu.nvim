@@ -214,10 +214,10 @@ M.config = {
     show_footer = true,
     footer_pos = "right",
   },
-  debug = false, -- Debug flag for both namu and selecta
-  focus_current_symbol = true, -- Add this option to control the feature
+  debug = false,
+  focus_current_symbol = true,
   auto_select = false,
-  row_position = "top10", -- options: "center"|"top10",
+  row_position = "top10", -- options: "center"|"top10"|"top10_right"|"center_right"|"bottom",
   initially_hidden = false,
   multiselect = {
     enabled = true,

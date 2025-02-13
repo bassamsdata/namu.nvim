@@ -173,7 +173,6 @@ M.config = {
     fixed = false, -- true for percentage-based, false for flexible width-based
     ratio = 0.7, -- percentage of screen width where right-aligned windows start
   },
-  ow_position = "center", -- options: "center"|"top10",
   multiselect = {
     enabled = false,
     indicator = "●", -- or "✓"

@@ -114,7 +114,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ## Make It Yours
 
-
+You can check the [configuration documentation](https://github.com/bassamsdata/namu.nvim/tree/main/docs/Namu_config.md) for details on each option.
 <details>
   <summary>Here's the full setup with defaults:</summary>
 
