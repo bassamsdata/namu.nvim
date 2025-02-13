@@ -1,6 +1,6 @@
 ---@diagnostic disable: need-check-nil
 local h = require("tests.helpers")
-local selecta = require("selecta.selecta.selecta")
+local selecta = require("namu.selecta.selecta")
 local new_set = MiniTest.new_set
 
 local T = new_set()

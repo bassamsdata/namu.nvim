@@ -1,4 +1,4 @@
-local selecta = require("selecta.selecta.selecta")
+local selecta = require("namu.selecta.selecta")
 
 local M = {}
 

@@ -15,24 +15,24 @@ M.setup = function(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
 
   if M.config.selecta.enable then
-    require("selecta.selecta").setup(M.config.selecta.options)
+    require("namu.selecta").setup(M.config.selecta.options)
   end
 
   -- Load modules only if enabled
   if opts.namu and M.config.namu.enable then
-    require("selecta.namu").setup(M.config.namu.options)
+    require("namu.namu").setup(M.config.namu.options)
   end
 
   if M.config.colorscheme.enable then
-    require("selecta.colorscheme").setup(M.config.colorscheme.options)
+    require("namu.colorscheme").setup(M.config.colorscheme.options)
   end
 
   if M.config.cc_codecompanion.enable then
-    require("selecta.cc_codecompanion").setup(M.config.cc_codecompanion.options)
+    require("namu.cc_codecompanion").setup(M.config.cc_codecompanion.options)
   end
 
   if M.config.ui_select.enable then
-    require("selecta.ui_select").setup(M.config.ui_select.options)
+    require("namu.ui_select").setup(M.config.ui_select.options)
   end
 end
 

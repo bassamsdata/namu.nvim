@@ -23,7 +23,7 @@ require('namu').setup({
         padding = 2,
     },
     -- Custom highlight for preview
-    highlight = "MagnetPreview",
+    highlight = "NamuPreview",
 })
 
 -- set your own keymap
@@ -33,7 +33,7 @@ vim.keymap.set('n', 'gs', require('namu').jump, {
 ```
 ]]
 
-local selecta = require("selecta.selecta.selecta")
+local selecta = require("namu.selecta.selecta")
 local M = {}
 
 ---@alias LSPSymbolKind string
@@ -46,7 +46,7 @@ local M = {}
 ---@field range table<string, table> Symbol range in the document
 ---@field children? LSPSymbol[] Child symbols
 
----@class MagnetConfig
+---@class NamuConfig
 ---@field AllowKinds table<string, string[]> Symbol kinds to include
 ---@field display table<string, string|number> Display configuration
 ---@field kindText table<string, string> Text representation of kinds
@@ -63,7 +63,7 @@ local M = {}
 ---@field multiselect table Multiselect configuration
 ---@field keymaps table Keymap configuration
 
----@class MagnetState
+---@class NamuState
 ---@field original_win number|nil Original window
 ---@field original_buf number|nil Original buffer
 ---@field original_ft string|nil Original filetype
@@ -72,7 +72,7 @@ local M = {}
 ---@field current_request table|nil Current LSP request ID
 
 -- Store original window and position for preview
----@type MagnetState
+---@type NamuState
 local state = {
   original_win = nil,
   original_buf = nil,
@@ -83,7 +83,7 @@ local state = {
 
 local ns_id = vim.api.nvim_create_namespace("namu_symbols")
 
----@type MagnetConfig
+---@type NamuConfig
 M.config = {
   AllowKinds = {
     default = {
@@ -183,27 +183,27 @@ M.config = {
     highlight_mode = "always", -- "always" | "select" (only highlight when selecting)
   },
   icon = "󱠦", -- 󱠦 -  -  -- 󰚟
-  highlight = "MagnetPreview",
+  highlight = "NamuPreview",
   highlights = {
-    parent = "MagnetParent",
-    nested = "MagnetNested",
-    style = "MagnetStyle",
+    parent = "NamuParent",
+    nested = "NamuNested",
+    style = "NamuStyle",
   },
   kinds = {
     prefix_kind_colors = true,
     enable_highlights = true,
     highlights = {
-      PrefixSymbol = "MagnetPrefixSymbol",
-      Function = "MagnetSymbolFunction",
-      Method = "MagnetSymbolMethod",
-      Class = "MagnetSymbolClass",
-      Interface = "MagnetSymbolInterface",
-      Variable = "MagnetSymbolVariable",
-      Constant = "MagnetSymbolConstant",
-      Property = "MagnetSymbolProperty",
-      Field = "MagnetSymbolField",
-      Enum = "MagnetSymbolEnum",
-      Module = "MagnetSymbolModule",
+      PrefixSymbol = "NamuPrefixSymbol",
+      Function = "NamuSymbolFunction",
+      Method = "NamuSymbolMethod",
+      Class = "NamuSymbolClass",
+      Interface = "NamuSymbolInterface",
+      Variable = "NamuSymbolVariable",
+      Constant = "NamuSymbolConstant",
+      Property = "NamuSymbolProperty",
+      Field = "NamuSymbolField",
+      Enum = "NamuSymbolEnum",
+      Module = "NamuSymbolModule",
     },
   },
   window = {
@@ -310,17 +310,17 @@ M.config = {
 
 function M.setup_highlights()
   local highlights = {
-    MagnetPrefixSymbol = { link = "@Comment" }, -- or "@lsp.type.symbol"
-    MagnetSymbolFunction = { link = "@function" },
-    MagnetSymbolMethod = { link = "@variable" },
-    MagnetSymbolClass = { link = "@lsp.type.class" },
-    MagnetSymbolInterface = { link = "@lsp.type.interface" },
-    MagnetSymbolVariable = { link = "@lsp.type.variable" },
-    MagnetSymbolConstant = { link = "@lsp.type.constant" },
-    MagnetSymbolProperty = { link = "@lsp.type.property" },
-    MagnetSymbolField = { link = "@lsp.type.field" },
-    MagnetSymbolEnum = { link = "@lsp.type.enum" },
-    MagnetSymbolModule = { link = "@lsp.type.module" },
+    NamuPrefixSymbol = { link = "@Comment" }, -- or "@lsp.type.symbol"
+    NamuSymbolFunction = { link = "@function" },
+    NamuSymbolMethod = { link = "@variable" },
+    NamuSymbolClass = { link = "@lsp.type.class" },
+    NamuSymbolInterface = { link = "@lsp.type.interface" },
+    NamuSymbolVariable = { link = "@lsp.type.variable" },
+    NamuSymbolConstant = { link = "@lsp.type.constant" },
+    NamuSymbolProperty = { link = "@lsp.type.property" },
+    NamuSymbolField = { link = "@lsp.type.field" },
+    NamuSymbolEnum = { link = "@lsp.type.enum" },
+    NamuSymbolModule = { link = "@lsp.type.module" },
   }
 
   for name, attrs in pairs(highlights) do
@@ -1045,13 +1045,13 @@ local function show_picker(selectaItems, notify_opts)
 
   -- Add cleanup autocmd after picker is created
   if picker_win then
-    local augroup = vim.api.nvim_create_augroup("MagnetCleanup", { clear = true })
+    local augroup = vim.api.nvim_create_augroup("NamuCleanup", { clear = true })
     vim.api.nvim_create_autocmd("WinClosed", {
       group = augroup,
       pattern = tostring(picker_win),
       callback = function()
         M.clear_preview_highlight()
-        vim.api.nvim_del_augroup_by_name("MagnetCleanup")
+        vim.api.nvim_del_augroup_by_name("NamuCleanup")
       end,
       once = true,
     })
@@ -1182,7 +1182,7 @@ function M.show()
     link = "Visual",
   })
 
-  local notify_opts = { title = "Magnet", icon = M.config.icon }
+  local notify_opts = { title = "Namu", icon = M.config.icon }
 
   -- Use cached symbols if available
   local bufnr = vim.api.nvim_get_current_buf()
@@ -1218,14 +1218,14 @@ function M.show()
 end
 
 ---Initializes the module with user configuration
----@param opts? MagnetConfig
+---@param opts? NamuConfig
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
   if M.config.kinds.enable_highlights then
     M.setup_highlights()
   end
   -- Create autocmd for colorscheme changes
-  local group = vim.api.nvim_create_augroup("MagnetHighlights", { clear = true })
+  local group = vim.api.nvim_create_augroup("NamuHighlights", { clear = true })
   vim.api.nvim_create_autocmd("ColorScheme", {
     group = group,
     callback = function()
