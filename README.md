@@ -3,6 +3,12 @@
 Jump to symbols in your code with live preview and fuzzy finding. Inspired by Zed.
 Think of it as a smart compass for your codebase that shows you where you're going.
 
+
+
+https://github.com/user-attachments/assets/51801fd3-c879-4461-a589-64a3a5478259
+
+
+
 ## What Makes It Special
 
 - 🔍 **Live Preview**: See exactly where you'll land before you jump
