@@ -816,7 +816,7 @@ local function symbols_to_selecta_items(raw_symbols)
   ---[local] Recursively processes each symbol and its children into SelectaItem format with proper indentation
   ---@param result LSPSymbol
   ---@param depth number Current depth level
-  local function processSymbolResult(result, depth)
+  local function process_symbol_result(result, depth)
     if not result or not result.name then
       return
     end
@@ -824,7 +824,7 @@ local function symbols_to_selecta_items(raw_symbols)
     if not should_include_symbol(result) then
       if result.children then
         for _, child in ipairs(result.children) do
-          processSymbolResult(child, depth)
+          process_symbol_result(child, depth)
         end
       end
       return
@@ -854,13 +854,13 @@ local function symbols_to_selecta_items(raw_symbols)
 
     if result.children then
       for _, child in ipairs(result.children) do
-        processSymbolResult(child, depth + 1)
+        process_symbol_result(child, depth + 1)
       end
     end
   end
 
   for _, symbol in ipairs(raw_symbols) do
-    processSymbolResult(symbol, 0)
+    process_symbol_result(symbol, 0)
   end
 
   M.symbol_cache = { key = cache_key, items = items }
@@ -1169,7 +1169,7 @@ local function request_symbols(bufnr, callback)
 end
 
 ---Main entry point for symbol jumping functionality
-function M.jump()
+function M.show()
   -- Store current window and position
   state.original_win = vim.api.nvim_get_current_win()
   state.original_buf = vim.api.nvim_get_current_buf()
@@ -1249,7 +1249,7 @@ end
 
 --Sets up default keymappings for symbol navigation
 function M.setup_keymaps()
-  vim.keymap.set("n", "<leader>ss", M.jump, {
+  vim.keymap.set("n", "<leader>ss", M.show, {
     desc = "Jump to LSP symbol",
     silent = true,
   })

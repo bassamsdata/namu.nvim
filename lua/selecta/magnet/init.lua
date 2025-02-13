@@ -5,7 +5,7 @@ M.setup = function(opts)
   require("selecta.magnet.magnet_enhanced").setup(opts)
 end
 M.jump = function()
-  require("selecta.magnet.magnet_enhanced").jump()
+  require("selecta.magnet.magnet_enhanced").show()
 end
 
 return M

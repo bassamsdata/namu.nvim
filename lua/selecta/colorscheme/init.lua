@@ -8,20 +8,18 @@
 ---@field icon string The icon to display
 ---@field kind string The kind of item (always "Colorscheme")
 
----@class SelectaPersistenceError
----@field match? string The error pattern to match
-
 local M = {}
 local fn = vim.fn
 local uv = vim.uv or vim.loop
 
 ---@type SelectaColorschemeConfig
 M.config = {
-  persist = false,
+  persist = true,
   write_shada = false,
 }
 
 ---@param callback? fun(success: boolean, error_message?: string) Callback function after setup is complete
+---@diagnostic disable-next-line: unused-local
 local function setup_persistence(callback)
   local config_dir = fn.stdpath("config")
   local plugin_dir = config_dir .. "/plugin"
@@ -96,7 +94,7 @@ vim.api.nvim_create_autocmd("ColorScheme", {
 end
 
 ---@param opts? SelectaColorschemeConfig
-function M.colorscheme_picker(opts)
+function M.show(opts)
   opts = vim.tbl_deep_extend("force", M.config, opts or {})
   -- Get the current colorscheme
   local original_colorscheme = vim.g.colors_name
@@ -203,7 +201,7 @@ function M.setup(opts)
 
   -- Create user command
   vim.api.nvim_create_user_command("Colorscheme", function()
-    M.colorscheme_picker(opts)
+    M.show(opts)
   end, {})
 end
 

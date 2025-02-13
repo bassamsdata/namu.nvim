@@ -11,6 +11,7 @@ Think of it as a smart compass for your codebase that shows you where you're goi
 - 📐 **Smart Auto-resize**: Window adapts to your content in real-time as you type and filter, no need for big window with couple of items
 - 🚀 **Zero Dependencies**: Works with any LSP-supported language out of the box
 - 🎯 **Context Aware**: Always shows your current location in the codebase
+- TODO: add the initially_hidden feature here
 - ⚡ **Powerful Filtering**:
   - Built-in fuzzy finding that understands code structure
   - Filter by symbol types (functions, classes, methods)
@@ -63,7 +64,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
       },
       -- Optional: Enable other modules if needed
       selecta_colorscheme = { enable = false },
-      ui_select = { enable = false },
+      ui_select = { enable = false }, -- vim.ui.select() wrapper
     })
   end
 }

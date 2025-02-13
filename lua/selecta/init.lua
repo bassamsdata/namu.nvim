@@ -6,7 +6,7 @@ M.config = {
   selecta = { enable = true, options = {} },
   colorscheme = { enable = false, options = {} },
   cc_codecompanion = { enable = false, options = {} },
-  ui_select = { enable = true, options = {} },
+  ui_select = { enable = false, options = {} },
 }
 
 M.setup = function(opts)
