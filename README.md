@@ -114,23 +114,37 @@ Here's the full setup with defaults:
 ## Feature Demos
 
 <details>
-  <summary>🔍 Live Preview</summary>
-  (Add video demo here)
+  <summary>🌳 Order Preservation</summary>
+  
+
+https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
+
+
 </details>
 
 <details>
   <summary>🌑 Initially Hidden Mode</summary>
-  (Add video demo here)
+  
+
+https://github.com/user-attachments/assets/e279b785-5fcf-4c2c-8cb5-b0467d850dd0
+
+
 </details>
 
 <details>
-  <summary>📐 Smart Auto-resize</summary>
-  (Add video demo here)
+  <summary>🔍 Live Preview & Context Aware</summary>  
+
+https://github.com/user-attachments/assets/292a94f3-264a-4ffa-9203-407bd101e35c
+
+
 </details>
 
 <details>
-  <summary>⚡ Powerful Filtering</summary>
-  (Add video demo here)
+  <summary>⚡ Auto-select</summary>  
+
+https://github.com/user-attachments/assets/a8768aae-e190-4707-989a-0ee909380a5d
+
+
 </details>
 
 ## Contributing
