@@ -29,7 +29,9 @@ https://github.com/user-attachments/assets/a28a43d9-a477-4b92-89f3-c40479c7801b
   - Auto-select when only one match remains
   - Remembers cursor position when you cancel
   - Customizable window style and behavior
-  - All features are configurable
+- ✂️  **Multi-Action Workflow**: Perform multiple operations while Namu is open (or close it after, you choose!):
+  - Delete, yank, and add to CodeCompanion chat (more plugins coming soon)
+  - Works with both single and multiple selected symbols
 
 ## 🧩 Other Modules
 
@@ -59,26 +61,32 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
         options = {
           multiselect = {
             keymaps = {
-              toggle = "<Tab>",      -- Toggle current item selection
-              untoggle = "<S-Tab>",  -- Unselect current item
-              select_all = "<C-a>",  -- Select all items
-              clear_all = "<C-l>",   -- Clear all selections
-            }
+              toggle = "<Tab>", -- Toggle current item selection
+              untoggle = "<S-Tab>", -- Unselect current item
+              select_all = "<C-a>", -- Select all items
+              clear_all = "<C-l>", -- Clear all selections
+            },
           },
           keymaps = {
             { key = "<C-y>", desc = "Yank symbol(s) text" },
             { key = "<C-d>", desc = "Delete symbol(s) text" },
             { key = "<C-v>", desc = "Open in vertical split" },
             { key = "<C-o>", desc = "Add symbol(s) to CodeCompanion" },
-            { key = "<C-t>", desc = "Add symbol(s) to Avante" }
-          }
-        }
+            { key = "<C-t>", desc = "Add symbol(s) to Avante" },
+          },
+        },
       },
       -- Optional: Enable other modules if needed
-      colorscheme = { enable = false },
+      colorscheme = {
+        enable = false,
+        options = {
+          persist = true, -- very efficient mechanism to Remember selected colorscheme
+          write_shada = false, -- If you open multiple nvim instances, then probably you need to enable this
+        },
+      },
       ui_select = { enable = false }, -- vim.ui.select() wrapper
     })
-    -- Suggested Keymaps:
+    -- === Suggested Keymaps: ===
     local namu = require("namu.namu_symbols")
     local colorscheme = require("namu.colorscheme")
     vim.keymap.set("n", "<leader>ss", namu.show, {
@@ -89,7 +97,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
       desc = "Colorscheme Picker",
       silent = true,
     })
-  end
+  end,
 }
 ```
 
@@ -358,6 +366,7 @@ M.config = {
 
 <details>
   <summary>🌳 Order Preservation</summary>
+Maintains symbol order as they appear in your code, even after filtering
 
 
 https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
@@ -367,6 +376,7 @@ https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
 
 <details>
   <summary>🌑 Initially Hidden Mode</summary>
+Start with an empty list and populate it dynamically as you type, just like the command palette in Zed and VS Code
 
 
 https://github.com/user-attachments/assets/e279b785-5fcf-4c2c-8cb5-b0467d850dd0
@@ -376,6 +386,7 @@ https://github.com/user-attachments/assets/e279b785-5fcf-4c2c-8cb5-b0467d850dd0
 
 <details>
   <summary>🔍 Live Preview & Context Aware</summary>
+focus on the current location in the codebase when open so you know where you are in the code
 
 https://github.com/user-attachments/assets/292a94f3-264a-4ffa-9203-407bd101e35c
 
@@ -384,6 +395,7 @@ https://github.com/user-attachments/assets/292a94f3-264a-4ffa-9203-407bd101e35c
 
 <details>
   <summary>⚡ Auto-select</summary>
+if only one match remains, automatically select it. In the video I didn't press enter, yet the jump was done automatically.
 
 https://github.com/user-attachments/assets/a8768aae-e190-4707-989a-0ee909380a5d
 
@@ -402,3 +414,4 @@ Any suggestions to improve and integrate with other plugins are also welcome.
 - [Mini.pick](https://github.com/echasnovski/mini.nvim) @echasnovski for the idea of `getchar()`, without which this plugin wouldn't exist.
 - Namu module from (couldn’t find it anymore on GitHub), which intrigued me a lot.
 - @folke for handling multiple versions of Neovim LSP requests in [Snacks.nvim](https://github.com/folke/snacks.nvim).
+- The mechanism to simply persist the colorschem, thanks to this [reddit comment](https://www.reddit.com/r/neovim/comments/1edwhk8/comment/lfb1m2f/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button).
