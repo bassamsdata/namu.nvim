@@ -8,39 +8,9 @@ Features:
 - Filtered by symbol kinds
 - Configurable exclusions
 
-This version includes:
-1. Full integration with our enhanced `selecta` module
-2. Live preview as you move through symbols
-3. Proper highlight cleanup
-4. Position restoration on cancel
-5. Auto-sized window
-6. Fuzzy finding with highlighting
-7. Type annotations
-8. Configurable through setup function
-9. Better error handling
-10. Optional keymap setup
-
-You can enhance it further with:
-1. Symbol kind icons in the display
-2. More sophisticated preview behavior
-3. Additional filtering options
-4. Symbol documentation preview
-5. Multi-select support
-
-Usage in your Neovim config:
 
 ```lua
--- In your init.lua or similar
-
--- Optional: Configure selecta first
-require('selecta').setup({
-    window = {
-        border = 'rounded',
-        title_prefix = "󰍇 > ",
-    }
-})
-
--- Configure magnet
+-- Configure Namu 
 require('magnet').setup({
     -- Optional: Override default config
     includeKinds = {
@@ -56,10 +26,7 @@ require('magnet').setup({
     highlight = "MagnetPreview",
 })
 
--- Optional: Set up default keymaps
-require('magnet').setup_keymaps()
-
--- Or set your own keymap
+-- set your own keymap
 vim.keymap.set('n', 'gs', require('magnet').jump, {
     desc = "Jump to symbol"
 })
@@ -1209,6 +1176,7 @@ function M.jump()
   state.original_ft = vim.bo.filetype
   state.original_pos = vim.api.nvim_win_get_cursor(state.original_win)
 
+  -- TODO: Move this to the setup highlights
   vim.api.nvim_set_hl(0, M.config.highlight, {
     link = "Visual",
   })
