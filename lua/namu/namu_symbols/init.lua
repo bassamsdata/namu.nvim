@@ -1225,12 +1225,8 @@ end
 
 ---Initializes the module with user configuration
 function M.setup(opts)
-  print("\n[DEBUG] namu_symbols.setup called with opts:", vim.inspect(opts))
-
   -- Merge user options with our defaults
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
-
-  print("[DEBUG] Final namu_symbols config:", vim.inspect(M.config))
 
   if M.config.kinds and M.config.kinds.enable_highlights then
     M.setup_highlights()

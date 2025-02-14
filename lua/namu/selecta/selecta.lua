@@ -1753,10 +1753,8 @@ end
 
 ---@param opts? table
 function M.setup(opts)
-  print("\n[DEBUG] selecta/selecta.lua setup called with opts:", vim.inspect(opts))
   opts = opts or {}
   M.config = vim.tbl_deep_extend("force", M.config, opts)
-  print("[DEBUG] Final selecta config:", vim.inspect(M.config))
   -- Set up initial highlights
   setup_highlights()
 

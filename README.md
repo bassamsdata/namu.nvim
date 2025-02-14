@@ -3,7 +3,7 @@
 🌿 Jump to symbols in your code with live preview, built-in fuzzy finding, and other modules.
 Inspired by Zed, it preserves symbol order while guiding you through your codebase.
 
-“Namu” means “tree” in Korean—just like how it helps you navigate the structure of your code.
+“Namu” means “tree🌳” in Korean—just like how it helps you navigate the structure of your code.
 
 > [!WARNING]
 > 🚧 **Beta Status**: This plugin is currently in beta. While it's functional, you may encounter breaking changes as we improve and refine the architecture. Your feedback and contributions are welcome!
