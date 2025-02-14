@@ -33,7 +33,7 @@ https://github.com/user-attachments/assets/a28a43d9-a477-4b92-89f3-c40479c7801b
   - Delete, yank, and add to CodeCompanion chat (more plugins coming soon)
   - Works with both single and multiple selected symbols
 
-## 🧩 Other Modules
+## 🧩 Other Built-in Modules
 
 Namu is powered by Selecta, a minimal and flexible fuzzy finder that's also used by:
 - 🎨 **Colorscheme Picker**: Live preview with your code and switch themes with persistence
@@ -58,23 +58,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
       -- Enable the modules you want
       namu = {
         enable = true,
-        options = {
-          multiselect = {
-            keymaps = {
-              toggle = "<Tab>", -- Toggle current item selection
-              untoggle = "<S-Tab>", -- Unselect current item
-              select_all = "<C-a>", -- Select all items
-              clear_all = "<C-l>", -- Clear all selections
-            },
-          },
-          keymaps = {
-            { key = "<C-y>", desc = "Yank symbol(s) text" },
-            { key = "<C-d>", desc = "Delete symbol(s) text" },
-            { key = "<C-v>", desc = "Open in vertical split" },
-            { key = "<C-o>", desc = "Add symbol(s) to CodeCompanion" },
-            { key = "<C-t>", desc = "Add symbol(s) to Avante" },
-          },
-        },
+        options = {}, -- here you can configure namu
       },
       -- Optional: Enable other modules if needed
       colorscheme = {
@@ -120,6 +104,10 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
   ```
 
 </details>
+
+### Default Keymaps
+
+
 
 ## Make It Yours
 
@@ -412,6 +400,6 @@ Any suggestions to improve and integrate with other plugins are also welcome.
 
 - [Zed](https://zed.dev) editor for the idea.
 - [Mini.pick](https://github.com/echasnovski/mini.nvim) @echasnovski for the idea of `getchar()`, without which this plugin wouldn't exist.
-- Namu module from (couldn’t find it anymore on GitHub), which intrigued me a lot.
+- Magnet module (couldn’t find it anymore on GitHub, sorry!), which intrigued me a lot.
 - @folke for handling multiple versions of Neovim LSP requests in [Snacks.nvim](https://github.com/folke/snacks.nvim).
-- The mechanism to simply persist the colorschem, thanks to this [reddit comment](https://www.reddit.com/r/neovim/comments/1edwhk8/comment/lfb1m2f/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button).
+- A simple mechanism to persist the colorscheme, thanks to this [Reddit comment](https://www.reddit.com/r/neovim/comments/1edwhk8/comment/lfb1m2f/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button).

@@ -241,38 +241,34 @@ local function restore_cursor()
   end
 end
 
----TODO: add it later to the config
 local highlights = {
-  SelectaPrefix = {
-    fg = "#89b4fa",
-    bold = true,
-  },
-  SelectaMatch = {
-    fg = "#89dceb",
-    bold = true,
-  },
-  SelectaCursor = {
-    blend = 100,
-    nocombine = true,
-  },
-  SelectaPrompt = {
-    link = "FloatTitle",
-  },
-  SelectaSelected = {
-    fg = "#b5581a",
-    bold = true,
-  },
-  SelectaFooter = {
-    fg = "#6c7086",
-    italic = true,
-  },
+  SelectaPrefix = { link = "Special" },
+  SelectaMatch = { link = "Identifier" }, -- or maybe DiagnosticFloatingOk
+  SelectaCursor = { blend = 100, nocombine = true },
+  SelectaPrompt = { link = "FloatTitle" },
+  SelectaSelected = { link = "Statement" },
+  SelectaFooter = { link = "Comment" },
 }
 
 ---Set up the highlight groups
 ---@return nil
 local function setup_highlights()
+  -- Ensure highlights exist even if colorscheme doesn't provide them
+  local fallbacks = {
+    SelectaMatch = { fg = "#89dceb", bold = true }, -- Preserve original match highlighting
+    SelectaPrefix = { fg = "#89b4fa", bold = true },
+    SelectaCursor = { blend = 100, nocombine = true },
+    SelectaSelected = { fg = "#b5581a", bold = true },
+    SelectaFooter = { fg = "#6c7086", italic = true },
+  }
+
   for group, opts in pairs(highlights) do
-    vim.api.nvim_set_hl(0, group, opts)
+    -- Try to set linked highlight first
+    local success = pcall(vim.api.nvim_set_hl, 0, group, opts)
+    -- If link fails, use fallback
+    if not success and fallbacks[group] then
+      vim.api.nvim_set_hl(0, group, fallbacks[group])
+    end
   end
 end
 
@@ -1649,9 +1645,6 @@ function M.pick(items, opts)
       end
     end
 
-  -- Set up highlights
-  setup_highlights()
-
   local state = create_picker(items, opts)
   update_display(state, opts)
   vim.cmd("redraw")
@@ -1710,6 +1703,14 @@ M._test = {
 ---@param opts? table
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+  -- Set up initial highlights
+  setup_highlights()
+
+  -- Create autocmd for ColorScheme event
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    group = vim.api.nvim_create_augroup("SelectaHighlights", { clear = true }),
+    callback = setup_highlights,
+  })
 end
 
 return M
