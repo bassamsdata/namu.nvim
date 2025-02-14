@@ -133,7 +133,7 @@ M.config = {
     -- python = { "^__" }, -- ignore __init__ functions
   },
   display = {
-    mode = "text", -- "icon" or "raw"
+    mode = "icon", -- "icon" or "raw"
     padding = 2,
   },
   kindText = {
@@ -207,7 +207,7 @@ M.config = {
   },
   window = {
     auto_size = true,
-    min_height = 2,
+    min_height = 1,
     min_width = 20,
     max_width = 120,
     max_height = 30,

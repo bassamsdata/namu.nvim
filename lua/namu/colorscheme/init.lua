@@ -19,7 +19,7 @@ local uv = vim.uv or vim.loop
 M.config = {
   persist = true,
   write_shada = false,
-  excluded_schemes = {}, -- Add this new field
+  excluded_schemes = {},
 }
 
 ---@param callback? fun(success: boolean, error_message?: string) Callback function after setup is complete

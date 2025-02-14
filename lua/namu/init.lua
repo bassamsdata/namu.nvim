@@ -13,9 +13,7 @@ M.setup = function(opts)
   -- Merge the top-level config
   M.config = vim.tbl_deep_extend("force", M.config, opts)
 
-  -- Set up namu_symbols if enabled
   if M.config.namu_symbols.enable then
-    -- Pass ONLY the options part to the module
     require("namu.namu_symbols").setup(M.config.namu_symbols.options)
   end
 
