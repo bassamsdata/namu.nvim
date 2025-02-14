@@ -8,7 +8,7 @@ local error = vim.health.error or vim.health.report_error
 local validate_picker_options = require("namu.validate").validate_picker_options
 
 local function validate_config()
-  local user_config = require("namu").config.namu.options
+  local user_config = require("namu").config.namu_symbols.options
   local is_valid, issues = validate_picker_options(user_config)
   if is_valid then
     ok("Namu User configuration is valid")
