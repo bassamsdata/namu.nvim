@@ -2,6 +2,7 @@
 ---@class SelectaColorschemeConfig
 ---@field persist boolean Whether to persist colorscheme selection across sessions
 ---@field write_shada boolean Whether to write to ShaDa file after selection
+---@field excluded_schemes string[] Additional colorschemes to exclude from the list
 
 ---@class SelectaColorschemeItem : SelectaItem
 ---@field text string The colorscheme name
@@ -18,6 +19,7 @@ local uv = vim.uv or vim.loop
 M.config = {
   persist = true,
   write_shada = false,
+  excluded_schemes = {}, -- Add this new field
 }
 
 ---@param callback? fun(success: boolean, error_message?: string) Callback function after setup is complete
@@ -109,7 +111,7 @@ function M.show(opts)
 
   -- stylua: ignore start 
   local default_colorschemes = {
-    "blue", "darkblue", "default", "delek", "desert", "elflord", "evening",
+    "vim", "blue", "darkblue", "default", "delek", "desert", "elflord", "evening",
     "habamax", "industry", "koehler", "lunaperche", "morning", "murphy", "pablo",
     "peachpuff", "quiet", "ron", "shine", "slate", "torte", "zellner",
   }
@@ -117,7 +119,9 @@ function M.show(opts)
 
   -- Filter out default colorschemes except "default"
   colorschemes = vim.tbl_filter(function(scheme)
-    return scheme == "default" or not vim.tbl_contains(default_colorschemes, scheme)
+    -- Include 'default' or exclude if it's in default_colorschemes or user's excluded_schemes
+    return scheme == "default"
+      or (not vim.tbl_contains(default_colorschemes, scheme) and not vim.tbl_contains(opts.excluded_schemes, scheme))
   end, colorschemes)
 
   -- Convert colorschemes into selecta-compatible items
