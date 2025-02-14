@@ -110,31 +110,34 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 ### Default Keymaps
 
 <details>
-  <summary>default keymps are:</summary>
- **Navigation Keymaps**
-───────────────────
- `<CR>`    Select item
- `<Esc>`   Close picker
- `<C-n>`   Next item
- `<Down>`  Next item
- `<C-p>`   Previous item
- `<Up>`    Previous item
- `q `      Close help
+<summary>Default keymaps are:</summary>
 
- **Multiselect**
-───────────────
-`<Tab>`   toggle
-`<C-a>`   select_all
-`<C-l>`   clear_all
-`<S-Tab>` untoggle
+#### Navigation Keymaps
+| Key | Action |
+|-----|--------|
+| `<CR>` | Select item |
+| `<Esc>` | Close picker |
+| `<C-n>` | Next item |
+| `<Down>` | Next item |
+| `<C-p>` | Previous item |
+| `<Up>` | Previous item |
+| `q` | Close help |
 
- **Custom Actions**
-───────────────
-`<C-y>`   Yank symbol/ or concatenate selected symbols and yank
-`<C-d>`   Delete symbol/ or concatenate selected symbols and delete
-`<C-v>`   open symbol buffer on vertical split
-`<C-o>`  add symbol/ or concatenate selected symbols and add them to codecompanion chat buffer.
+#### Multiselect
+| Key | Action |
+|-----|--------|
+| `<Tab>` | Toggle |
+| `<C-a>` | Select all |
+| `<C-l>` | Clear all |
+| `<S-Tab>` | Untoggle |
 
+#### Custom Actions
+| Key | Action |
+|-----|--------|
+| `<C-y>` | Yank symbol/concatenate selected symbols and yank |
+| `<C-d>` | Delete symbol/concatenate selected symbols and delete |
+| `<C-v>` | Open symbol buffer on vertical split |
+| `<C-o>` | Add symbol/concatenate selected symbols and add them to codecompanion chat buffer |
 
 </details>
 
