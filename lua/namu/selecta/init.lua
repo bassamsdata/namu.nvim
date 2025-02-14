@@ -1,7 +1,7 @@
 local M = {}
 
 M.setup = function(opts)
-  opts = opts or {}
+  print("\n[DEBUG] selecta/init.lua setup called with opts:", vim.inspect(opts))
   require("namu.selecta.selecta").setup(opts)
 end
 

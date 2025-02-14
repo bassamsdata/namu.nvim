@@ -5,7 +5,9 @@ Inspired by Zed, it preserves symbol order while guiding you through your codeba
 
 “Namu” means “tree” in Korean—just like how it helps you navigate the structure of your code.
 
-
+```markdown
+> 🚧 **Beta Status**: This plugin is currently in beta. While it's functional, you may encounter breaking changes as we improve and refine the architecture. Your feedback and contributions are welcome!
+```
 
 https://github.com/user-attachments/assets/a28a43d9-a477-4b92-89f3-c40479c7801b
 
@@ -56,7 +58,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
   config = function()
     require("namu").setup({
       -- Enable the modules you want
-      namu = {
+      namu_symbols = {
         enable = true,
         options = {}, -- here you can configure namu
       },

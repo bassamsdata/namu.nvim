@@ -1700,9 +1700,63 @@ M._test = {
   setup_highlights = setup_highlights,
 }
 
+---Show picker without using internal defaults
+---@param items SelectaItem[] Items to display
+---@param display_opts {window: table, display: table, position: string, title: string?, on_select: function?, on_cancel: function?, on_move: function?}
+---@return number|nil window_id Returns the window ID if created successfully
+function M.show_picker(items, display_opts)
+  print("[DEBUG] show_picker called with opts:", vim.inspect(display_opts))
+
+  -- No merging with defaults, use options directly
+  local picker_opts = {
+    title = display_opts.title or "Select",
+    window = display_opts.window,
+    display = display_opts.display,
+    row_position = display_opts.position,
+    -- Core callbacks
+    on_select = display_opts.on_select,
+    on_cancel = display_opts.on_cancel,
+    on_move = display_opts.on_move,
+    -- Essential options that shouldn't be configurable
+    fuzzy = false,
+    preserve_order = true,
+  }
+
+  print("[DEBUG] Created picker_opts:", vim.inspect(picker_opts))
+
+  -- Use existing picker creation but with direct options
+  local state = create_picker(items, picker_opts)
+  update_display(state, picker_opts)
+  vim.cmd("redraw")
+
+  -- Main input loop
+  local ok, result = pcall(function()
+    while state.active do
+      local char = vim.fn.getchar()
+      local result = handle_char(state, char, picker_opts)
+      if result ~= nil then
+        return result
+      end
+      vim.cmd("redraw")
+    end
+  end)
+
+  if not ok then
+    vim.schedule(function()
+      restore_cursor()
+    end)
+    error(result)
+  end
+
+  return state.win
+end
+
 ---@param opts? table
 function M.setup(opts)
-  M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+  print("\n[DEBUG] selecta/selecta.lua setup called with opts:", vim.inspect(opts))
+  opts = opts or {}
+  M.config = vim.tbl_deep_extend("force", M.config, opts)
+  print("[DEBUG] Final selecta config:", vim.inspect(M.config))
   -- Set up initial highlights
   setup_highlights()
 
