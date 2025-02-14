@@ -6,6 +6,48 @@ This document explains the configurable options for **Namu.nvim**.
 
 To configure `namu.nvim`, modify the `require("namu").setup({ namu = { options = { ... } } })` in your Neovim configuration.
 
+```lua
+require("namu").setup({
+  namu_symbols = {
+    enable = true,
+    options = {
+      -- symbol navigation options
+    }
+  },
+  ui_select = {
+    enable = true,
+    options = {
+      -- ui select options
+    }
+  },
+  colorscheme = {
+    enable = true,
+    options = {
+      persist = true,      -- Remember selected colorscheme
+      write_shada = false, -- For multiple nvim instances
+    }
+  }
+})
+```
+
+## Feature Toggles
+Most features can be enabled/disabled:
+
+```lua
+options = {
+  preview = {
+    enable = true,              -- Enable/disable preview
+    highlight_on_move = true,   -- Highlight while moving
+  },
+  auto_select = true,          -- Auto-jump on single match
+  initially_hidden = false,    -- Start with empty list
+  multiselect = {
+    enabled = true,           -- Enable multi-selection
+  },
+  preserve_order = true,      -- Keep symbol order while filtering
+}
+```
+
 ## Display
 Controls how symbols are shown in the picker.
 
@@ -56,7 +98,7 @@ Start with an empty list that updates dynamically as you type (like VS Code/Zed 
 initially_hidden = false,
 ```
 
-## Auto Select
+## Auto Jump
 If only one item remains after filtering, automatically select it.
 
 ```lua

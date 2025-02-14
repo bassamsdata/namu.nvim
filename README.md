@@ -404,4 +404,5 @@ Any suggestions to improve and integrate with other plugins are also welcome.
 - [Mini.pick](https://github.com/echasnovski/mini.nvim) @echasnovski for the idea of `getchar()`, without which this plugin wouldn't exist.
 - Magnet module (couldn’t find it anymore on GitHub, sorry!), which intrigued me a lot.
 - @folke for handling multiple versions of Neovim LSP requests in [Snacks.nvim](https://github.com/folke/snacks.nvim).
+- tests structure, thanks to @Oli [CodeCompanion](https://github.com/olimorris/codecompanion.nvim)
 - A simple mechanism to persist the colorscheme, thanks to this [Reddit comment](https://www.reddit.com/r/neovim/comments/1edwhk8/comment/lfb1m2f/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button).
