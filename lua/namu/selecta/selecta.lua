@@ -1705,8 +1705,6 @@ M._test = {
 ---@param display_opts {window: table, display: table, position: string, title: string?, on_select: function?, on_cancel: function?, on_move: function?}
 ---@return number|nil window_id Returns the window ID if created successfully
 function M.show_picker(items, display_opts)
-  print("[DEBUG] show_picker called with opts:", vim.inspect(display_opts))
-
   -- No merging with defaults, use options directly
   local picker_opts = {
     title = display_opts.title or "Select",
@@ -1721,8 +1719,6 @@ function M.show_picker(items, display_opts)
     fuzzy = false,
     preserve_order = true,
   }
-
-  print("[DEBUG] Created picker_opts:", vim.inspect(picker_opts))
 
   -- Use existing picker creation but with direct options
   local state = create_picker(items, picker_opts)

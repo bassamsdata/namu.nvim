@@ -969,7 +969,6 @@ local function show_picker(selectaItems, notify_opts)
     vim.notify("Current `kindFilter` doesn't match any symbols.", nil, notify_opts)
     return
   end
-  print("[DEBUG] show_picker using row_position:", M.config.row_position)
 
   -- Find containing symbol for current cursor position
   local current_symbol = find_containing_symbol(selectaItems)
