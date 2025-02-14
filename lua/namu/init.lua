@@ -5,7 +5,7 @@ M.config = {
   namu_symbols = { enable = true, options = {} },
   selecta = { enable = true, options = {} },
   colorscheme = { enable = false, options = {} },
-  -- ui_select = { enable = false, options = {} },
+  ui_select = { enable = false, options = {} },
 }
 
 M.setup = function(opts)
@@ -21,6 +21,10 @@ M.setup = function(opts)
 
   if M.config.colorscheme.enable then
     require("namu.colorscheme").setup(M.config.colorscheme.options)
+  end
+
+  if M.config.ui_select.enable then
+    require("namu.colorscheme").setup(M.config.ui_select.options)
   end
 end
 
