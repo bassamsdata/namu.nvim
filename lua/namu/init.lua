@@ -22,7 +22,7 @@ M.setup = function(opts)
   end
 
   if M.config.ui_select.enable then
-    require("namu.colorscheme").setup(M.config.ui_select.options)
+    require("namu.ui_select").setup(M.config.ui_select.options)
   end
 end
 
