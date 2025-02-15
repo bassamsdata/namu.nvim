@@ -44,6 +44,7 @@ local M = {}
 ---@field name string Symbol name
 ---@field kind number LSP symbol kind number
 ---@field range table<string, table> Symbol range in the document
+---@field location? table<string, table>
 ---@field children? LSPSymbol[] Child symbols
 
 ---@class NamuConfig
@@ -870,6 +871,25 @@ local function symbols_to_selecta_items(raw_symbols)
       return
     end
 
+    -- There are two possible schemas for symbols returned by LSP:
+    --
+    --    SymbolInformation:
+    --      { name, kind, location, containerName? }
+    --
+    --    DocumentSymbol:
+    --      { name, kind, range, selectionRange, children? }
+    --
+    --    In the case of DocumentSymbol, we need to use the `range` field for the symbol position.
+    --    In the case of SymbolInformation, we need to use the `location.range` field for the symbol position.
+    --
+    --    source:
+    --      https://github.com/microsoft/language-server-protocol/blob/gh-pages/_specifications/lsp/3.18/language/documentSymbol.md
+    local range = result.range or (result.location and result.location.range)
+    if not range or not range.start or not range["end"] then
+      vim.notify("Symbol '" .. result.name .. "' has invalid structure", vim.log.levels.WARN)
+      return
+    end
+
     if not should_include_symbol(result) then
       if result.children then
         for _, child in ipairs(result.children) do
@@ -889,10 +909,10 @@ local function symbols_to_selecta_items(raw_symbols)
         text = clean_name,
         name = clean_name,
         kind = M.symbol_kind(result.kind),
-        lnum = result.range.start.line + 1,
-        col = result.range.start.character + 1,
-        end_lnum = result.range["end"].line + 1,
-        end_col = result.range["end"].character + 1,
+        lnum = range.start.line + 1,
+        col = range.start.character + 1,
+        end_lnum = range["end"].line + 1,
+        end_col = range["end"].character + 1,
       },
       icon = M.config.kindIcons[M.symbol_kind(result.kind)] or M.config.icon,
       kind = M.symbol_kind(result.kind),
