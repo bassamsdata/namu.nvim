@@ -326,7 +326,7 @@ function M.setup_highlights()
   local highlights = {
     NamuPrefixSymbol = { link = "@Comment" }, -- or "@lsp.type.symbol"
     NamuSymbolFunction = { link = "@function" },
-    NamuSymbolMethod = { link = "@variable" },
+    NamuSymbolMethod = { link = "@function.method" },
     NamuSymbolClass = { link = "@lsp.type.class" },
     NamuSymbolInterface = { link = "@lsp.type.interface" },
     NamuSymbolVariable = { link = "@lsp.type.variable" },
