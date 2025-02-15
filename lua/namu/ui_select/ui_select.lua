@@ -10,6 +10,17 @@ M.config = {
     title_prefix = "󰆤 ",
     show_footer = true,
     min_height = 1,
+    auto_size = true,
+    min_width = 20,
+    max_width = 120,
+    max_height = 30,
+    padding = 2,
+    title_pos = "left",
+    footer_pos = "right",
+    relative = "editor",
+    style = "minimal",
+    width_ratio = 0.6,
+    height_ratio = 0.6,
   },
   display = { mode = "raw" },
 }
@@ -18,8 +29,6 @@ M.config = {
 ---@param opts SelectaOptions
 ---@param on_choice fun(item: any?, idx: number?)
 function M.select(items, opts, on_choice)
-  opts = opts or {}
-
   -- Convert items to SelectaItem format
   local selecta_items = {}
   for i, item in ipairs(items) do
