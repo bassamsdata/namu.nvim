@@ -175,7 +175,7 @@ M.config = {
   },
   multiselect = {
     enabled = false,
-    indicator = "●", -- or "✓"
+    indicator = "●", -- or "✓"◉
     keymaps = {
       toggle = "<Tab>",
       select_all = "<C-a>",
@@ -987,7 +987,7 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
     end
   end
 
-  local indicator = opts.display.mode == "text" and "• " or "●"
+  local indicator = opts.multiselect and opts.multiselect.indicator or M.config.multiselect.indicator
   -- Add selection indicator if item is selected
   if opts.multiselect and opts.multiselect.enabled then
     local item_id = get_item_id(item)
@@ -1459,6 +1459,121 @@ local function handle_movement(state, direction, opts)
   end
 end
 
+---Handle item selection toggle
+---@param state SelectaState
+---@param opts SelectaOptions
+---@param direction number 1 for forward, -1 for backward
+---@return boolean handled Whether the toggle was handled
+local function handle_toggle(state, opts, direction)
+  local cursor_pos = vim.api.nvim_win_get_cursor(state.win)[1]
+  M.log(string.format("Toggle pressed - cursor_pos: %d, total items: %d", cursor_pos, #state.filtered_items))
+
+  local current_item = state.filtered_items[cursor_pos]
+  if current_item then
+    M.log(string.format("Current item: %s", current_item.text))
+    local was_toggled = toggle_selection(state, current_item, opts)
+    M.log(string.format("Item toggled: %s", tostring(was_toggled)))
+
+    -- Only move if toggle was successful
+    if was_toggled then
+      -- Update display first
+      update_display(state, opts)
+
+      -- Calculate next position with wrapping
+      local next_pos
+      if direction > 0 then
+        next_pos = cursor_pos < #state.filtered_items and cursor_pos + 1 or 1
+      else
+        next_pos = cursor_pos > 1 and cursor_pos - 1 or #state.filtered_items
+      end
+
+      M.log(string.format("Moving to position: %d", next_pos))
+
+      -- Set new cursor position
+      pcall(vim.api.nvim_win_set_cursor, state.win, { next_pos, 0 })
+
+      -- Trigger move callback if exists
+      if opts.on_move then
+        local new_item = state.filtered_items[next_pos]
+        if new_item then
+          M.log(string.format("Triggering on_move with item: %s", new_item.text))
+          opts.on_move(new_item)
+        end
+      end
+
+      vim.cmd("redraw")
+    end
+
+    return true
+  end
+
+  M.log("No current item found at cursor position")
+  return false
+end
+
+---Handle item unselection
+---@param state SelectaState
+---@param opts SelectaOptions
+---@return boolean handled Whether the untoggle was handled
+local function handle_untoggle(state, opts)
+  local cursor_pos = vim.api.nvim_win_get_cursor(state.win)[1]
+  M.log(string.format("Untoggle pressed - current cursor_pos: %d", cursor_pos))
+
+  -- Find the previous selected item position
+  local prev_selected_pos = nil
+  for i = cursor_pos - 1, 1, -1 do
+    local item = state.filtered_items[i]
+    if item and state.selected[get_item_id(item)] then
+      prev_selected_pos = i
+      break
+    end
+  end
+
+  -- If no selected item found before current position, wrap around to end
+  if not prev_selected_pos then
+    for i = #state.filtered_items, cursor_pos, -1 do
+      local item = state.filtered_items[i]
+      if item and state.selected[get_item_id(item)] then
+        prev_selected_pos = i
+        break
+      end
+    end
+  end
+
+  M.log(string.format("Previous selected item position: %s", prev_selected_pos or "none found"))
+
+  if prev_selected_pos then
+    local prev_item = state.filtered_items[prev_selected_pos]
+    M.log(string.format("Moving to and unselecting item: %s at position %d", prev_item.text, prev_selected_pos))
+
+    -- Move to the selected item
+    pcall(vim.api.nvim_win_set_cursor, state.win, { prev_selected_pos, 0 })
+
+    -- Unselect the item
+    local item_id = get_item_id(prev_item)
+    state.selected[item_id] = nil
+    state.selected_count = state.selected_count - 1
+
+    -- Update display
+    update_display(state, opts)
+
+    -- Ensure cursor stays at the correct position
+    pcall(vim.api.nvim_win_set_cursor, state.win, { prev_selected_pos, 0 })
+
+    -- Trigger move callback if exists
+    if opts.on_move then
+      M.log(string.format("Triggering on_move with item: %s", prev_item.text))
+      opts.on_move(prev_item)
+    end
+
+    vim.cmd("redraw")
+    return true
+  else
+    M.log("No previously selected item found")
+    return false
+  end
+end
+
 ---Handle character input in the picker
 ---@param state SelectaState The current state of the picker
 ---@param char string|number The character input
@@ -1508,28 +1623,16 @@ local function handle_char(state, char, opts)
   if opts.multiselect and opts.multiselect.enabled then
     local multiselect_keys = opts.multiselect.keymaps or M.config.multiselect.keymaps
 
+    M.clear_log() -- Optional: clear the log when starting new session
     -- Handle multiselect keymaps
     if char_key == vim.api.nvim_replace_termcodes(multiselect_keys.toggle, true, true, true) then
-      local current_item = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
-      if current_item then
-        if toggle_selection(state, current_item, opts) then
-          handle_movement(state, 1, opts) -- Move to next item after selection
-          update_display(state, opts)
-        end
+      if handle_toggle(state, opts, 1) then
+        return nil
       end
-      return nil
     elseif char_key == vim.api.nvim_replace_termcodes(multiselect_keys.untoggle, true, true, true) then
-      local current_item = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
-      if current_item then
-        local item_id = get_item_id(current_item)
-        if state.selected[item_id] then
-          state.selected[item_id] = nil
-          state.selected_count = state.selected_count - 1
-          handle_movement(state, -1, opts) -- Move to next item after unselection
-          update_display(state, opts)
-        end
+      if handle_untoggle(state, opts) then
+        return nil
       end
-      return nil
     elseif char_key == vim.api.nvim_replace_termcodes(multiselect_keys.select_all, true, true, true) then
       bulk_selection(state, opts, true)
       update_display(state, opts)

@@ -229,7 +229,7 @@ M.config = {
   initially_hidden = false,
   multiselect = {
     enabled = true,
-    indicator = "●", -- or "✓"
+    indicator = "✓", -- or "✓"●
     keymaps = {
       toggle = "<Tab>",
       untoggle = "<S-Tab>",
@@ -996,7 +996,7 @@ local function show_picker(selectaItems, notify_opts)
     -- TODO: Enable multiselect if configured
     multiselect = {
       enabled = true,
-      indicator = M.config.multiselect and M.config.multiselect.indicator or "◉ ",
+      indicator = M.config.multiselect.indicator,
       on_select = function(selected_items)
         -- TODO: we need smart mechanis on here.
         if M.config.preview.highlight_mode == "select" then
