@@ -153,6 +153,21 @@ movement = {
 
 </details>
 
+
+## Available Commands
+
+The `Namu` command provides several subcommands with autocomplete:
+
+- **symbols**: Symbols Navigator
+- **colorscheme**: Select and apply a colorscheme.
+- **help**: Display help for all commands.
+
+To use the `Namu` command, enter the following in command mode:
+
+```lua
+:Namu <subcommand>
+```
+
 ## Make It Yours
 
 You can check the [configuration documentation](https://github.com/bassamsdata/namu.nvim/tree/main/docs/Namu_config.md) for details on each option.
