@@ -482,15 +482,21 @@ end
 ---@param items table[] Array of selected items from selecta
 ---@param bufnr number The buffer number of the original buffer
 function M.add_symbol_to_codecompanion(items, bufnr)
+  -- Check if the 'codecompanion' module is available
+  local status, codecompanion = pcall(require, "codecompanion")
+  if not status then
+    return
+  end
+
   local result = process_symbol_content(items, bufnr)
   if not result then
     return
   end
 
-  local chat = require("codecompanion").last_chat()
+  local chat = codecompanion.last_chat()
 
   if not chat then
-    chat = require("codecompanion").chat()
+    chat = codecompanion.chat()
     if not chat then
       return vim.notify("Could not create chat buffer", vim.log.levels.WARN)
     end
@@ -514,6 +520,12 @@ end
 ---@param items table[] Array of selected items from selecta
 ---@param bufnr number The buffer number of the original buffer
 function M.add_symbol_to_avante(items, bufnr)
+  -- Check if the 'avante.api' module is available
+  local status, avante_api = pcall(require, "avante.api")
+  if not status then
+    return
+  end
+
   local result = process_symbol_content(items, bufnr)
   if not result then
     return
@@ -535,7 +547,7 @@ function M.add_symbol_to_avante(items, bufnr)
   }
 
   -- Call Avante's ask function with the selection
-  require("avante.api").ask({
+  avante_api.ask({
     selection = selection,
     floating = true,
   })
