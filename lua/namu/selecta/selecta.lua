@@ -1897,4 +1897,42 @@ function M.setup(opts)
   })
 end
 
+---Open current buffer in a split and jump to the selected symbol's location
+---@param state SelectaState The current picker state
+---@param item SelectaItem The LSP symbol item to jump to
+---@param split_type? "vertical"|"horizontal" The type of split to create (defaults to horizontal)
+---@param module_state NamuState The state from the calling module
+---@return number|nil window_id The new window ID if successful
+function M.open_in_split(state, item, split_type, module_state)
+  if not item then
+    return nil
+  end
+
+  -- Use module_state for original window and position if available
+  local original_win = module_state.original_win and module_state.original_win or vim.api.nvim_get_current_win()
+  local original_pos = module_state.original_pos and module_state.original_pos or vim.api.nvim_win_get_cursor(0)
+  local current_buf = module_state.original_buf and module_state.original_buf or vim.api.nvim_get_current_buf()
+
+  -- Close the picker
+  M.close_picker(state)
+
+  -- First focus the original window and restore cursor position
+  if original_win and vim.api.nvim_win_is_valid(original_win) then
+    vim.api.nvim_set_current_win(original_win)
+    pcall(vim.api.nvim_win_set_cursor, original_win, original_pos)
+  end
+
+  -- Create the split
+  local split_cmd = split_type == "vertical" and "vsplit" or "split"
+  vim.cmd(split_cmd)
+
+  -- Get the new window ID
+  local new_win = vim.api.nvim_get_current_win()
+
+  -- Set up the new window
+  vim.api.nvim_win_set_buf(new_win, current_buf)
+
+  return new_win
+end
+
 return M

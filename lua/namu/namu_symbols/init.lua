@@ -275,13 +275,13 @@ M.config = {
     },
     {
       key = "<C-v>",
-      handler = function(item, state)
+      handler = function(item, selecta_state)
         if not state.original_buf then
           vim.notify("No original buffer available", vim.log.levels.ERROR)
           return
         end
 
-        local new_win = selecta.open_in_split(state, item, "vertical")
+        local new_win = selecta.open_in_split(selecta_state, item, "vertical", state)
         if new_win then
           local symbol = item.value
           if symbol and symbol.lnum and symbol.col then
