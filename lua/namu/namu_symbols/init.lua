@@ -296,6 +296,28 @@ M.config = {
       desc = "Open in vertical split",
     },
     {
+      key = "<C-h>",
+      handler = function(item, selecta_state)
+        if not state.original_buf then
+          vim.notify("No original buffer available", vim.log.levels.ERROR)
+          return
+        end
+
+        local new_win = selecta.open_in_split(selecta_state, item, "horizontal", state)
+        if new_win then
+          local symbol = item.value
+          if symbol and symbol.lnum and symbol.col then
+            -- Set cursor to symbol position
+            pcall(vim.api.nvim_win_set_cursor, new_win, { symbol.lnum, symbol.col - 1 })
+            vim.cmd("normal! zz")
+          end
+          M.clear_preview_highlight()
+          return false
+        end
+      end,
+      desc = "Open in horizontal split",
+    },
+    {
       key = "<C-o>",
       handler = function(items_or_item)
         if type(items_or_item) == "table" and items_or_item[1] then
