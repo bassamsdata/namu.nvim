@@ -292,28 +292,39 @@ local function validate_input(text, query)
   return true
 end
 
----@param message string
----@return nil
+local log_file = vim.fn.stdpath("cache") .. "/selecta_debug.log"
+
+---@param message string|table
 function M.log(message)
   if not M.config.debug then
     return
   end
-  local log_file = vim.fn.stdpath("data") .. "/selecta.log"
+  -- Convert table to string if message is a table
+  if type(message) == "table" then
+    message = vim.inspect(message)
+  end
 
-  -- Create a temporary file handle
-  local tmp_file = io.open(log_file, "a")
-  if tmp_file then
-    local timestamp = os.date("%Y-%m-%d %H:%M:%S")
-    tmp_file:write(string.format("\n[%s] [%s] %s", timestamp, message))
-    tmp_file:close()
+  -- Ensure message is a string
+  message = tostring(message)
 
-    -- Schedule file writing
-    vim.schedule(function()
-      local lines = vim.fn.readfile(log_file)
-      if #lines > 1000 then
-        vim.fn.writefile(vim.list_slice(lines, -1000), log_file)
-      end
-    end)
+  -- Add timestamp
+  local timestamp = os.date("%Y-%m-%d %H:%M:%S")
+  local log_line = string.format("[%s] %s\n", timestamp, message)
+
+  -- Append to log file
+  local file = io.open(log_file, "a")
+  if file then
+    file:write(log_line)
+    file:close()
+  end
+end
+
+-- Helper function to clear the log file
+function M.clear_log()
+  local file = io.open(log_file, "w")
+  if file then
+    file:write("=== Log cleared ===\n")
+    file:close()
   end
 end
 
