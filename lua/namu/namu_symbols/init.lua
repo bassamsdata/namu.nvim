@@ -1002,7 +1002,7 @@ local function show_picker(selectaItems, notify_opts)
     keymaps = M.config.keymaps,
     -- TODO: Enable multiselect if configured
     multiselect = {
-      enabled = true,
+      enabled = M.config.multiselect.enabled,
       indicator = M.config.multiselect.indicator,
       on_select = function(selected_items)
         -- TODO: we need smart mechanis on here.
