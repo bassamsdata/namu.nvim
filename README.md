@@ -75,11 +75,11 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     -- === Suggested Keymaps: ===
     local namu = require("namu.namu_symbols")
     local colorscheme = require("namu.colorscheme")
-    vim.keymap.set("n", "<leader>ss", namu.show, {
+    vim.keymap.set("n", "<leader>ss",":Namu symbols<cr>" , {
       desc = "Jump to LSP symbol",
       silent = true,
     })
-    vim.keymap.set("n", "<leader>th", colorscheme.show, {
+    vim.keymap.set("n", "<leader>th", ":Namu colorscheme<cr>", {
       desc = "Colorscheme Picker",
       silent = true,
     })
