@@ -123,6 +123,18 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 | `<Up>` | Previous item |
 | `q` | Close help |
 
+to change the movement keys to `C-j` and `C-k`:
+```lua
+-- in namu_symbols.options
+movement = {
+    next = "<C-j>",
+    previous = "<C-k>",
+    alternative_next = "<DOWN>",
+    alternative_previous = "<UP>",
+},
+```
+
+
 #### Multiselect
 | Key | Action |
 |-----|--------|

@@ -23,6 +23,12 @@ M.config = {
     height_ratio = 0.6,
   },
   display = { mode = "raw" },
+  movement = {
+    next = "<C-n>",
+    previous = "<C-p>",
+    alternative_next = "<DOWN>",
+    alternative_previous = "<UP>",
+  },
 }
 
 ---@param items any[]
@@ -47,6 +53,7 @@ function M.select(items, opts, on_choice)
     auto_select = M.config.auto_select,
     window = M.config.window,
     display = M.config.display,
+    movement = vim.tbl_deep_extend("force", M.config.movement, {}),
     on_select = function(selected)
       if selected then
         vim.schedule(function()

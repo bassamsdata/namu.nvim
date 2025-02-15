@@ -173,6 +173,12 @@ M.config = {
     fixed = false, -- true for percentage-based, false for flexible width-based
     ratio = 0.7, -- percentage of screen width where right-aligned windows start
   },
+  movement = {
+    next = "<C-n>",
+    previous = "<C-p>",
+    alternative_next = "<DOWN>",
+    alternative_previous = "<UP>",
+  },
   multiselect = {
     enabled = false,
     indicator = "●", -- or "✓"◉
@@ -191,7 +197,7 @@ local cursor_cache = {
   guicursor = nil,
 }
 
--- Scoring constants (now properly localized)
+-- Scoring constants
 local MATCH_SCORES = {
   prefix = 100, -- Starts with the query
   contains = 60, -- Contains the query somewhere
@@ -209,7 +215,6 @@ local SCORE_ADJUSTMENTS = {
   exact_match_bonus = 25, -- bonus for exact substring matches
 }
 
--- At module level
 local ns_id = vim.api.nvim_create_namespace("selecta_highlights")
 
 ---Thanks to folke and mini.nvim for this utlity of hiding the cursor
@@ -1429,6 +1434,21 @@ local SPECIAL_KEYS = {
   MOUSE = vim.api.nvim_replace_termcodes("<LeftMouse>", true, true, true),
 }
 
+-- Pre-compute the movement keys
+local function get_movement_keys(opts)
+  local movement_config = opts.movement or M.config.movement
+  return {
+    next = {
+      vim.api.nvim_replace_termcodes(movement_config.next or "<C-n>", true, true, true),
+      vim.api.nvim_replace_termcodes(movement_config.alternative_next or "<C-j>", true, true, true),
+    },
+    previous = {
+      vim.api.nvim_replace_termcodes(movement_config.previous or "<C-p>", true, true, true),
+      vim.api.nvim_replace_termcodes(movement_config.alternative_previous or "<C-k>", true, true, true),
+    },
+  }
+end
+
 -- Simplified movement handler
 local function handle_movement(state, direction, opts)
   -- Early return if there are no items or initially hidden with empty query
@@ -1652,20 +1672,21 @@ local function handle_char(state, char, opts)
     return nil
   end
 
-  -- Movement keys lookup
-  local movement = ({
-    [SPECIAL_KEYS.UP] = -1,
-    [SPECIAL_KEYS.CTRL_P] = -1,
-    [SPECIAL_KEYS.S_TAB] = -1,
-    [SPECIAL_KEYS.DOWN] = 1,
-    [SPECIAL_KEYS.CTRL_N] = 1,
-    -- [SPECIAL_KEYS.TAB] = 1,
-  })[char_key]
+  local movement_keys = get_movement_keys(opts)
+  local movement = nil
+
+  -- Determine movement direction from configured keys only
+  if vim.tbl_contains(movement_keys.previous, char_key) then
+    movement = -1
+  elseif vim.tbl_contains(movement_keys.next, char_key) then
+    movement = 1
+  end
 
   if movement then
     state.cursor_moved = true
     state.initial_open = false
     handle_movement(state, movement, opts)
+    return nil -- prevent further processing
   elseif char_key == SPECIAL_KEYS.LEFT then
     state.cursor_pos = math.max(1, state.cursor_pos - 1)
   elseif char_key == SPECIAL_KEYS.RIGHT then
@@ -1735,6 +1756,7 @@ function M.pick(items, opts)
     fuzzy = false,
     offnet = 0,
     keymaps = M.config.keymaps,
+    movement = vim.tbl_deep_extend("force", M.config.movement, {}),
     auto_select = M.config.auto_select,
     window = vim.tbl_deep_extend("force", M.config.window, {}),
     row_position = M.config.row_position,

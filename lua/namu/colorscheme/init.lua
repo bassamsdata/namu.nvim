@@ -20,6 +20,12 @@ M.config = {
   persist = true,
   write_shada = false,
   excluded_schemes = {},
+  movement = {
+    next = "<C-n>",
+    previous = "<C-p>",
+    alternative_next = "<DOWN>",
+    alternative_previous = "<UP>",
+  },
 }
 
 ---@param callback? fun(success: boolean, error_message?: string) Callback function after setup is complete
@@ -157,6 +163,7 @@ function M.show(opts)
       auto_size = true,
       min_width = 20,
     },
+    movement = vim.tbl_deep_extend("force", M.config.movement, {}),
     on_select = function(item)
       if item then
         vim.cmd.colorscheme(item.value)

@@ -242,6 +242,12 @@ M.config = {
     close_on_yank = false, -- Whether to close picker after yanking
     close_on_delete = true, -- Whether to close picker after deleting
   },
+  movement = {
+    next = "<C-n>",
+    previous = "<C-p>",
+    alternative_next = "<DOWN>",
+    alternative_previous = "<UP>",
+  },
   keymaps = {
     {
       key = "<C-y>",
@@ -980,6 +986,7 @@ local function show_picker(selectaItems, notify_opts)
     display = M.config.display,
     auto_select = M.config.auto_select,
     initially_hidden = M.config.initially_hidden,
+    movement = vim.tbl_deep_extend("force", M.config.movement, {}),
     row_position = M.config.row_position,
     hooks = {
       on_render = function(buf, filtered_items)
