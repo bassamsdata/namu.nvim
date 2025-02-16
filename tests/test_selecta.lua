@@ -1,6 +1,7 @@
 ---@diagnostic disable: need-check-nil
 local h = require("tests.helpers")
 local selecta = require("namu.selecta.selecta")
+local matcher = require("namu.selecta.matcher")
 local new_set = MiniTest.new_set
 
 local T = new_set()
@@ -10,7 +11,7 @@ T["Selecta.matching"] = new_set()
 -- test 1
 -- Test exact prefix matches
 T["Selecta.matching"]["detects prefix matches correctly"] = function()
-  local get_match_positions = selecta._test.get_match_positions
+  local get_match_positions = matcher._test.get_match_positions
 
   -- Basic prefix match
   local result = get_match_positions("hello", "he")
@@ -35,7 +36,7 @@ end
 -- test 2
 -- Test substring matches
 T["Selecta.matching"]["detects substring matches correctly"] = function()
-  local get_match_positions = selecta._test.get_match_positions
+  local get_match_positions = matcher._test.get_match_positions
 
   -- Basic substring match that isn't a prefix
   -- Using "orl" instead of "ello" because "ello" is being detected as a prefix
@@ -63,7 +64,7 @@ end
 -- test 3
 -- Test fuzzy matches
 T["Selecta.matching"]["handles fuzzy matches correctly"] = function()
-  local get_match_positions = selecta._test.get_match_positions
+  local get_match_positions = matcher._test.get_match_positions
 
   -- Basic fuzzy match
   local result = get_match_positions("hello world", "hwd")
@@ -85,7 +86,7 @@ end
 -- test 4
 -- Test word boundaries
 T["Selecta.matching"]["detects word boundaries correctly"] = function()
-  local is_word_boundary = selecta._test.is_word_boundary
+  local is_word_boundary = matcher._test.is_word_boundary
 
   h.eq(is_word_boundary("hello", 1), true) -- Start of string
   h.eq(is_word_boundary("hello_world", 7), true) -- After underscore
@@ -96,7 +97,7 @@ end
 
 -- test 5
 T["Selecta.matching"]["applies correct scoring rules"] = function()
-  local get_match_positions = selecta._test.get_match_positions
+  local get_match_positions = matcher._test.get_match_positions
 
   -- Test different match types with the same pattern length
   local prefix_score = get_match_positions("hello", "he").score
@@ -152,8 +153,8 @@ T["Selecta.scoring"]["applies correct scoring rules"] = function()
   local text2 = "help me"
   local query = "he"
 
-  local score1 = selecta._test.get_match_positions(text1, query).score
-  local score2 = selecta._test.get_match_positions(text2, query).score
+  local score1 = matcher._test.get_match_positions(text1, query).score
+  local score2 = matcher._test.get_match_positions(text2, query).score
 
   h.eq(score1 > score2, true, "Shorter match should score higher")
 end
@@ -250,7 +251,7 @@ T["Selecta.highlights"]["calculates highlight positions"] = function()
   -- Test highlight position calculation directly
   local text = "hello world"
   local query = "he"
-  local matches = selecta._test.get_match_positions(text, query)
+  local matches = matcher._test.get_match_positions(text, query)
 
   h.eq(type(matches), "table")
   h.eq(type(matches.positions), "table")
@@ -292,10 +293,10 @@ T["Selecta.input_validation"] = new_set()
 -- test 14
 T["Selecta.input_validation"]["validates search input"] = function()
   -- Test validate_input directly
-  local valid, _ = selecta._test.validate_input("text", "query")
+  local valid, _ = matcher._test.validate_input("text", "query")
   h.eq(valid, true)
 
-  local valid2, err = selecta._test.validate_input("", "query")
+  local valid2, err = matcher._test.validate_input("", "query")
   h.eq(valid2, false)
   h.eq(type(err), "string")
 end
