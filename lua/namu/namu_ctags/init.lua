@@ -40,6 +40,14 @@ local M = {}
 -- ---@alias TSNode userdata
 -- ---@alias vim.lsp.Client table
 
+---@class TagEntry
+---@field _type string
+---@field name string
+---@field kind string
+---@field line number
+---@field end number
+---@field scope string
+
 ---@class LSPSymbol
 ---@field name string Symbol name
 ---@field kind number LSP symbol kind number
@@ -82,7 +90,7 @@ local state = {
   current_request = nil,
 }
 
-local ns_id = vim.api.nvim_create_namespace("namu_ctags")
+local ns_id = vim.api.nvim_create_namespace("namu_symbols")
 
 ---@type NamuConfig
 M.config = {
@@ -125,7 +133,7 @@ M.config = {
     lua = {
       "^vim%.", -- anonymous functions passed to nvim api
       "%.%.%. :", -- vim.iter functions
-      ":gsub", -- lua string.gsub
+      "=gsub", -- lua string.gsub
       "^callback$", -- nvim autocmds
       "^filter$",
       "^map$", -- nvim keymaps
@@ -529,7 +537,7 @@ function M.add_symbol_to_codecompanion(items, bufnr)
     role = require("codecompanion.config").constants.USER_ROLE,
     content = "Here is some code from "
       .. vim.api.nvim_buf_get_name(bufnr)
-      .. ":\n\n```"
+      .. "=\n\n```"
       .. vim.api.nvim_get_option_value("filetype", { buf = bufnr })
       .. "\n"
       .. result.text
@@ -815,21 +823,6 @@ local function highlight_symbol(symbol)
   vim.api.nvim_set_current_win(picker_win)
 end
 
----Filters symbols based on configured kinds and blocklist
----@param symbol LSPSymbol
----@return boolean
-local function should_include_symbol(symbol)
-  local kind = M.symbol_kind(symbol.kind)
-  local includeKinds = M.config.AllowKinds[vim.bo.filetype] or M.config.AllowKinds.default
-  local excludeResults = M.config.BlockList[vim.bo.filetype] or M.config.BlockList.default
-
-  local include = vim.tbl_contains(includeKinds, kind)
-  local exclude = vim.iter(excludeResults):any(function(pattern)
-    return symbol.name:find(pattern) ~= nil
-  end)
-
-  return include and not exclude
-end
 
 -- Choose your style here: 1, 2, or 3
 local STYLE = 2 -- TODO: move it to config later
@@ -850,8 +843,171 @@ local function get_prefix(depth, style)
   return prefix
 end
 
+-- symbolKindMap defines the mapping from ctags kinds to LSP symbol kinds
+local symbolKindMap = {
+  ["alias"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["arg"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["attribute"] = vim.lsp.protocol.SymbolKind.Property,
+  ["boolean"] = vim.lsp.protocol.SymbolKind.Constant,
+  ["callback"] = vim.lsp.protocol.SymbolKind.Function,
+  ["category"] = vim.lsp.protocol.SymbolKind.Enum,
+  ["ccflag"] = vim.lsp.protocol.SymbolKind.Constant,
+  ["cell"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["class"] = vim.lsp.protocol.SymbolKind.Class,
+  ["collection"] = vim.lsp.protocol.SymbolKind.Class,
+  ["command"] = vim.lsp.protocol.SymbolKind.Function,
+  ["component"] = vim.lsp.protocol.SymbolKind.Struct,
+  ["config"] = vim.lsp.protocol.SymbolKind.Constant,
+  ["const"] = vim.lsp.protocol.SymbolKind.Constant,
+  ["constant"] = vim.lsp.protocol.SymbolKind.Constant,
+  ["constructor"] = vim.lsp.protocol.SymbolKind.Constructor,
+  ["context"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["counter"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["data"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["dataset"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["def"] = vim.lsp.protocol.SymbolKind.Function,
+  ["define"] = vim.lsp.protocol.SymbolKind.Constant,
+  ["delegate"] = vim.lsp.protocol.SymbolKind.Class,
+  ["enum"] = vim.lsp.protocol.SymbolKind.Enum,
+  ["enumConstant"] = vim.lsp.protocol.SymbolKind.EnumMember,
+  ["enumerator"] = vim.lsp.protocol.SymbolKind.Enum,
+  ["environment"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["error"] = vim.lsp.protocol.SymbolKind.Enum,
+  ["event"] = vim.lsp.protocol.SymbolKind.Event,
+  ["exception"] = vim.lsp.protocol.SymbolKind.Class,
+  ["externvar"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["face"] = vim.lsp.protocol.SymbolKind.Interface,
+  ["feature"] = vim.lsp.protocol.SymbolKind.Property,
+  ["field"] = vim.lsp.protocol.SymbolKind.Field,
+  ["fn"] = vim.lsp.protocol.SymbolKind.Function,
+  ["fun"] = vim.lsp.protocol.SymbolKind.Function,
+  ["func"] = vim.lsp.protocol.SymbolKind.Function,
+  ["function"] = vim.lsp.protocol.SymbolKind.Function,
+  ["functionVar"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["functor"] = vim.lsp.protocol.SymbolKind.Class,
+  ["generic"] = vim.lsp.protocol.SymbolKind.TypeParameter,
+  ["getter"] = vim.lsp.protocol.SymbolKind.Method,
+  ["global"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["globalVar"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["group"] = vim.lsp.protocol.SymbolKind.Enum,
+  ["guard"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["handler"] = vim.lsp.protocol.SymbolKind.Function,
+  ["icon"] = vim.lsp.protocol.SymbolKind.Enum,
+  ["id"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["implementation"] = vim.lsp.protocol.SymbolKind.Class,
+  ["index"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["infoitem"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["instance"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["interface"] = vim.lsp.protocol.SymbolKind.Interface,
+  ["it"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["jurisdiction"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["library"] = vim.lsp.protocol.SymbolKind.Module,
+  ["list"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["local"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["localVariable"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["locale"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["localvar"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["macro"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["macroParameter"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["macrofile"] = vim.lsp.protocol.SymbolKind.File,
+  ["macroparam"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["makefile"] = vim.lsp.protocol.SymbolKind.File,
+  ["map"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["method"] = vim.lsp.protocol.SymbolKind.Method,
+  ["methodSpec"] = vim.lsp.protocol.SymbolKind.Method,
+  ["misc"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["module"] = vim.lsp.protocol.SymbolKind.Module,
+  ["name"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["namespace"] = vim.lsp.protocol.SymbolKind.Module,
+  ["nettype"] = vim.lsp.protocol.SymbolKind.TypeParameter,
+  ["newFile"] = vim.lsp.protocol.SymbolKind.File,
+  ["node"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["object"] = vim.lsp.protocol.SymbolKind.Class,
+  ["oneof"] = vim.lsp.protocol.SymbolKind.Enum,
+  ["operator"] = vim.lsp.protocol.SymbolKind.Operator,
+  ["output"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["package"] = vim.lsp.protocol.SymbolKind.Module,
+  ["param"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["parameter"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["paramEntity"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["part"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["placeholder"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["port"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["process"] = vim.lsp.protocol.SymbolKind.Function,
+  ["property"] = vim.lsp.protocol.SymbolKind.Property,
+  ["prototype"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["protocol"] = vim.lsp.protocol.SymbolKind.Class,
+  ["provider"] = vim.lsp.protocol.SymbolKind.Class,
+  ["publication"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["qkey"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["receiver"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["record"] = vim.lsp.protocol.SymbolKind.Struct,
+  ["region"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["register"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["repoid"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["report"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["repositoryId"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["repr"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["resource"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["response"] = vim.lsp.protocol.SymbolKind.Function,
+  ["role"] = vim.lsp.protocol.SymbolKind.Class,
+  ["rpc"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["schema"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["script"] = vim.lsp.protocol.SymbolKind.File,
+  ["sequence"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["server"] = vim.lsp.protocol.SymbolKind.Class,
+  ["service"] = vim.lsp.protocol.SymbolKind.Class,
+  ["setter"] = vim.lsp.protocol.SymbolKind.Method,
+  ["signal"] = vim.lsp.protocol.SymbolKind.Function,
+  ["singletonMethod"] = vim.lsp.protocol.SymbolKind.Method,
+  ["slot"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["software"] = vim.lsp.protocol.SymbolKind.Class,
+  ["sourcefile"] = vim.lsp.protocol.SymbolKind.File,
+  ["standard"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["string"] = vim.lsp.protocol.SymbolKind.String,
+  ["structure"] = vim.lsp.protocol.SymbolKind.Struct,
+  ["stylesheet"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["submethod"] = vim.lsp.protocol.SymbolKind.Method,
+  ["submodule"] = vim.lsp.protocol.SymbolKind.Module,
+  ["subprogram"] = vim.lsp.protocol.SymbolKind.Function,
+  ["subprogspec"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["subroutine"] = vim.lsp.protocol.SymbolKind.Function,
+  ["subsection"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["subst"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["substdef"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["tag"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["template"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["test"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["theme"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["theorem"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["thriftFile"] = vim.lsp.protocol.SymbolKind.File,
+  ["throwsparam"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["title"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["token"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["toplevelVariable"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["trait"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["type"] = vim.lsp.protocol.SymbolKind.Struct,
+  ["typealias"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["typedef"] = vim.lsp.protocol.SymbolKind.TypeParameter,
+  ["typespec"] = vim.lsp.protocol.SymbolKind.TypeParameter,
+  ["union"] = vim.lsp.protocol.SymbolKind.Struct,
+  ["username"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["val"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["value"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["var"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["variable"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["vector"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["version"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["video"] = vim.lsp.protocol.SymbolKind.File,
+  ["view"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["wrapper"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["xdata"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["xinput"] = vim.lsp.protocol.SymbolKind.Variable,
+  ["xtask"] = vim.lsp.protocol.SymbolKind.Variable,
+}
+
 ---Converts LSP symbols to selecta-compatible items with proper formatting
----@param raw_symbols LSPSymbol[]
+---@param raw_symbols TagEntry[]
 ---@return SelectaItem[]
 local function symbols_to_selecta_items(raw_symbols)
   local bufnr = vim.api.nvim_get_current_buf()
@@ -863,73 +1019,49 @@ local function symbols_to_selecta_items(raw_symbols)
 
   local items = {}
 
+  local tree = {}
+
   ---[local] Recursively processes each symbol and its children into SelectaItem format with proper indentation
-  ---@param result LSPSymbol
-  ---@param depth number Current depth level
-  local function process_symbol_result(result, depth)
+  ---@param result TagEntry
+  local function process_symbol_result(result)
     if not result or not result.name then
       return
     end
 
-    -- There are two possible schemas for symbols returned by LSP:
-    --
-    --    SymbolInformation:
-    --      { name, kind, location, containerName? }
-    --
-    --    DocumentSymbol:
-    --      { name, kind, range, selectionRange, children? }
-    --
-    --    In the case of DocumentSymbol, we need to use the `range` field for the symbol position.
-    --    In the case of SymbolInformation, we need to use the `location.range` field for the symbol position.
-    --
-    --    source:
-    --      https://github.com/microsoft/language-server-protocol/blob/gh-pages/_specifications/lsp/3.18/language/documentSymbol.md
-    local range = result.range or (result.location and result.location.range)
-    if not range or not range.start or not range["end"] then
-      vim.notify("Symbol '" .. result.name .. "' has invalid structure", vim.log.levels.WARN)
-      return
+    local depth = 0
+    
+    if result.scope then
+      depth = tree[result.scope] or -1
+      depth = depth + 1
+      tree[result.name] = depth
     end
-
-    if not should_include_symbol(result) then
-      if result.children then
-        for _, child in ipairs(result.children) do
-          process_symbol_result(child, depth)
-        end
-      end
-      return
-    end
-
     local clean_name = result.name:match("^([^%s%(]+)") or result.name
     local prefix = get_prefix(depth, STYLE)
     local display_text = prefix .. clean_name
+
+    local kind = M.symbol_kind(symbolKindMap[result.kind])
 
     local item = {
       text = display_text,
       value = {
         text = clean_name,
         name = clean_name,
-        kind = M.symbol_kind(result.kind),
-        lnum = range.start.line + 1,
-        col = range.start.character + 1,
-        end_lnum = range["end"].line + 1,
-        end_col = range["end"].character + 1,
+        kind = kind,
+        lnum = result.line,
+        col = 1,
+        end_lnum = (result["end"] or result.line) + 1,
+        end_col = 2,
       },
-      icon = M.config.kindIcons[M.symbol_kind(result.kind)] or M.config.icon,
-      kind = M.symbol_kind(result.kind),
+      icon = M.config.kindIcons[kind] or M.config.icon,
+      kind = kind,
       depth = depth,
     }
 
     table.insert(items, item)
-
-    if result.children then
-      for _, child in ipairs(result.children) do
-        process_symbol_result(child, depth + 1)
-      end
-    end
   end
 
   for _, symbol in ipairs(raw_symbols) do
-    process_symbol_result(symbol, 0)
+    process_symbol_result(symbol)
   end
 
   M.symbol_cache = { key = cache_key, items = items }
@@ -1033,7 +1165,7 @@ local function show_picker(selectaItems, notify_opts)
   -- Find containing symbol for current cursor position
   local current_symbol = find_containing_symbol(selectaItems)
   local picker_opts = {
-    title = "LSP Symbols",
+    title = "Ctags",
     fuzzy = false,
     preserve_order = true,
     window = M.config.window,
@@ -1124,70 +1256,6 @@ local function show_picker(selectaItems, notify_opts)
   end
 end
 
----Thanks to @folke snacks lsp for this handling, basically this function mostly borrowed from him
----Fixes old style clients
----@param client vim.lsp.Client
----@return vim.lsp.Client
-local function ensure_client_compatibility(client)
-  -- If client already has the new-style API, return it as-is
-  if getmetatable(client) and getmetatable(client).request then
-    return client
-  end
-
-  -- If we've already wrapped this client, don't wrap it again
-  if client.namu_wrapped then
-    return client
-  end
-
-  -- Create a wrapper for older style clients
-  local wrapped = {
-    namu_wrapped = true,
-  }
-
-  return setmetatable(wrapped, {
-    __index = function(_, key)
-      -- Special handling for supports_method in older versions
-      if key == "supports_method" then
-        return function(_, method)
-          return client.supports_method(method)
-        end
-      end
-
-      -- Handle request and cancel_request methods
-      if key == "request" or key == "cancel_request" then
-        return function(_, ...)
-          return client[key](...)
-        end
-      end
-
-      -- Pass through all other properties
-      return client[key]
-    end,
-  })
-end
-
----Returns the LSP client with document symbols support
----@param bufnr number
----@return vim.lsp.Client|nil, string|nil
-local function get_client_with_symbols(bufnr)
-  ---@diagnostic disable-next-line: deprecated
-  local get_clients_fn = vim.lsp.get_clients or vim.lsp.get_active_clients
-
-  local clients = vim.tbl_map(ensure_client_compatibility, get_clients_fn({ bufnr = bufnr }))
-
-  if vim.tbl_isempty(clients) then
-    return nil, "No LSP client attached to buffer"
-  end
-
-  for _, client in ipairs(clients) do
-    if client and client.server_capabilities and client.server_capabilities.documentSymbolProvider then
-      return client, nil
-    end
-  end
-
-  return nil, "No LSP client supports document symbols"
-end
-
 -- Add the new request_symbols function
 ---@param bufnr number
 ---@param callback fun(err: any, result: any, ctx: any)
@@ -1195,37 +1263,42 @@ local function request_symbols(bufnr, callback)
   -- Cancel any existing request
   if state.current_request then
     local client = state.current_request.client
-    local request_id = state.current_request.request_id
-    -- Check if client and cancel_request are valid before calling
-    if client and type(client.cancel_request) == "function" and request_id then
-      client:cancel_request(request_id)
+    client.kill(9)
+    state.current_request = nil
+  end
+
+  local path = vim.api.nvim_buf_get_name(bufnr)
+
+  -- parse ctags
+  local request = vim.system(
+    { "ctags", "--output-format=json", "--sort=no", "--fields='{scope}{name}{line}{end}{kind}{scopeKind}'", path },
+    { text = true },
+    function(obj)
+      local result = nil
+      local request_err = nil
+      if obj.code ~= 0 then
+        request_err = obj
+      else
+        local lines = vim.split(obj.stdout, "[\r]?\n")
+        result = {}
+        for _, line in ipairs(lines) do
+          local ok, dec = pcall(vim.json.decode, line)
+          if ok then
+            table.insert(result, dec)
+          end
+        end
+      end
+      vim.schedule(function()
+        _G.results = result
+        callback(request_err, result, ctx)
+      end)
     end
-    state.current_request = nil
-  end
-
-  -- Get client with document symbols
-  local client, err = get_client_with_symbols(bufnr)
-  if err then
-    callback(err, nil, nil)
-    return
-  end
-
-  -- Create params manually instead of using make_position_params
-  local params = {
-    textDocument = vim.lsp.util.make_text_document_params(bufnr) or { uri = vim.uri_from_bufnr(bufnr) },
-  }
-
-  -- Send the request to the LSP server
-  local success, request_id = client:request("textDocument/documentSymbol", params, function(request_err, result, ctx)
-    state.current_request = nil
-    callback(request_err, result, ctx)
-  end)
+  )
   -- Check if the request was successful and that the request_id is not nil
-  if success and request_id then
+  if request.is_closing() and request.pid then
     -- Store the client and request_id
     state.current_request = {
-      client = client,
-      request_id = request_id,
+      client = request,
     }
   else
     -- Handle the case where the request was not successful
@@ -1260,8 +1333,8 @@ function M.show()
   end
 
   request_symbols(state.original_buf, function(err, result, _)
-    if err then
-      local error_message = type(err) == "table" and err.message or err
+    if err ~= nil then
+      local error_message = type(err) == "table" and err.stderr or err.stderr
       vim.notify("Error fetching symbols: " .. error_message, vim.log.levels.ERROR, notify_opts)
       return
     end

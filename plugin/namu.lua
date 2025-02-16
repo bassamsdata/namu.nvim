@@ -23,6 +23,9 @@ local registry = {
   symbols = function(opts)
     require("namu.namu_symbols").show()
   end,
+  ctags = function(opts)
+    require("namu.namu_ctags").show()
+  end,
   colorscheme = function(opts)
     require("namu.colorscheme").show()
   end,
