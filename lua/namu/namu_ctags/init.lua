@@ -823,7 +823,6 @@ local function highlight_symbol(symbol)
   vim.api.nvim_set_current_win(picker_win)
 end
 
-
 -- Choose your style here: 1, 2, or 3
 local STYLE = 2 -- TODO: move it to config later
 
@@ -1029,7 +1028,7 @@ local function symbols_to_selecta_items(raw_symbols)
     end
 
     local depth = 0
-    
+
     if result.scope then
       depth = tree[result.scope] or -1
       depth = depth + 1
@@ -1295,7 +1294,7 @@ local function request_symbols(bufnr, callback)
     end
   )
   -- Check if the request was successful and that the request_id is not nil
-  if request.is_closing() and request.pid then
+  if request and request.is_closing and request.pid then
     -- Store the client and request_id
     state.current_request = {
       client = request,
