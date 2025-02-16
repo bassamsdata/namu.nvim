@@ -82,7 +82,7 @@ local state = {
   current_request = nil,
 }
 
-local ns_id = vim.api.nvim_create_namespace("namu_ctags")
+local ns_id = vim.api.nvim_create_namespace("namu_symbols")
 
 ---@type NamuConfig
 M.config = {
