@@ -149,6 +149,7 @@ movement = {
 | `<C-y>` | Yank symbol/concatenate selected symbols and yank |
 | `<C-d>` | Delete symbol/concatenate selected symbols and delete |
 | `<C-v>` | Open symbol buffer on vertical split |
+| `<C-h>` | Open symbol buffer on horizontal split |
 | `<C-o>` | Add symbol/concatenate selected symbols and add them to codecompanion chat buffer |
 
 </details>
@@ -352,13 +353,13 @@ M.config = {
     },
     {
       key = "<C-v>",
-      handler = function(item, state)
+      handler = function(item, selecta_state)
         if not state.original_buf then
           vim.notify("No original buffer available", vim.log.levels.ERROR)
           return
         end
 
-        local new_win = selecta.open_in_split(state, item, "vertical")
+        local new_win = selecta.open_in_split(selecta_state, item, "vertical", state)
         if new_win then
           local symbol = item.value
           if symbol and symbol.lnum and symbol.col then
@@ -371,6 +372,28 @@ M.config = {
         end
       end,
       desc = "Open in vertical split",
+    },
+    {
+      key = "<C-h>",
+      handler = function(item, selecta_state)
+        if not state.original_buf then
+          vim.notify("No original buffer available", vim.log.levels.ERROR)
+          return
+        end
+
+        local new_win = selecta.open_in_split(selecta_state, item, "horizontal", state)
+        if new_win then
+          local symbol = item.value
+          if symbol and symbol.lnum and symbol.col then
+            -- Set cursor to symbol position
+            pcall(vim.api.nvim_win_set_cursor, new_win, { symbol.lnum, symbol.col - 1 })
+            vim.cmd("normal! zz")
+          end
+          M.clear_preview_highlight()
+          return false
+        end
+      end,
+      desc = "Open in horizontal split",
     },
     {
       key = "<C-o>",
