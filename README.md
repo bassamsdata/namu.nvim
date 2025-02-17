@@ -62,6 +62,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
         options = {}, -- here you can configure namu
       },
       -- Optional: Enable other modules if needed
+      ui_select = { enable = false }, -- vim.ui.select() wrapper
       colorscheme = {
         enable = false,
         options = {
@@ -70,11 +71,8 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
           write_shada = false, -- If you open multiple nvim instances, then probably you need to enable this
         },
       },
-      ui_select = { enable = false }, -- vim.ui.select() wrapper
     })
     -- === Suggested Keymaps: ===
-    local namu = require("namu.namu_symbols")
-    local colorscheme = require("namu.colorscheme")
     vim.keymap.set("n", "<leader>ss",":Namu symbols<cr>" , {
       desc = "Jump to LSP symbol",
       silent = true,
@@ -107,7 +105,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 </details>
 
-### Default Keymaps
+### Keymaps
 
 <details>
 <summary>Default keymaps are:</summary>
@@ -123,16 +121,6 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 | `<Up>` | Previous item |
 | `q` | Close help |
 
-to change the movement keys to `C-j` and `C-k`:
-```lua
--- in namu_symbols.options
-movement = {
-    next = "<C-j>",
-    previous = "<C-k>",
-    alternative_next = "<DOWN>",
-    alternative_previous = "<UP>",
-},
-```
 
 
 #### Multiselect
@@ -154,8 +142,57 @@ movement = {
 
 </details>
 
+### Change Keymaps:
 
-## Available Commands
+<details>
+<summary>change the default keymaps:</summary>
+
+```lua
+-- in namu_symbols.options
+  movement = {
+    next = { "<C-n>", "<DOWN>" }, -- Support multiple keys
+    previous = { "<C-p>", "<UP>" }, -- Support multiple keys
+    close = { "<ESC>" }, -- close mapping
+    select = { "<CR>" }, -- select mapping
+    delete_word = {}, -- delete word mapping
+    clear_line = {}, -- clear line mapping
+  },
+  multiselect = {
+    enabled = false,
+    indicator = "●", -- or "✓"◉
+    keymaps = {
+      toggle = "<Tab>",
+      select_all = "<C-a>",
+      clear_all = "<C-l>",
+      untoggle = "<S-Tab>",
+    },
+    max_items = nil, -- No limit by default
+  },
+  custom_keymaps = {
+    yank = {
+      keys = { "<C-y>" }, -- yank symbol text
+    },
+    delete = {
+      keys = { "<C-d>" }, -- delete symbol text
+    },
+    vertical_split = {
+      keys = { "<C-v>" }, -- open in vertical split
+    },
+    horizontal_split = {
+      keys = { "<C-h>" }, -- open in horizontal split
+    },
+    codecompanion = {
+      keys = "<C-o>", -- Add symbols to CodeCompanion
+    },
+    avante = {
+      keys = "<C-t>", -- Add symbol to Avante
+    },
+  },
+```
+
+</details>
+
+## Commands
 
 The `Namu` command provides several subcommands with autocomplete:
 
@@ -326,97 +363,28 @@ M.config = {
     close_on_yank = false, -- Whether to close picker after yanking
     close_on_delete = true, -- Whether to close picker after deleting
   },
-  keymaps = {
-    {
-      key = "<C-y>",
-      handler = function(items_or_item, state)
-        local success = M.yank_symbol_text(items_or_item, state)
-        -- Only close if yanking was successful and config says to close
-        if success and M.config.actions.close_on_yank then
-          M.clear_preview_highlight()
-          return false -- This should close the picker
-        end
-      end,
+  custom_keymaps = {
+    yank = {
+      keys = { "<C-y>" },
       desc = "Yank symbol text",
     },
-    {
-      key = "<C-d>",
-      handler = function(items_or_item, state)
-        local deleted = M.delete_symbol_text(items_or_item, state)
-        -- Only close if deletion was successful and config says to close
-        if deleted and M.config.actions.close_on_delete then
-          M.clear_preview_highlight()
-          return false
-        end
-      end,
-      desc = "Delete symbol text",
+    delete = {
+      keys = { "<C-d>" },
     },
-    {
-      key = "<C-v>",
-      handler = function(item, selecta_state)
-        if not state.original_buf then
-          vim.notify("No original buffer available", vim.log.levels.ERROR)
-          return
-        end
-
-        local new_win = selecta.open_in_split(selecta_state, item, "vertical", state)
-        if new_win then
-          local symbol = item.value
-          if symbol and symbol.lnum and symbol.col then
-            -- Set cursor to symbol position
-            pcall(vim.api.nvim_win_set_cursor, new_win, { symbol.lnum, symbol.col - 1 })
-            vim.cmd("normal! zz")
-          end
-          M.clear_preview_highlight()
-          return false
-        end
-      end,
+    vertical_split = {
+      keys = { "<C-v>" },
       desc = "Open in vertical split",
     },
-    {
-      key = "<C-h>",
-      handler = function(item, selecta_state)
-        if not state.original_buf then
-          vim.notify("No original buffer available", vim.log.levels.ERROR)
-          return
-        end
-
-        local new_win = selecta.open_in_split(selecta_state, item, "horizontal", state)
-        if new_win then
-          local symbol = item.value
-          if symbol and symbol.lnum and symbol.col then
-            -- Set cursor to symbol position
-            pcall(vim.api.nvim_win_set_cursor, new_win, { symbol.lnum, symbol.col - 1 })
-            vim.cmd("normal! zz")
-          end
-          M.clear_preview_highlight()
-          return false
-        end
-      end,
+    horizontal_split = {
+      keys = { "<C-h>" },
       desc = "Open in horizontal split",
     },
-    {
-      key = "<C-o>",
-      handler = function(items_or_item)
-        if type(items_or_item) == "table" and items_or_item[1] then
-          M.add_symbol_to_codecompanion(items_or_item, state.original_buf)
-        else
-          -- Single item case
-          M.add_symbol_to_codecompanion({ items_or_item }, state.original_buf)
-        end
-      end,
+    codecompanion = {
+      keys = "<C-o>",
       desc = "Add symbol to CodeCompanion",
     },
-    {
-      key = "<C-t>",
-      handler = function(items_or_item)
-        if type(items_or_item) == "table" and items_or_item[1] then
-          M.add_symbol_to_avante(items_or_item, state.original_buf)
-        else
-          -- Single item case
-          M.add_symbol_to_avante({ items_or_item }, state.original_buf)
-        end
-      end,
+    avante = {
+      keys = "<C-t>",
       desc = "Add symbol to Avante",
     },
   },
@@ -484,5 +452,5 @@ Any suggestions to improve and integrate with other plugins are also welcome.
 - [Mini.pick](https://github.com/echasnovski/mini.nvim) @echasnovski for the idea of `getchar()`, without which this plugin wouldn't exist.
 - Magnet module (couldn’t find it anymore on GitHub, sorry!), which intrigued me a lot.
 - @folke for handling multiple versions of Neovim LSP requests in [Snacks.nvim](https://github.com/folke/snacks.nvim).
-- tests structure, thanks to @Oli [CodeCompanion](https://github.com/olimorris/codecompanion.nvim)
+- tests and ci structure, thanks to @Oli [CodeCompanion](https://github.com/olimorris/codecompanion.nvim)
 - A simple mechanism to persist the colorscheme, thanks to this [Reddit comment](https://www.reddit.com/r/neovim/comments/1edwhk8/comment/lfb1m2f/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button).

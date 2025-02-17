@@ -62,7 +62,7 @@ local M = {}
 ---@field auto_select boolean Auto-select single matches
 ---@field row_position "center"|"top10"|"top10_right"|"center_right"|"bottom" Window position preset
 ---@field multiselect table Multiselect configuration
----@field keymaps table Keymap configuration
+---@field custom_keymaps table Keymap configuration
 
 ---@class NamuState
 ---@field original_win number|nil Original window
@@ -249,24 +249,22 @@ M.config = {
     alternative_next = "<DOWN>",
     alternative_previous = "<UP>",
   },
-  keymaps = {
-    {
-      key = "<C-y>",
+  custom_keymaps = {
+    yank = {
+      keys = { "<C-y>" },
       handler = function(items_or_item, state)
         local success = M.yank_symbol_text(items_or_item, state)
-        -- Only close if yanking was successful and config says to close
         if success and M.config.actions.close_on_yank then
           M.clear_preview_highlight()
-          return false -- This should close the picker
+          return false
         end
       end,
       desc = "Yank symbol text",
     },
-    {
-      key = "<C-d>",
+    delete = {
+      keys = { "<C-d>" },
       handler = function(items_or_item, state)
         local deleted = M.delete_symbol_text(items_or_item, state)
-        -- Only close if deletion was successful and config says to close
         if deleted and M.config.actions.close_on_delete then
           M.clear_preview_highlight()
           return false
@@ -274,8 +272,8 @@ M.config = {
       end,
       desc = "Delete symbol text",
     },
-    {
-      key = "<C-v>",
+    vertical_split = {
+      keys = { "<C-v>" },
       handler = function(item, selecta_state)
         if not state.original_buf then
           vim.notify("No original buffer available", vim.log.levels.ERROR)
@@ -296,8 +294,8 @@ M.config = {
       end,
       desc = "Open in vertical split",
     },
-    {
-      key = "<C-h>",
+    horizontal_split = {
+      keys = { "<C-h>" },
       handler = function(item, selecta_state)
         if not state.original_buf then
           vim.notify("No original buffer available", vim.log.levels.ERROR)
@@ -318,8 +316,8 @@ M.config = {
       end,
       desc = "Open in horizontal split",
     },
-    {
-      key = "<C-o>",
+    codecompanion = {
+      keys = "<C-o>",
       handler = function(items_or_item)
         if type(items_or_item) == "table" and items_or_item[1] then
           M.add_symbol_to_codecompanion(items_or_item, state.original_buf)
@@ -330,8 +328,8 @@ M.config = {
       end,
       desc = "Add symbol to CodeCompanion",
     },
-    {
-      key = "<C-t>",
+    avante = {
+      keys = "<C-t>",
       handler = function(items_or_item)
         if type(items_or_item) == "table" and items_or_item[1] then
           M.add_symbol_to_avante(items_or_item, state.original_buf)
@@ -1053,7 +1051,7 @@ local function show_picker(selectaItems, notify_opts)
         end
       end,
     },
-    keymaps = M.config.keymaps,
+    custom_keymaps = M.config.custom_keymaps,
     -- TODO: Enable multiselect if configured
     multiselect = {
       enabled = M.config.multiselect.enabled,

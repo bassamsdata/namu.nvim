@@ -118,11 +118,17 @@ require('selecta').pick(items, {
 ---@field initial_index? number
 ---@field debug? boolean
 ---@field movement? SelectaMovementConfig
+---@field custom_keymaps? table<string, SelectaCustomAction> Custom actions
 
 ---@class SelectaHooks
 ---@field on_render? fun(buf: number, items: SelectaItem[], opts: SelectaOptions) Called after items are rendered
 ---@field on_window_create? fun(win_id: number, buf_id: number, opts: SelectaOptions) Called after window creation
 ---@field before_render? fun(items: SelectaItem[], opts: SelectaOptions) Called before rendering items
+
+---@class SelectaCustomAction
+---@field keys string|string[] The key(s) for this action
+---@field handler fun(item: SelectaItem|SelectaItem[], state: SelectaState): boolean? The handler function
+---@field desc? string Optional description
 
 ---@class SelectaMultiselect
 ---@field enabled boolean Whether multiselect is enabled
@@ -188,10 +194,10 @@ M.config = {
   movement = {
     next = { "<C-n>", "<DOWN>" }, -- Support multiple keys
     previous = { "<C-p>", "<UP>" }, -- Support multiple keys
-    close = { "<ESC>" }, -- close mapping
-    select = { "<CR>" }, -- select mapping
-    delete_word = {}, -- delete word mapping
-    clear_line = {}, -- clear line mapping
+    close = { "<ESC>" },
+    select = { "<CR>" },
+    delete_word = {},
+    clear_line = {},
     -- Deprecated mappings (but still working)
     -- alternative_next = "<DOWN>", -- @deprecated: Will be removed in v1.0
     -- alternative_previous = "<UP>", -- @deprecated: Will be removed in v1.0
@@ -207,6 +213,7 @@ M.config = {
     },
     max_items = nil, -- No limit by default
   },
+  custom_keymaps = {},
 }
 
 ---@type CursorCache
@@ -1315,33 +1322,40 @@ local function handle_char(state, char, opts)
   local movement_keys = get_movement_keys(opts)
 
   -- Handle custom keymaps first
-  if opts.keymaps then
-    for _, keymap in ipairs(opts.keymaps) do
-      if char_key == vim.api.nvim_replace_termcodes(keymap.key, true, true, true) then
-        local selected = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
-        if selected then
-          -- Handle multiselect state
-          if opts.multiselect and opts.multiselect.enabled and state.selected_count > 0 then
-            local selected_items = {}
-            for _, item in ipairs(state.filtered_items) do
-              if state.selected[tostring(item.value or item.text)] then
-                table.insert(selected_items, item)
+  if opts.custom_keymaps and type(opts.custom_keymaps) == "table" then
+    for action_name, action in pairs(opts.custom_keymaps) do
+      -- Check if action is properly formatted
+      if action and action.keys then
+        local keys = type(action.keys) == "string" and { action.keys } or action.keys
+        for _, key in ipairs(keys) do
+          if char_key == vim.api.nvim_replace_termcodes(key, true, true, true) then
+            local selected = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
+            if selected and action.handler then
+              if opts.multiselect and opts.multiselect.enabled and state.selected_count > 0 then
+                -- Handle multiselect case
+                local selected_items = {}
+                for _, item in ipairs(state.filtered_items) do
+                  if state.selected[get_item_id(item)] then
+                    table.insert(selected_items, item)
+                  end
+                end
+                local should_close = action.handler(selected_items, state)
+                if should_close == false then
+                  M.close_picker(state)
+                  return nil
+                end
+              else
+                -- Handle single item case
+                local should_close = action.handler(selected, state)
+                if should_close == false then
+                  M.close_picker(state)
+                  return nil
+                end
               end
             end
-            local should_close = keymap.handler(selected_items, state, M.close_picker)
-            if should_close == false then
-              M.close_picker(state)
-              return nil
-            end
-          else
-            local should_close = keymap.handler(selected, state, M.close_picker)
-            if should_close == false then
-              M.close_picker(state)
-              return nil
-            end
+            return nil
           end
         end
-        return nil
       end
     end
   end
@@ -1459,7 +1473,7 @@ function M.pick(items, opts)
     end,
     fuzzy = false,
     offnet = 0,
-    keymaps = M.config.keymaps,
+    custom_keymaps = vim.tbl_deep_extend("force", M.config.custom_keymaps, {}),
     movement = vim.tbl_deep_extend("force", M.config.movement, {}),
     auto_select = M.config.auto_select,
     window = vim.tbl_deep_extend("force", M.config.window, {}),
