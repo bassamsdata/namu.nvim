@@ -206,6 +206,9 @@ M.config = {
       Module = "NamuSymbolModule",
     },
   },
+  -- This is a preset that let's set window without really get into the hassle of tuning window options
+  -- top10 meaning top 10% of the window
+  row_position = "top10", -- options: "center"|"top10"|"top10_right"|"center_right"|"bottom",
   window = {
     auto_size = true,
     min_height = 1,
@@ -226,7 +229,6 @@ M.config = {
   debug = false,
   focus_current_symbol = true,
   auto_select = false,
-  row_position = "top10", -- options: "center"|"top10"|"top10_right"|"center_right"|"bottom",
   initially_hidden = false,
   multiselect = {
     enabled = true,
@@ -244,10 +246,15 @@ M.config = {
     close_on_delete = true, -- Whether to close picker after deleting
   },
   movement = {
-    next = "<C-n>",
-    previous = "<C-p>",
-    alternative_next = "<DOWN>",
-    alternative_previous = "<UP>",
+    next = { "<C-n>", "<DOWN>" }, -- Support multiple keys
+    previous = { "<C-p>", "<UP>" }, -- Support multiple keys
+    close = { "<ESC>" },
+    select = { "<CR>" },
+    delete_word = {},
+    clear_line = {},
+    -- Deprecated mappings (but still working)
+    -- alternative_next = "<DOWN>", -- @deprecated: Will be removed in v1.0
+    -- alternative_previous = "<UP>", -- @deprecated: Will be removed in v1.0
   },
   custom_keymaps = {
     yank = {
