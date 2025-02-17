@@ -88,6 +88,14 @@ require('selecta').pick(items, {
 ---@field footer_pos? "left"|"center"|"right"
 ---@field title_pos? "left"|string
 
+---@class SelectaMovementConfig
+---@field next string|string[] Key(s) for moving to next item
+---@field previous string|string[] Key(s) for moving to previous item
+---@field close string|string[] Key(s) for closing picker
+---@field select string|string[] Key(s) for selecting item
+---@field alternative_next? string @deprecated Use next array instead
+---@field alternative_previous? string @deprecated Use previous array instead
+
 ---@class SelectaOptions
 ---@field title? string
 ---@field formatter? fun(item: SelectaItem): string
@@ -109,6 +117,7 @@ require('selecta').pick(items, {
 ---@field initially_hidden? boolean
 ---@field initial_index? number
 ---@field debug? boolean
+---@field movement? SelectaMovementConfig
 
 ---@class SelectaHooks
 ---@field on_render? fun(buf: number, items: SelectaItem[], opts: SelectaOptions) Called after items are rendered
@@ -177,10 +186,15 @@ M.config = {
     ratio = 0.7, -- percentage of screen width where right-aligned windows start
   },
   movement = {
-    next = "<C-n>",
-    previous = "<C-p>",
-    alternative_next = "<DOWN>",
-    alternative_previous = "<UP>",
+    next = { "<C-n>", "<DOWN>" }, -- Support multiple keys
+    previous = { "<C-p>", "<UP>" }, -- Support multiple keys
+    close = { "<ESC>" }, -- close mapping
+    select = { "<CR>" }, -- select mapping
+    delete_word = {}, -- delete word mapping
+    clear_line = {}, -- clear line mapping
+    -- Deprecated mappings (but still working)
+    -- alternative_next = "<DOWN>", -- @deprecated: Will be removed in v1.0
+    -- alternative_previous = "<UP>", -- @deprecated: Will be removed in v1.0
   },
   multiselect = {
     enabled = false,
@@ -1055,19 +1069,90 @@ local SPECIAL_KEYS = {
   MOUSE = vim.api.nvim_replace_termcodes("<LeftMouse>", true, true, true),
 }
 
+---Delete last word from query
+---@param state SelectaState
+local function delete_last_word(state)
+  -- If we're at the start, nothing to delete
+  if state.cursor_pos <= 1 then
+    return
+  end
+
+  -- Find the last non-space character before cursor
+  local last_char_pos = state.cursor_pos - 1
+  while last_char_pos > 1 and state.query[last_char_pos] == " " do
+    last_char_pos = last_char_pos - 1
+  end
+
+  -- Find the start of the word
+  local word_start = last_char_pos
+  while word_start > 1 and state.query[word_start - 1] ~= " " do
+    word_start = word_start - 1
+  end
+
+  -- Remove characters from word_start to last_char_pos
+  for i = word_start, last_char_pos do
+    table.remove(state.query, word_start)
+  end
+
+  -- Update cursor position
+  state.cursor_pos = word_start
+  state.initial_open = false
+  state.cursor_moved = false
+end
+
+---Clear the entire query line
+---@param state SelectaState
+local function clear_query_line(state)
+  state.query = {}
+  state.cursor_pos = 1
+  state.initial_open = false
+  state.cursor_moved = false
+end
+
 -- Pre-compute the movement keys
+---@param opts SelectaOptions
+---@return table<string, string[]>
 local function get_movement_keys(opts)
   local movement_config = opts.movement or M.config.movement
-  return {
-    next = {
-      vim.api.nvim_replace_termcodes(movement_config.next or "<C-n>", true, true, true),
-      vim.api.nvim_replace_termcodes(movement_config.alternative_next or "<C-j>", true, true, true),
-    },
-    previous = {
-      vim.api.nvim_replace_termcodes(movement_config.previous or "<C-p>", true, true, true),
-      vim.api.nvim_replace_termcodes(movement_config.alternative_previous or "<C-k>", true, true, true),
-    },
+  local keys = {
+    next = {},
+    previous = {},
+    close = {},
+    select = {},
+    delete_word = {},
+    clear_line = {},
   }
+
+  -- Handle arrays of keys
+  for action, mapping in pairs(movement_config) do
+    if action ~= "alternative_next" and action ~= "alternative_previous" then
+      if type(mapping) == "table" then
+        -- Handle array of keys
+        for _, key in ipairs(mapping) do
+          table.insert(keys[action], vim.api.nvim_replace_termcodes(key, true, true, true))
+        end
+      elseif type(mapping) == "string" then
+        -- Handle single key as string
+        table.insert(keys[action], vim.api.nvim_replace_termcodes(mapping, true, true, true))
+      end
+    end
+  end
+
+  -- Handle deprecated alternative mappings
+  if movement_config.alternative_next then
+    -- TODO: version 0.6.0 will start sending this message
+    -- vim.notify_once(
+    --   "alternative_next/previous are deprecated and will be removed in v1.0. "
+    --     .. "Use movement.next/previous arrays instead.",
+    --   vim.log.levels.WARN
+    -- )
+    table.insert(keys.next, vim.api.nvim_replace_termcodes(movement_config.alternative_next, true, true, true))
+  end
+  if movement_config.alternative_previous then
+    table.insert(keys.previous, vim.api.nvim_replace_termcodes(movement_config.alternative_previous, true, true, true))
+  end
+
+  return keys
 end
 
 -- Simplified movement handler
@@ -1226,29 +1311,28 @@ local function handle_char(state, char, opts)
   end
 
   local char_key = type(char) == "number" and vim.fn.nr2char(char) or char
+  local movement_keys = get_movement_keys(opts)
 
+  -- Handle custom keymaps first
   if opts.keymaps then
     for _, keymap in ipairs(opts.keymaps) do
       if char_key == vim.api.nvim_replace_termcodes(keymap.key, true, true, true) then
         local selected = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
         if selected then
-          -- Check for multiselect state
+          -- Handle multiselect state
           if opts.multiselect and opts.multiselect.enabled and state.selected_count > 0 then
-            -- Collect selected items
             local selected_items = {}
             for _, item in ipairs(state.filtered_items) do
               if state.selected[tostring(item.value or item.text)] then
                 table.insert(selected_items, item)
               end
             end
-            -- Pass all selected items to handler if there are any
             local should_close = keymap.handler(selected_items, state, M.close_picker)
             if should_close == false then
               M.close_picker(state)
               return nil
             end
           else
-            -- Original single-item behavior
             local should_close = keymap.handler(selected, state, M.close_picker)
             if should_close == false then
               M.close_picker(state)
@@ -1261,11 +1345,9 @@ local function handle_char(state, char, opts)
     end
   end
 
+  -- Handle multiselect keymaps
   if opts.multiselect and opts.multiselect.enabled then
     local multiselect_keys = opts.multiselect.keymaps or M.config.multiselect.keymaps
-
-    M.clear_log() -- Optional: clear the log when starting new session
-    -- Handle multiselect keymaps
     if char_key == vim.api.nvim_replace_termcodes(multiselect_keys.toggle, true, true, true) then
       if handle_toggle(state, opts, 1) then
         return nil
@@ -1284,30 +1366,62 @@ local function handle_char(state, char, opts)
       return nil
     end
   end
-  -- Handle mouse clicks
-  if char_key == SPECIAL_KEYS.MOUSE and vim.v.mouse_win ~= state.win and vim.v.mouse_win ~= state.prompt_win then
+
+  -- Handle movement and control keys
+  if vim.tbl_contains(movement_keys.previous, char_key) then
+    state.cursor_moved = true
+    state.initial_open = false
+    handle_movement(state, -1, opts)
+    return nil
+  elseif vim.tbl_contains(movement_keys.next, char_key) then
+    state.cursor_moved = true
+    state.initial_open = false
+    handle_movement(state, 1, opts)
+    return nil
+  elseif vim.tbl_contains(movement_keys.close, char_key) then
     if opts.on_cancel then
       opts.on_cancel()
     end
     M.close_picker(state)
     return nil
-  end
-
-  local movement_keys = get_movement_keys(opts)
-  local movement = nil
-
-  -- Determine movement direction from configured keys only
-  if vim.tbl_contains(movement_keys.previous, char_key) then
-    movement = -1
-  elseif vim.tbl_contains(movement_keys.next, char_key) then
-    movement = 1
-  end
-
-  if movement then
-    state.cursor_moved = true
-    state.initial_open = false
-    handle_movement(state, movement, opts)
-    return nil -- prevent further processing
+  elseif vim.tbl_contains(movement_keys.select, char_key) then
+    if opts.multiselect and opts.multiselect.enabled then
+      local selected_items = {}
+      for _, item in ipairs(state.items) do
+        if state.selected[get_item_id(item)] then
+          table.insert(selected_items, item)
+        end
+      end
+      if #selected_items > 0 and opts.multiselect.on_select then
+        opts.multiselect.on_select(selected_items)
+      elseif #selected_items == 0 then
+        local current = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
+        if current and opts.on_select then
+          opts.on_select(current)
+        end
+      end
+    else
+      local selected = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
+      if selected and opts.on_select then
+        opts.on_select(selected)
+      end
+    end
+    M.close_picker(state)
+    return nil
+  elseif vim.tbl_contains(movement_keys.delete_word, char_key) then
+    delete_last_word(state)
+    update_display(state, opts)
+    return nil
+  elseif vim.tbl_contains(movement_keys.clear_line, char_key) then
+    clear_query_line(state)
+    update_display(state, opts)
+    return nil
+  elseif char_key == SPECIAL_KEYS.MOUSE and vim.v.mouse_win ~= state.win and vim.v.mouse_win ~= state.prompt_win then
+    if opts.on_cancel then
+      opts.on_cancel()
+    end
+    M.close_picker(state)
+    return nil
   elseif char_key == SPECIAL_KEYS.LEFT then
     state.cursor_pos = math.max(1, state.cursor_pos - 1)
   elseif char_key == SPECIAL_KEYS.RIGHT then
@@ -1319,38 +1433,6 @@ local function handle_char(state, char, opts)
       state.initial_open = false
       state.cursor_moved = false
     end
-  elseif char_key == SPECIAL_KEYS.CR then
-    if opts.multiselect and opts.multiselect.enabled then
-      local selected_items = {}
-      for _, item in ipairs(state.items) do
-        if state.selected[get_item_id(item)] then
-          table.insert(selected_items, item)
-        end
-      end
-      if #selected_items > 0 and opts.multiselect.on_select then
-        opts.multiselect.on_select(selected_items)
-      elseif #selected_items == 0 then
-        -- If no items selected, treat as single select
-        local current = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
-        if current and opts.on_select then
-          opts.on_select(current)
-        end
-      end
-    else
-      -- Existing single-select behavior
-      local selected = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
-      if selected and opts.on_select then
-        opts.on_select(selected)
-      end
-    end
-    M.close_picker(state)
-    return nil
-  elseif char_key == SPECIAL_KEYS.ESC then
-    if opts.on_cancel then
-      opts.on_cancel()
-    end
-    M.close_picker(state)
-    return nil
   elseif type(char) == "number" and char >= 32 and char <= 126 then
     table.insert(state.query, state.cursor_pos, vim.fn.nr2char(char))
     state.cursor_pos = state.cursor_pos + 1
