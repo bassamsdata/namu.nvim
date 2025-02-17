@@ -1,0 +1,54 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches:
+      - main
+  pull_request: ~
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            neovim_url: https://github.com/neovim/neovim/releases/download/nightly/nvim-linux-x86_64.tar.gz
+          - os: ubuntu-latest
+            neovim_url: https://github.com/neovim/neovim/releases/download/v0.10.0/nvim-linux64.tar.gz
+
+    steps:
+      - name: Checkout Repository 🛎️
+        uses: actions/checkout@v4
+
+      - name: Cache Neovim 📂
+        id: cache-neovim
+        uses: actions/cache@v4
+        with:
+          path: _neovim
+          key: neovim-${{ runner.os }}-${{ matrix.neovim_url }}
+
+      - name: Install Neovim 🏗️
+        if: steps.cache-neovim.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p _neovim
+          curl -sL ${{ matrix.neovim_url }} | tar xzf - --strip-components=1 -C "${PWD}/_neovim"
+
+      - name: Setup Neovim Environment ⚙️
+        run: |
+          echo "Adding Neovim to PATH"
+          echo "${PWD}/_neovim/bin" >> $GITHUB_PATH
+          mkdir -p ~/.local/share/nvim/site/pack/vendor/start
+          ln -s $(pwd) ~/.local/share/nvim/site/pack/vendor/start
+
+      - name: Run Tests 🧪
+        run: |
+          export PATH="${PWD}/_neovim/bin:${PATH}"
+          export VIM="${PWD}/_neovim/share/nvim/runtime"
+          nvim --version
+          make test
