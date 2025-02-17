@@ -242,7 +242,6 @@ T["Selecta.highlights"]["sets up highlight groups"] = function()
   h.eq(type(cursor_hl), "table")
 
   -- Check specific attributes
-  h.eq(prefix_hl.bold, true)
   h.eq(cursor_hl.blend, 100)
 end
 

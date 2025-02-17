@@ -330,7 +330,8 @@ local function calculate_window_size(items, opts, formatter)
     content_width = content_width + padding
     -- Calculate max available width based on position
     local max_available_width
-    if opts.row_position:match("_right") then
+    local row_position = opts.row_position or M.config.row_position or "top10"
+    if row_position:match("_right") then
       if M.config.right_position.fixed then
         -- For right-aligned windows, available width is from right position to screen edge
         local right_col = math.floor(vim.o.columns * M.config.right_position.ratio)
