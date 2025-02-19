@@ -905,6 +905,7 @@ local function symbols_to_selecta_items(raw_symbols)
     end
 
     local clean_name = result.name:match("^([^%s%(]+)") or result.name
+    clean_name = state.original_ft == "markdown" and result.name or clean_name
     local prefix = get_prefix(depth, STYLE)
     local display_text = prefix .. clean_name
 
