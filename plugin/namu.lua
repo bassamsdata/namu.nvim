@@ -94,4 +94,4 @@ vim.api.nvim_create_user_command("Namu", command_callback, {
   desc = "Namu plugin command with subcommands. Use 'Selecta help' for more information",
 })
 
-require("namu").setup({})
+-- require("namu").setup({})

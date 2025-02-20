@@ -119,6 +119,7 @@ require('selecta').pick(items, {
 ---@field debug? boolean
 ---@field movement? SelectaMovementConfig
 ---@field custom_keymaps? table<string, SelectaCustomAction> Custom actions
+---@field pre_filter? fun(items: SelectaItem[], query: string): SelectaItem[], string Function to pre-filter items before matcher
 
 ---@class SelectaHooks
 ---@field on_render? fun(buf: number, items: SelectaItem[], opts: SelectaOptions) Called after items are rendered
@@ -181,7 +182,7 @@ M.config = {
     padding = 1,
   },
   offset = 0,
-  debug = false, -- Debug logging flag
+  debug = false,
   preserve_order = false, -- Default to false unless the other module handle it
   keymaps = {},
   auto_select = false,
@@ -222,7 +223,7 @@ local cursor_cache = {
 }
 
 function M.log(message)
-  logger.log(message, M.config.debug)
+  logger.log(message)
 end
 
 M.clear_log = logger.clear_log
@@ -261,6 +262,7 @@ end
 local highlights = {
   SelectaPrefix = { link = "Special" },
   SelectaMatch = { link = "Identifier" }, -- or maybe DiagnosticFloatingOk
+  SelectaFilter = { link = "Type" },
   SelectaCursor = { blend = 100, nocombine = true },
   SelectaPrompt = { link = "FloatTitle" },
   SelectaSelected = { link = "Statement" },
@@ -270,26 +272,12 @@ local highlights = {
 ---Set up the highlight groups
 ---@return nil
 local function setup_highlights()
-  -- Ensure highlights exist even if colorscheme doesn't provide them
-  local fallbacks = {
-    SelectaMatch = { fg = "#89dceb", bold = true }, -- Preserve original match highlighting
-    SelectaPrefix = { fg = "#89b4fa", bold = true },
-    SelectaCursor = { blend = 100, nocombine = true },
-    SelectaSelected = { fg = "#b5581a", bold = true },
-    SelectaFooter = { fg = "#6c7086", italic = true },
-  }
-
-  for group, opts in pairs(highlights) do
-    -- Try to set linked highlight first
-    local success = pcall(vim.api.nvim_set_hl, 0, group, opts)
-    -- If link fails, use fallback
-    if not success and fallbacks[group] then
-      vim.api.nvim_set_hl(0, group, fallbacks[group])
-    end
+  M.log("Setting up highlights...")
+  M.log("Current highlights table: " .. vim.inspect(highlights))
+  for name, attrs in pairs(highlights) do
+    vim.api.nvim_set_hl(0, name, attrs)
   end
 end
-
-local log_file = vim.fn.stdpath("cache") .. "/selecta_debug.log"
 
 ---@class PrefixInfo
 ---@field text string The prefix text (icon or kind text)
@@ -483,29 +471,43 @@ end
 ---@param query string
 ---@param opts SelectaOptions
 function M.update_filtered_items(state, query, opts)
-  if query ~= "" then
+  local items_to_filter = state.items
+  local actual_query = query
+
+  if opts.pre_filter then
+    local new_items, new_query = opts.pre_filter(state.items, query)
+    if new_items then
+      items_to_filter = new_items
+      -- Show the filtered items even if new_query is empty
+      state.filtered_items = new_items
+    end
+    actual_query = new_query or ""
+  end
+
+  -- Only proceed with further filtering if there's an actual query
+  if actual_query ~= "" then
     state.filtered_items = {}
-    for _, item in ipairs(state.items) do
-      local match = matcher.get_match_positions(item.text, query)
+    for _, item in ipairs(items_to_filter) do
+      local match = matcher.get_match_positions(item.text, actual_query)
       if match then
         table.insert(state.filtered_items, item)
       end
     end
+
     local best_index
-    state.filtered_items, best_index = matcher.sort_items(state.filtered_items, query, opts.preserve_order)
-    -- Store best match index for cursor positioning
+    state.filtered_items, best_index = matcher.sort_items(state.filtered_items, actual_query, opts.preserve_order)
     state.best_match_index = best_index
 
-    -- Handle auto-select here
     if opts.auto_select and #state.filtered_items == 1 and not state.initial_open then
       local selected = state.filtered_items[1]
       if selected and opts.on_select then
-        opts.on_select(selected) -- Call directly without scheduling
+        opts.on_select(selected)
         M.close_picker(state)
       end
     end
-  else
-    state.filtered_items = state.items
+  elseif not opts.pre_filter then
+    -- Only set to all items if there's no pre_filter
+    state.filtered_items = items_to_filter
     state.best_match_index = nil
   end
 end
@@ -543,8 +545,36 @@ end
 ---@param opts SelectaOptions
 ---@param query string
 local function apply_highlights(buf, line_nr, item, opts, query, line_length, state)
-  -- Get the formatted display string
   local display_str = opts.formatter(item)
+
+  -- First, check if this is a symbol filter query
+  -- local filter = query:match("^%%%w%w(.*)$")
+  -- local actual_query = filter and query:sub(4) or query -- Use everything after %xx if filter exists
+  local filter, remaining = query:match("^(%%%w%w)(.*)$")
+  local actual_query = remaining or query
+
+  -- Highlight title prefix in prompt buffer
+  if state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) then
+    -- Highlight the title prefix
+    local prefix = opts.window.title_prefix
+    if prefix then
+      vim.api.nvim_buf_set_extmark(state.prompt_buf, ns_id, 0, 0, {
+        end_col = #prefix,
+        hl_group = "SelectaFilter",
+        priority = 200,
+      })
+    end
+    -- If there's a filter, highlight it in the prompt buffer
+    if filter then
+      local prefix_len = #(opts.window.title_prefix or "")
+      vim.api.nvim_buf_set_extmark(state.prompt_buf, ns_id, 0, prefix_len, {
+        end_col = prefix_len + 3, -- Length of %xx is 3
+        hl_group = "SelectaFilter",
+        priority = 200,
+      })
+    end
+  end
+  -- Get the formatted display string
   if opts.display.mode == "raw" then
     local offset = opts.offset and opts.offset(item) or 0
     if query ~= "" then
@@ -589,21 +619,21 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
     end
 
     -- Debug log
-    M.log(
-      string.format(
-        "Highlighting item: %s\nFull display: '%s'\nIcon boundary: %d\nQuery: '%s'",
-        item.text,
-        display_str,
-        icon_end,
-        query
-      )
-    )
+    -- M.log(
+    --   string.format(
+    --     "Highlighting item: %s\nFull display: '%s'\nIcon boundary: %d\nQuery: '%s'",
+    --     item.text,
+    --     display_str,
+    --     icon_end,
+    --     query
+    --   )
+    -- )
     -- Calculate base offset for query highlights (icon + space)
     local base_offset = item.icon and (vim.api.nvim_strwidth(item.icon) + 1) or 0
 
-    -- Highlight matches in the text
-    if query ~= "" then
-      local match = matcher.get_match_positions(item.text, query)
+    -- Highlight matches in the text using actual_query
+    if actual_query ~= "" then -- Use actual_query instead of query
+      local match = matcher.get_match_positions(item.text, actual_query)
       if match then
         for _, pos in ipairs(match.positions) do
           -- Get the matched text
@@ -619,9 +649,9 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
             local highlight_text = display_str:sub(start_col + 1, end_col)
 
             -- Debug log
-            M.log(
-              string.format("Match position: [%d, %d]\nFinal position: [%d, %d]", pos[1], pos[2], start_col, end_col)
-            )
+            -- M.log(
+            --   string.format("Match position: [%d, %d]\nFinal position: [%d, %d]", pos[1], pos[2], start_col, end_col)
+            -- )
 
             vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, start_col, {
               end_col = end_col,
@@ -1464,6 +1494,11 @@ end
 ---@param opts? SelectaOptions
 ---@return SelectaItem|nil
 function M.pick(items, opts)
+  M.log("pick called with " .. #items .. " items")
+  for group, _ in pairs(highlights) do
+    local hl = vim.api.nvim_get_hl(0, { name = group })
+    M.log(string.format("Current highlight for %s: %s", group, vim.inspect(hl)))
+  end
   -- Merge options with defaults
   opts = vim.tbl_deep_extend("force", {
     title = "Select",
@@ -1477,7 +1512,9 @@ function M.pick(items, opts)
     movement = vim.tbl_deep_extend("force", M.config.movement, {}),
     auto_select = M.config.auto_select,
     window = vim.tbl_deep_extend("force", M.config.window, {}),
+    pre_filter = nil,
     row_position = M.config.row_position,
+    debug = M.config.debug,
   }, opts or {})
 
   -- Calculate max_prefix_width before creating formatter
@@ -1606,12 +1643,20 @@ function M.setup(opts)
   opts = opts or {}
   M.config = vim.tbl_deep_extend("force", M.config, opts)
   -- Set up initial highlights
-  setup_highlights()
+  logger.setup(opts)
+  M.log("Calling setup_highlights from M.setup")
+  vim.schedule(function()
+    setup_highlights()
+  end)
 
   -- Create autocmd for ColorScheme event
+  M.log("Creating ColorScheme autocmd")
   vim.api.nvim_create_autocmd("ColorScheme", {
     group = vim.api.nvim_create_augroup("SelectaHighlights", { clear = true }),
-    callback = setup_highlights,
+    callback = function()
+      M.log("ColorScheme autocmd triggered")
+      setup_highlights()
+    end,
   })
 end
 

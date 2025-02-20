@@ -1,9 +1,15 @@
 local M = {}
 
 local log_file = vim.fn.stdpath("cache") .. "/selecta_debug.log"
+local debug_enabled = false -- Module state for debug configuration
+
+-- New function to configure the logger
+function M.setup(opts)
+  debug_enabled = opts and opts.debug or false
+end
 
 ---@param message string|table
-function M.log(message, debug_enabled)
+function M.log(message)
   if not debug_enabled then
     return
   end
