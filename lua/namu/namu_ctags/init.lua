@@ -823,7 +823,6 @@ local function highlight_symbol(symbol)
   vim.api.nvim_set_current_win(picker_win)
 end
 
-
 -- Choose your style here: 1, 2, or 3
 local STYLE = 2 -- TODO: move it to config later
 
@@ -1029,10 +1028,12 @@ local function symbols_to_selecta_items(raw_symbols)
     end
 
     local depth = 0
-    
+
     if result.scope then
       depth = tree[result.scope] or -1
       depth = depth + 1
+      tree[result.name] = depth
+    else
       tree[result.name] = depth
     end
     local clean_name = result.name:match("^([^%s%(]+)") or result.name
@@ -1289,13 +1290,17 @@ local function request_symbols(bufnr, callback)
         end
       end
       vim.schedule(function()
-        _G.results = result
         callback(request_err, result, ctx)
       end)
     end
   )
-  -- Check if the request was successful and that the request_id is not nil
-  if request.is_closing() and request.pid then
+  -- Check if the request was successful
+  local ok, closed = pcall(request.is_closing)
+  if not ok then
+    -- request ended
+    return nil
+  end
+  if not closed and request.pid then
     -- Store the client and request_id
     state.current_request = {
       client = request,
@@ -1334,7 +1339,10 @@ function M.show()
 
   request_symbols(state.original_buf, function(err, result, _)
     if err ~= nil then
-      local error_message = type(err) == "table" and err.stderr or err.stderr
+      local error_message = err
+      if type(err) == "table" then
+        error_message = err.stderr or err.stderr
+      end
       vim.notify("Error fetching symbols: " .. error_message, vim.log.levels.ERROR, notify_opts)
       return
     end
