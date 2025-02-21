@@ -14,6 +14,7 @@ M.setup = function(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts)
 
   if M.config.namu_symbols.enable then
+    require("namu.selecta.selecta").setup(M.config.namu_symbols.options)
     require("namu.namu_symbols").setup(M.config.namu_symbols.options)
   end
 

@@ -36,42 +36,6 @@ vim.keymap.set('n', 'gs', require('namu').jump, {
 local selecta = require("namu.selecta.selecta")
 local M = {}
 
----@alias LSPSymbolKind string
--- ---@alias TSNode userdata
--- ---@alias vim.lsp.Client table
-
----@class LSPSymbol
----@field name string Symbol name
----@field kind number LSP symbol kind number
----@field range table<string, table> Symbol range in the document
----@field location? table<string, table>
----@field children? LSPSymbol[] Child symbols
-
----@class NamuConfig
----@field AllowKinds table<string, string[]> Symbol kinds to include
----@field display table<string, string|number> Display configuration
----@field kindText table<string, string> Text representation of kinds
----@field kindIcons table<string, string> Icons for kinds
----@field BlockList table<string, string[]> Patterns to exclude
----@field icon string Icon for the picker
----@field highlight string Highlight group for preview
----@field highlights table<string, string> Highlight groups
----@field window table Window configuration
----@field debug boolean Enable debug logging
----@field focus_current_symbol boolean Focus the current symbol
----@field auto_select boolean Auto-select single matches
----@field row_position "center"|"top10"|"top10_right"|"center_right"|"bottom" Window position preset
----@field multiselect table Multiselect configuration
----@field custom_keymaps table Keymap configuration
-
----@class NamuState
----@field original_win number|nil Original window
----@field original_buf number|nil Original buffer
----@field original_ft string|nil Original filetype
----@field original_pos table|nil Original cursor position
----@field preview_ns number|nil Preview namespace
----@field current_request table|nil Current LSP request ID
-
 -- Store original window and position for preview
 ---@type NamuState
 local state = {
@@ -226,7 +190,7 @@ M.config = {
     height_ratio = 0.6,
     title_prefix = "󱠦 ",
   },
-  debug = false,
+  debug = true,
   focus_current_symbol = true,
   auto_select = false,
   initially_hidden = false,
@@ -255,6 +219,81 @@ M.config = {
     -- Deprecated mappings (but still working)
     -- alternative_next = "<DOWN>", -- @deprecated: Will be removed in v1.0
     -- alternative_previous = "<UP>", -- @deprecated: Will be removed in v1.0
+  },
+  filter_symbol_types = {
+    -- Functions
+    fn = {
+      kinds = {
+        "Function",
+        "Method",
+        "Constructor",
+      },
+      description = "Functions, methods and constructors",
+    },
+    -- Variables
+    va = {
+      kinds = {
+        "Variable",
+        "Parameter",
+        "TypeParameter",
+      },
+      description = "Variables and parameters",
+    },
+    -- Classes
+    cl = {
+      kinds = {
+        "Class",
+        "Interface",
+        "Struct",
+      },
+      description = "Classes, interfaces and structures",
+    },
+    -- Constants
+    co = {
+      kinds = {
+        "Constant",
+        "Boolean",
+        "Number",
+        "String",
+      },
+      description = "Constants and literal values",
+    },
+    -- Fields
+    fi = {
+      kinds = {
+        "Field",
+        "Property",
+        "EnumMember",
+      },
+      description = "Object fields and properties",
+    },
+    -- Modules
+    mo = {
+      kinds = {
+        "Module",
+        "Package",
+        "Namespace",
+      },
+      description = "Modules and packages",
+    },
+    -- Arrays
+    ar = {
+      kinds = {
+        "Array",
+        "List",
+        "Sequence",
+      },
+      description = "Arrays, lists and sequences",
+    },
+    -- Objects
+    ob = {
+      kinds = {
+        "Object",
+        "Class",
+        "Instance",
+      },
+      description = "Objects and class instances",
+    },
   },
   custom_keymaps = {
     yank = {
@@ -1020,6 +1059,25 @@ function M.clear_preview_highlight()
   end
 end
 
+---@class SymbolTypeFilter
+---@field type string The type of symbol to filter
+---@field remaining string The remaining query to match
+local function parse_symbol_filter(query)
+  if #query >= 3 and query:sub(1, 1) == "/" then
+    local type_code = query:sub(2, 3)
+    local symbol_type = M.config.filter_symbol_types[type_code]
+
+    if symbol_type then
+      return {
+        kinds = symbol_type.kinds,
+        remaining = query:sub(4),
+        description = symbol_type.description,
+      }
+    end
+  end
+  return nil
+end
+
 ---Performs the actual jump to selected symbol location
 ---@param symbol table LSP symbol
 local function jump_to_symbol(symbol)
@@ -1048,6 +1106,24 @@ local function show_picker(selectaItems, notify_opts)
     initially_hidden = M.config.initially_hidden,
     movement = vim.tbl_deep_extend("force", M.config.movement, {}),
     row_position = M.config.row_position,
+    debug = M.config.debug,
+    pre_filter = function(items, query)
+      local filter = parse_symbol_filter(query)
+      if filter then
+        local kinds_lower = vim.tbl_map(string.lower, filter.kinds)
+        local filtered = vim.tbl_filter(function(item)
+          return item.kind and vim.tbl_contains(kinds_lower, string.lower(item.kind))
+        end, items)
+
+        -- TODO: make this notifications configureable
+        -- if #filtered == 0 then
+        --   vim.notify(string.format("No symbols of type '%s' found", filter.type), vim.log.levels.INFO)
+        -- end
+
+        return filtered, filter.remaining
+      end
+      return items, query
+    end,
     hooks = {
       on_render = function(buf, filtered_items)
         apply_kind_highlights(buf, filtered_items)
@@ -1197,7 +1273,7 @@ end
 -- Add the new request_symbols function
 ---@param bufnr number
 ---@param callback fun(err: any, result: any, ctx: any)
-local function request_symbols(bufnr, callback)
+function M.request_symbols(bufnr, callback)
   -- Cancel any existing request
   if state.current_request then
     local client = state.current_request.client
@@ -1242,7 +1318,9 @@ local function request_symbols(bufnr, callback)
 end
 
 ---Main entry point for symbol jumping functionality
-function M.show()
+---@param opts? {filter_kind?: string} Optional settings to filter specific kinds
+function M.show(opts)
+  opts = opts or {}
   -- Store current window and position
   state.original_win = vim.api.nvim_get_current_win()
   state.original_buf = vim.api.nvim_get_current_buf()
@@ -1261,11 +1339,18 @@ function M.show()
   local cache_key = string.format("%d_%d", bufnr, vim.b[bufnr].changedtick or 0)
 
   if M.symbol_cache and M.symbol_cache.key == cache_key then
-    show_picker(M.symbol_cache.items, notify_opts)
+    local items = M.symbol_cache.items
+    -- If filter_kind is specified, filter the cached items
+    if opts.filter_kind then
+      items = vim.tbl_filter(function(item)
+        return item.kind == opts.filter_kind
+      end, items)
+    end
+    show_picker(items, notify_opts)
     return
   end
 
-  request_symbols(state.original_buf, function(err, result, _)
+  M.request_symbols(state.original_buf, function(err, result, _)
     if err then
       local error_message = type(err) == "table" and err.message or err
       vim.notify("Error fetching symbols: " .. error_message, vim.log.levels.ERROR, notify_opts)
@@ -1285,6 +1370,13 @@ function M.show()
       items = selectaItems,
     }
 
+    -- Apply filter if specified
+    if opts.filter_kind then
+      selectaItems = vim.tbl_filter(function(item)
+        return item.kind == opts.filter_kind
+      end, selectaItems)
+    end
+
     show_picker(selectaItems, notify_opts)
   end)
 end
@@ -1295,8 +1387,17 @@ function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
 
   if M.config.kinds and M.config.kinds.enable_highlights then
-    M.setup_highlights()
+    vim.schedule(function()
+      M.setup_highlights()
+    end)
   end
+
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    group = vim.api.nvim_create_augroup("namuHighlights", { clear = true }),
+    callback = function()
+      M.setup_highlights()
+    end,
+  })
 end
 
 --Sets up default keymappings for symbol navigation
