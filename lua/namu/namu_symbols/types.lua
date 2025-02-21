@@ -20,6 +20,8 @@
 ---@field co NamuSymbolType Constant symbols
 ---@field fi NamuSymbolType Field symbols
 ---@field mo NamuSymbolType Module symbols
+---@field ar NamuSymbolType Array symbols
+---@field ob NamuSymbolType Object symbols
 
 ---@class NamuActionConfig
 ---@field close_on_yank boolean Whether to close picker after yanking text

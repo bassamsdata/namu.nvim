@@ -276,6 +276,24 @@ M.config = {
       },
       description = "Modules and packages",
     },
+    -- Arrays
+    ar = {
+      kinds = {
+        "Array",
+        "List",
+        "Sequence",
+      },
+      description = "Arrays, lists and sequences",
+    },
+    -- Objects
+    ob = {
+      kinds = {
+        "Object",
+        "Class",
+        "Instance",
+      },
+      description = "Objects and class instances",
+    },
   },
   custom_keymaps = {
     yank = {
