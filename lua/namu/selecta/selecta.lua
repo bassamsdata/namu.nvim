@@ -299,12 +299,45 @@ local function get_prefix_info(item, max_prefix_width)
   }
 end
 
-local POSITION_RATIOS = {
-  top10 = 0.1,
-  bottom = 0.8,
-  center = 0.5,
-  right = 0.7,
-}
+---@param position string|nil
+---@return {type: string, ratio: number}
+local function parse_position(position)
+  if type(position) ~= "string" then
+    return {
+      type = "top",
+      ratio = 0.1,
+    }
+  end
+
+  -- Match patterns like "top10", "top20_right", "center", etc.
+  ---@diagnostic disable-next-line: undefined-field
+  local base, percent, right = position:match("^(top)(%d+)(.*)$")
+
+  if base and percent then
+    -- Convert percentage to ratio (e.g., 10 -> 0.1)
+    return {
+      type = base .. (right == "_right" and "_right" or ""),
+      ratio = tonumber(percent) / 100,
+    }
+  end
+
+  local fixed_positions = {
+    center = 0.5,
+    bottom = 0.8,
+  }
+  -- Handle fixed positions
+  if fixed_positions[position] then
+    return {
+      type = position,
+      ratio = fixed_positions[position],
+    }
+  end
+  return {
+    type = "top",
+    ratio = 0.1,
+  }
+end
+
 ---@param items SelectaItem[]
 ---@param opts SelectaOptions
 ---@param formatter fun(item: SelectaItem): string
@@ -959,10 +992,16 @@ local function get_window_position(width, row_position)
   local cmdheight = vim.o.cmdheight
   local available_lines = lines - cmdheight - 2
 
+  -- Parse the position
+  local pos_info = parse_position(row_position)
+  -- this will never return nil. I did tis to satisfy lua annotations
+  if not pos_info then
+    return 0, 0
+  end
+
   -- Calculate column position once
-  local is_right = row_position:match("_right")
   local col
-  if is_right then
+  if pos_info.type:find("_right$") then -- Changed from row_position:match
     if M.config.right_position.fixed then
       -- Fixed right position regardless of width
       col = math.floor(columns * M.config.right_position.ratio)
@@ -977,12 +1016,12 @@ local function get_window_position(width, row_position)
 
   -- Calculate row position
   local row
-  if row_position:match("top") then
-    row = math.floor(lines * POSITION_RATIOS.top10)
-  elseif row_position == "bottom" then
-    row = math.floor(lines * POSITION_RATIOS.bottom) - 4
+  if pos_info.type:match("^top") then
+    row = math.floor(lines * pos_info.ratio)
+  elseif pos_info.type == "bottom" then
+    row = math.floor(lines * pos_info.ratio) - 4
   else -- center positions
-    row = math.max(1, math.floor(available_lines * POSITION_RATIOS.center))
+    row = math.max(1, math.floor(available_lines * pos_info.ratio))
   end
 
   return row, col
@@ -1597,6 +1636,8 @@ M._test = {
   validate_input = matcher.validate_input,
   apply_highlights = apply_highlights,
   setup_highlights = setup_highlights,
+  get_window_position = get_window_position,
+  parse_position = parse_position,
 }
 
 ---Show picker without using internal defaults
