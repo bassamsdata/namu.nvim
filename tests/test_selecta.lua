@@ -1,7 +1,8 @@
----@diagnostic disable: need-check-nil
+---@diagnostic disable: need-check-nil, param-type-mismatch
 local h = require("tests.helpers")
 local selecta = require("namu.selecta.selecta")
 local matcher = require("namu.selecta.matcher")
+---@diagnostic disable-next-line: undefined-global
 local new_set = MiniTest.new_set
 
 local T = new_set()
