@@ -87,6 +87,7 @@ local function add_highlight(buf, ns_id, line, col_start, col_end, hl_group)
   local end_col = col_end == -1 and #line_content or math.min(col_end, #line_content)
 
   if end_col > col_start then
+    -- TODO: need to move to set_extmarks -- just couldn't get it to work quickly, so this stays for now
     vim.api.nvim_buf_add_highlight(buf, ns_id, hl_group, line, col_start, end_col)
   end
 end
