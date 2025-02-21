@@ -36,42 +36,6 @@ vim.keymap.set('n', 'gs', require('namu').jump, {
 local selecta = require("namu.selecta.selecta")
 local M = {}
 
----@alias LSPSymbolKind string
--- ---@alias TSNode userdata
--- ---@alias vim.lsp.Client table
-
----@class LSPSymbol
----@field name string Symbol name
----@field kind number LSP symbol kind number
----@field range table<string, table> Symbol range in the document
----@field location? table<string, table>
----@field children? LSPSymbol[] Child symbols
-
----@class NamuConfig
----@field AllowKinds table<string, string[]> Symbol kinds to include
----@field display table<string, string|number> Display configuration
----@field kindText table<string, string> Text representation of kinds
----@field kindIcons table<string, string> Icons for kinds
----@field BlockList table<string, string[]> Patterns to exclude
----@field icon string Icon for the picker
----@field highlight string Highlight group for preview
----@field highlights table<string, string> Highlight groups
----@field window table Window configuration
----@field debug boolean Enable debug logging
----@field focus_current_symbol boolean Focus the current symbol
----@field auto_select boolean Auto-select single matches
----@field row_position "center"|"top10"|"top10_right"|"center_right"|"bottom" Window position preset
----@field multiselect table Multiselect configuration
----@field custom_keymaps table Keymap configuration
-
----@class NamuState
----@field original_win number|nil Original window
----@field original_buf number|nil Original buffer
----@field original_ft string|nil Original filetype
----@field original_pos table|nil Original cursor position
----@field preview_ns number|nil Preview namespace
----@field current_request table|nil Current LSP request ID
-
 -- Store original window and position for preview
 ---@type NamuState
 local state = {
@@ -255,6 +219,63 @@ M.config = {
     -- Deprecated mappings (but still working)
     -- alternative_next = "<DOWN>", -- @deprecated: Will be removed in v1.0
     -- alternative_previous = "<UP>", -- @deprecated: Will be removed in v1.0
+  },
+  filter_symbol_types = {
+    -- Functions
+    fn = {
+      kinds = {
+        "Function",
+        "Method",
+        "Constructor",
+      },
+      description = "Functions, methods and constructors",
+    },
+    -- Variables
+    va = {
+      kinds = {
+        "Variable",
+        "Parameter",
+        "TypeParameter",
+      },
+      description = "Variables and parameters",
+    },
+    -- Classes
+    cl = {
+      kinds = {
+        "Class",
+        "Interface",
+        "Struct",
+      },
+      description = "Classes, interfaces and structures",
+    },
+    -- Constants
+    co = {
+      kinds = {
+        "Constant",
+        "Boolean",
+        "Number",
+        "String",
+      },
+      description = "Constants and literal values",
+    },
+    -- Fields
+    fi = {
+      kinds = {
+        "Field",
+        "Property",
+        "EnumMember",
+      },
+      description = "Object fields and properties",
+    },
+    -- Modules
+    mo = {
+      kinds = {
+        "Module",
+        "Package",
+        "Namespace",
+      },
+      description = "Modules and packages",
+    },
   },
   custom_keymaps = {
     yank = {
@@ -1019,183 +1040,17 @@ function M.clear_preview_highlight()
   end
 end
 
-local default_symbol_types = {
-  -- Functions
-  fn = {
-    name = "function",
-    aliases = { "function", "func", "method", "routine" },
-    description = "Functions and methods",
-  },
-  -- Variables
-  va = {
-    name = "variable",
-    aliases = { "variable", "var", "let" },
-    description = "Variables and let bindings",
-  },
-  -- Classes
-  cl = {
-    name = "type",
-    aliases = { "class", "struct", "type" },
-    description = "Classes and complex types",
-  },
-  -- Constants
-  co = {
-    name = "constant",
-    aliases = { "constant", "const" },
-    description = "Constant values",
-  },
-  -- Methods
-  me = {
-    name = "method",
-    aliases = { "method", "member", "func" },
-    description = "Class/object methods",
-  },
-  -- Fields
-  fi = {
-    name = "field",
-    aliases = { "field", "property", "prop" },
-    description = "Object fields and properties",
-  },
-  -- Modules
-  mo = {
-    name = "module",
-    aliases = { "module", "mod" },
-    description = "Modules and packages",
-  },
-  -- Namespaces
-  na = {
-    name = "namespace",
-    aliases = { "namespace", "ns" },
-    description = "Namespaces and scopes",
-  },
-  -- Enums
-  en = {
-    name = "enum",
-    aliases = { "enum", "enumeration" },
-    description = "Enumerations",
-  },
-}
-
----@class SymbolTypeHelp
----@field create_help_buffer function Create and show the help buffer
-local SymbolTypeHelp = {}
-
-function SymbolTypeHelp.create_help_buffer()
-  -- Create a new buffer
-  local buf = vim.api.nvim_create_buf(false, true)
-
-  -- Set buffer options
-  vim.api.nvim_buf_set_option(buf, "buftype", "nofile")
-  vim.api.nvim_buf_set_option(buf, "bufhidden", "wipe")
-  vim.api.nvim_buf_set_option(buf, "swapfile", false)
-  vim.api.nvim_buf_set_option(buf, "modifiable", false)
-  vim.api.nvim_buf_set_option(buf, "filetype", "namu-help")
-
-  -- Create content
-  local lines = {
-    "Namu Symbol Types",
-    string.rep("=", 40),
-    "",
-    "Usage: Type %xx followed by search term",
-    "Example: %fn main - finds functions containing 'main'",
-    "",
-    "Available Symbol Types:",
-    string.rep("-", 40),
-    "",
-  }
-
-  -- Add symbol types
-  for code, symbol_type in pairs(default_symbol_types) do
-    table.insert(lines, string.format("  %s - %s", code, symbol_type.description))
-    table.insert(lines, string.format("    Matches: %s", table.concat(symbol_type.aliases, ", ")))
-    table.insert(lines, "")
-  end
-
-  -- Set buffer content
-  vim.api.nvim_buf_set_option(buf, "modifiable", true)
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  vim.api.nvim_buf_set_option(buf, "modifiable", false)
-
-  -- Create window
-  local width = math.min(60, vim.o.columns - 4)
-  local height = math.min(#lines, vim.o.lines - 4)
-  local row = math.floor((vim.o.lines - height) / 2)
-  local col = math.floor((vim.o.columns - width) / 2)
-
-  local win = vim.api.nvim_open_win(buf, true, {
-    relative = "editor",
-    width = width,
-    height = height,
-    row = row,
-    col = col,
-    style = "minimal",
-    border = "rounded",
-  })
-
-  -- Set window options
-  vim.wo[win].conceallevel = 2
-  vim.wo[win].foldenable = false
-  vim.wo[win].wrap = false
-
-  -- Setup highlights
-  vim.cmd([[
-    highlight default link NamuHelpHeader Title
-    highlight default link NamuHelpSubHeader Statement
-    highlight default link NamuHelpCode Special
-    highlight default link NamuHelpType Type
-    highlight default link NamuHelpAlias Comment
-  ]])
-
-  -- Apply highlights
-  local ns_id = vim.api.nvim_create_namespace("namu_help")
-
-  -- Header
-  vim.api.nvim_buf_add_highlight(buf, ns_id, "NamuHelpHeader", 0, 0, -1)
-
-  -- Usage section
-  vim.api.nvim_buf_add_highlight(buf, ns_id, "NamuHelpSubHeader", 3, 0, 5)
-  vim.api.nvim_buf_add_highlight(buf, ns_id, "NamuHelpCode", 4, 0, -1)
-
-  -- Symbol types section
-  vim.api.nvim_buf_add_highlight(buf, ns_id, "NamuHelpSubHeader", 6, 0, -1)
-
-  -- Highlight each symbol type
-  local current_line = 9
-  for _ in pairs(default_symbol_types) do
-    -- Highlight the code and description
-    vim.api.nvim_buf_add_highlight(buf, ns_id, "NamuHelpCode", current_line, 2, 4)
-    vim.api.nvim_buf_add_highlight(buf, ns_id, "NamuHelpType", current_line, 7, -1)
-    -- Highlight aliases
-    vim.api.nvim_buf_add_highlight(buf, ns_id, "NamuHelpAlias", current_line + 1, 4, -1)
-    current_line = current_line + 3
-  end
-
-  -- Set buffer keymaps
-  local opts = { noremap = true, silent = true }
-  vim.api.nvim_buf_set_keymap(buf, "n", "q", ":close<CR>", opts)
-  vim.api.nvim_buf_set_keymap(buf, "n", "<Esc>", ":close<CR>", opts)
-
-  -- Return buffer and window IDs
-  return buf, win
-end
-
--- Add to your module
-function M.show_symbol_help()
-  SymbolTypeHelp.create_help_buffer()
-end
-
 ---@class SymbolTypeFilter
 ---@field type string The type of symbol to filter
 ---@field remaining string The remaining query to match
 local function parse_symbol_filter(query)
-  if #query >= 3 and query:sub(1, 1) == "%" then
+  if #query >= 3 and query:sub(1, 1) == "/" then
     local type_code = query:sub(2, 3)
-    local symbol_type = default_symbol_types[type_code]
+    local symbol_type = M.config.filter_symbol_types[type_code]
 
     if symbol_type then
       return {
-        type = symbol_type.name,
-        aliases = symbol_type.aliases,
+        kinds = symbol_type.kinds,
         remaining = query:sub(4),
         description = symbol_type.description,
       }
@@ -1236,34 +1091,15 @@ local function show_picker(selectaItems, notify_opts)
     pre_filter = function(items, query)
       local filter = parse_symbol_filter(query)
       if filter then
-        -- print(string.format("Pre-filter: query=%s, filter_type=%s", query, filter.type))
-        -- print("Available kinds in items:")
-        local kind_count = {}
-        for _, item in ipairs(items) do
-          kind_count[item.kind] = (kind_count[item.kind] or 0) + 1
-        end
-        -- for kind, count in pairs(kind_count) do
-        --   print(string.format("  - %s: %d items", kind, count))
-        -- end
-
+        local kinds_lower = vim.tbl_map(string.lower, filter.kinds)
         local filtered = vim.tbl_filter(function(item)
-          local matches = string.lower(item.kind or "") == string.lower(filter.type)
-          -- print(
-          --   string.format(
-          --     "Item: kind=%s, filter_type=%s, matches=%s",
-          --     item.kind or "nil",
-          --     filter.type,
-          --     tostring(matches)
-          --   )
-          -- )
-          return matches
+          return item.kind and vim.tbl_contains(kinds_lower, string.lower(item.kind))
         end, items)
 
-        -- print(string.format("Filtered results: %d items", #filtered))
-
-        if #filtered == 0 then
-          vim.notify(string.format("No symbols of type '%s' found", filter.type), vim.log.levels.INFO)
-        end
+        -- TODO: make this notifications configureable
+        -- if #filtered == 0 then
+        --   vim.notify(string.format("No symbols of type '%s' found", filter.type), vim.log.levels.INFO)
+        -- end
 
         return filtered, filter.remaining
       end
@@ -1335,12 +1171,6 @@ local function show_picker(selectaItems, notify_opts)
   end
 
   local picker_win = selecta.pick(selectaItems, picker_opts)
-  -- print("Sample items:")
-  -- for i, item in ipairs(selectaItems) do
-  --   if i <= 5 then -- Just show first 3 items
-  --     print(vim.inspect(item))
-  --   end
-  -- end
 
   -- Add cleanup autocmd after picker is created
   if picker_win then
@@ -1424,7 +1254,7 @@ end
 -- Add the new request_symbols function
 ---@param bufnr number
 ---@param callback fun(err: any, result: any, ctx: any)
-local function request_symbols(bufnr, callback)
+function M.request_symbols(bufnr, callback)
   -- Cancel any existing request
   if state.current_request then
     local client = state.current_request.client
@@ -1468,217 +1298,6 @@ local function request_symbols(bufnr, callback)
   return state.current_request
 end
 
-local lsp_symbol_kinds = {
-  [1] = "File",
-  [2] = "Module",
-  [3] = "Namespace",
-  [4] = "Package",
-  [5] = "Class",
-  [6] = "Method",
-  [7] = "Property",
-  [8] = "Field",
-  [9] = "Constructor",
-  [10] = "Enum",
-  [11] = "Interface",
-  [12] = "Function",
-  [13] = "Variable",
-  [14] = "Constant",
-  [15] = "String",
-  [16] = "Number",
-  [17] = "Boolean",
-  [18] = "Array",
-  [19] = "Object",
-  [20] = "Key",
-  [21] = "Null",
-  [22] = "EnumMember",
-  [23] = "Struct",
-  [24] = "Event",
-  [25] = "Operator",
-  [26] = "TypeParameter",
-}
-
----@class SymbolAnalyzer
----@field create_analysis_buffer function Create and show the analysis buffer
-local SymbolAnalyzer = {}
-
-function SymbolAnalyzer.create_analysis_buffer()
-  local current_buf = vim.api.nvim_get_current_buf()
-  local current_bufname = vim.api.nvim_buf_get_name(current_buf)
-
-  -- Create a new buffer
-  local buf = vim.api.nvim_create_buf(false, true)
-
-  -- Set buffer options
-  vim.api.nvim_buf_set_option(buf, "buftype", "nofile")
-  vim.api.nvim_buf_set_option(buf, "bufhidden", "wipe")
-  vim.api.nvim_buf_set_option(buf, "swapfile", false)
-  vim.api.nvim_buf_set_option(buf, "modifiable", false)
-  vim.api.nvim_buf_set_option(buf, "filetype", "namu-analysis")
-
-  -- Function to collect symbols
-  local function collect_symbols(callback)
-    request_symbols(current_buf, function(err, result, _)
-      if err then
-        vim.notify("Error fetching symbols: " .. vim.inspect(err), vim.log.levels.ERROR)
-        return
-      end
-      callback(result or {})
-    end)
-  end
-
-  -- Create the analysis window while waiting for symbols
-  local width = math.min(70, vim.o.columns - 4)
-  local height = math.min(20, vim.o.lines - 4)
-  local row = math.floor((vim.o.lines - height) / 2)
-  local col = math.floor((vim.o.columns - width) / 2)
-
-  local win = vim.api.nvim_open_win(buf, true, {
-    relative = "editor",
-    width = width,
-    height = height,
-    row = row,
-    col = col,
-    style = "minimal",
-    border = "rounded",
-  })
-
-  -- Set window options
-  vim.wo[win].conceallevel = 2
-  vim.wo[win].foldenable = false
-  vim.wo[win].wrap = false
-
-  -- Setup highlights
-  vim.cmd([[
-    highlight default link NamuAnalysisHeader Title
-    highlight default link NamuAnalysisSubHeader Statement
-    highlight default link NamuAnalysisCount Number
-    highlight default link NamuAnalysisKind Type
-    highlight default link NamuAnalysisFilter Special
-    highlight default link NamuAnalysisPath Comment
-  ]])
-
-  -- Collect and display symbols
-  collect_symbols(function(symbols)
-    -- Analyze symbols
-    local kind_count = {}
-    local kind_examples = {}
-    local total_symbols = 0
-
-    local function analyze_symbol(symbol)
-      if symbol.kind then
-        -- Convert numeric kind to string
-        local kind_str = type(symbol.kind) == "number" and lsp_symbol_kinds[symbol.kind] or symbol.kind
-
-        if kind_str then
-          kind_count[kind_str] = (kind_count[kind_str] or 0) + 1
-          total_symbols = total_symbols + 1
-
-          -- Store example if we don't have one yet
-          if not kind_examples[kind_str] and symbol.name then
-            kind_examples[kind_str] = symbol.name
-          end
-        end
-      end
-
-      -- Recurse into children if they exist
-      if symbol.children then
-        for _, child in ipairs(symbol.children) do
-          analyze_symbol(child)
-        end
-      end
-    end
-
-    -- Analyze all symbols
-    for _, symbol in ipairs(symbols) do
-      analyze_symbol(symbol)
-    end
-
-    -- Create content
-    local lines = {
-      "Symbol Analysis",
-      string.rep("=", 50),
-      "",
-      string.format("File: %s", vim.fn.fnamemodify(current_bufname, ":.")),
-      string.format("Total Symbols: %d", total_symbols),
-      "",
-      "Symbol Distribution:",
-      string.rep("-", 50),
-      "",
-    }
-
-    -- Find matching symbol types
-    local matched_types = {}
-    for kind, _ in pairs(kind_count) do
-      for code, symbol_type in pairs(default_symbol_types) do
-        if vim.tbl_contains(symbol_type.aliases, string.lower(kind)) then
-          matched_types[kind] = code
-          break
-        end
-      end
-    end
-
-    -- Add symbol counts and examples
-    for kind, count in pairs(kind_count) do
-      local filter_code = matched_types[kind] or "??"
-      local example = kind_examples[kind] or "N/A"
-      table.insert(lines, string.format("  %s (%d symbols)", kind, count))
-      table.insert(lines, string.format("    Filter: %%%s", filter_code))
-      table.insert(lines, string.format("    Example: %s", example))
-      table.insert(lines, "")
-    end
-
-    -- Add usage hints
-    table.insert(lines, "Usage Tips:")
-    table.insert(lines, string.rep("-", 50))
-    table.insert(lines, "  - Use the filters shown above to narrow down symbols")
-    table.insert(lines, "  - Combine with text: %fn main")
-    table.insert(lines, "  - Press ? in symbol picker for more help")
-
-    -- Set buffer content
-    vim.api.nvim_buf_set_option(buf, "modifiable", true)
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-    vim.api.nvim_buf_set_option(buf, "modifiable", false)
-
-    -- Apply highlights
-    local ns_id = vim.api.nvim_create_namespace("namu_analysis")
-
-    -- Header
-    vim.api.nvim_buf_add_highlight(buf, ns_id, "NamuAnalysisHeader", 0, 0, -1)
-
-    -- File info
-    vim.api.nvim_buf_add_highlight(buf, ns_id, "NamuAnalysisPath", 3, 6, -1)
-    vim.api.nvim_buf_add_highlight(buf, ns_id, "NamuAnalysisCount", 4, 15, -1)
-
-    -- Symbol Distribution header
-    vim.api.nvim_buf_add_highlight(buf, ns_id, "NamuAnalysisSubHeader", 6, 0, -1)
-
-    -- Highlight each symbol type section
-    local current_line = 9
-    for _ in pairs(kind_count) do
-      -- Kind and count
-      vim.api.nvim_buf_add_highlight(buf, ns_id, "NamuAnalysisKind", current_line, 2, -1)
-      -- Filter
-      vim.api.nvim_buf_add_highlight(buf, ns_id, "NamuAnalysisFilter", current_line + 1, 12, -1)
-      current_line = current_line + 4
-    end
-
-    -- Usage tips header
-    vim.api.nvim_buf_add_highlight(buf, ns_id, "NamuAnalysisSubHeader", current_line, 0, -1)
-  end)
-
-  -- Set buffer keymaps
-  local opts = { noremap = true, silent = true }
-  vim.api.nvim_buf_set_keymap(buf, "n", "q", ":close<CR>", opts)
-  vim.api.nvim_buf_set_keymap(buf, "n", "<Esc>", ":close<CR>", opts)
-
-  return buf, win
-end
-
--- Add to your module
-function M.show_symbol_analysis()
-  SymbolAnalyzer.create_analysis_buffer()
-end
-
 ---Main entry point for symbol jumping functionality
 ---@param opts? {filter_kind?: string} Optional settings to filter specific kinds
 function M.show(opts)
@@ -1712,7 +1331,7 @@ function M.show(opts)
     return
   end
 
-  request_symbols(state.original_buf, function(err, result, _)
+  M.request_symbols(state.original_buf, function(err, result, _)
     if err then
       local error_message = type(err) == "table" and err.message or err
       vim.notify("Error fetching symbols: " .. error_message, vim.log.levels.ERROR, notify_opts)
