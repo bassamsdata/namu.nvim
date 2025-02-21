@@ -262,6 +262,7 @@ end
 local highlights = {
   SelectaPrefix = { link = "Special" },
   SelectaMatch = { link = "Identifier" }, -- or maybe DiagnosticFloatingOk
+  -- BUG: only selectafilter cleared when changing colorscheme - drive me crazy
   SelectaFilter = { link = "Type" },
   SelectaCursor = { blend = 100, nocombine = true },
   SelectaPrompt = { link = "FloatTitle" },
@@ -550,7 +551,7 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
   -- First, check if this is a symbol filter query
   -- local filter = query:match("^%%%w%w(.*)$")
   -- local actual_query = filter and query:sub(4) or query -- Use everything after %xx if filter exists
-  local filter, remaining = query:match("^(%%%w%w)(.*)$")
+  local filter, remaining = query:match("^(/[%w][%w])(.*)$")
   local actual_query = remaining or query
 
   -- Highlight title prefix in prompt buffer
@@ -632,7 +633,7 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
     local base_offset = item.icon and (vim.api.nvim_strwidth(item.icon) + 1) or 0
 
     -- Highlight matches in the text using actual_query
-    if actual_query ~= "" then -- Use actual_query instead of query
+    if actual_query ~= "" then
       local match = matcher.get_match_positions(item.text, actual_query)
       if match then
         for _, pos in ipairs(match.positions) do
