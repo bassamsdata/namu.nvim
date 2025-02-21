@@ -769,6 +769,13 @@ local function resize_window(state, opts)
   if state.prompt_win and vim.api.nvim_win_is_valid(state.prompt_win) then
     vim.api.nvim_win_set_config(state.prompt_win, prompt_config)
   end
+
+  -- Simple fix: if filtered items are less than window height,
+  -- ensure we're viewing from the top
+  if #state.filtered_items <= new_height then
+    vim.api.nvim_win_set_cursor(state.win, { 1, 0 })
+    vim.cmd("normal! zt")
+  end
 end
 
 -- Update the footer whenever filtered items change
