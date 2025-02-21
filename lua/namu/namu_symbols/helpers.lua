@@ -1,6 +1,6 @@
 local M = {}
 local request_symbols = require("namu.namu_symbols").request_symbols
-local default_symbol_types = require("namu.namu_symbols").default_symbol_types
+local filter_symbol_types = require("namu.namu_symbols").config.filter_symbol_types
 
 -- Shared constants and utilities
 ---@enum LSPSymbolKinds
@@ -53,7 +53,7 @@ end
 ---@return number window ID
 local function create_floating_window(buf, content_lines)
   local width = math.min(70, vim.o.columns - 4)
-  local height = math.min(#content_lines, vim.o.lines - 9)
+  local height = math.min(#content_lines, vim.o.lines - 12)
   local row = math.floor((vim.o.lines - height) / 2)
   local col = math.floor((vim.o.columns - width) / 2)
 
@@ -78,40 +78,29 @@ end
 -- Highlight management
 ---@param buf number
 ---@param ns_id number
----@param highlights table<string, string>
-local function setup_highlights(highlights)
-  local highlight_cmd = { "highlight default clear" }
-  for group, link in pairs(highlights) do
-    table.insert(highlight_cmd, string.format("highlight default link %s %s", group, link))
-  end
-  vim.cmd(table.concat(highlight_cmd, "\n"))
-end
-
--- Highlight management
----@param buf number
----@param ns_id number
 ---@param line number
 ---@param col_start number
 ---@param col_end number
 ---@param hl_group string
 local function add_highlight(buf, ns_id, line, col_start, col_end, hl_group)
-  -- Get the line content to determine its length
   local line_content = vim.api.nvim_buf_get_lines(buf, line, line + 1, true)[1] or ""
+  local end_col = col_end == -1 and #line_content or math.min(col_end, #line_content)
 
-  -- Calculate the end column
-  local end_col
-  if col_end == -1 then
-    end_col = #line_content
-  else
-    end_col = math.min(col_end, #line_content)
+  if end_col > col_start then
+    vim.api.nvim_buf_add_highlight(buf, ns_id, hl_group, line, col_start, end_col)
   end
+end
 
-  vim.api.nvim_buf_set_extmark(buf, ns_id, line, col_start, {
-    end_row = line,
-    end_col = end_col,
-    hl_group = hl_group,
-    strict = false,
-  })
+local function helper_highlights()
+  vim.cmd([[
+    highlight default link NamuHelperHeader Title
+    highlight default link NamuHelperSubHeader Statement
+    highlight default link NamuHelperCount Number
+    highlight default link NamuHelperKind Type
+    highlight default link NamuHelperFilter Special
+    highlight default link NamuHelperPath Comment
+    highlight default link NamuHelperCode Special
+  ]])
 end
 
 ---@param current_bufname string
@@ -137,7 +126,7 @@ function M.create_analysis_content(current_bufname, total_symbols, kind_count, k
   local matched_types = {}
   for kind, _ in pairs(kind_count) do
     for code, symbol_type in pairs(default_symbol_types) do
-      if vim.tbl_contains(symbol_type.aliases, string.lower(kind)) then
+      if vim.tbl_contains(symbol_type.kinds, kind) then
         matched_types[kind] = code
         break
       end
@@ -149,7 +138,7 @@ function M.create_analysis_content(current_bufname, total_symbols, kind_count, k
     local filter_code = matched_types[kind] or "??"
     local example = kind_examples[kind] or "N/A"
     table.insert(lines, string.format("  %s (%d symbols)", kind, count))
-    table.insert(lines, string.format("    Filter: %%%s", filter_code))
+    table.insert(lines, string.format("    Filter: /%s", filter_code)) -- Updated to use / instead of %
     table.insert(lines, string.format("    Example: %s", example))
     table.insert(lines, "")
   end
@@ -158,7 +147,7 @@ function M.create_analysis_content(current_bufname, total_symbols, kind_count, k
   table.insert(lines, "Usage Tips:")
   table.insert(lines, string.rep("-", 50))
   table.insert(lines, "  - Use the filters shown above to narrow down symbols")
-  table.insert(lines, "  - Combine with text: %fn main")
+  table.insert(lines, "  - Combine with text: /fn main")
   table.insert(lines, "  - Press ? in symbol picker for more help")
 
   return lines
@@ -199,7 +188,7 @@ local function set_buffer_lines(buf, lines)
   vim.api.nvim_set_option_value("modifiable", false, { buf = buf })
 end
 
----@return number buffer ID, number window ID
+---@return number, number buffer window ID, number window ID
 function M.create_help_buffer()
   local buf = vim.api.nvim_create_buf(false, true)
   setup_buffer(buf, "namu-help")
@@ -208,17 +197,17 @@ function M.create_help_buffer()
     "Namu Symbol Types",
     string.rep("=", 40),
     "",
-    "Usage: Type %xx followed by search term",
-    "Example: %fn main - finds functions containing 'main'",
+    "Usage: Type /xx followed by search term",
+    "Example: /fn main - finds functions containing 'main'",
     "",
     "Available Symbol Types:",
     string.rep("-", 40),
     "",
   }
 
-  for code, symbol_type in pairs(default_symbol_types) do
+  for code, symbol_type in pairs(filter_symbol_types) do
     table.insert(lines, string.format("  %s - %s", code, symbol_type.description))
-    table.insert(lines, string.format("    Matches: %s", table.concat(symbol_type.aliases, ", ")))
+    table.insert(lines, string.format("    Matches: %s", table.concat(symbol_type.kinds, ", ")))
     table.insert(lines, "")
   end
 
@@ -226,43 +215,28 @@ function M.create_help_buffer()
 
   local win = create_floating_window(buf, lines)
 
-  -- Setup highlights and apply them
-  vim.cmd([[
-      highlight default link NamuHelpHeader Title
-      highlight default link NamuHelpSubHeader Statement
-      highlight default link NamuHelpCode Special
-      highlight default link NamuHelpType Type
-      highlight default link NamuHelpAlias Comment
-    ]])
-
-  -- Setup highlights
+  helper_highlights()
   local ns_id = vim.api.nvim_create_namespace("namu_help")
 
-  -- Header
-  add_highlight(buf, ns_id, 0, 0, -1, "NamuHelpHeader")
+  -- Apply highlights with unified groups
+  add_highlight(buf, ns_id, 0, 0, -1, "NamuHelperHeader")
+  add_highlight(buf, ns_id, 3, 0, 5, "NamuHelperSubHeader")
+  add_highlight(buf, ns_id, 4, 0, -1, "NamuHelperCode")
+  add_highlight(buf, ns_id, 6, 0, -1, "NamuHelperSubHeader")
 
-  -- Usage section
-  add_highlight(buf, ns_id, 3, 0, 5, "NamuHelpSubHeader")
-  add_highlight(buf, ns_id, 4, 0, -1, "NamuHelpCode")
-
-  -- Symbol types section
-  add_highlight(buf, ns_id, 6, 0, -1, "NamuHelpSubHeader")
-
-  -- Highlight each symbol type
   local current_line = 9
-  for _ in pairs(default_symbol_types) do
-    -- Highlight the code and description
-    add_highlight(buf, ns_id, current_line, 2, 4, "NamuHelpCode")
-    add_highlight(buf, ns_id, current_line, 7, -1, "NamuHelpType")
-    -- Highlight aliases
-    add_highlight(buf, ns_id, current_line + 1, 4, -1, "NamuHelpAlias")
+  for _ in pairs(filter_symbol_types) do
+    add_highlight(buf, ns_id, current_line, 2, 4, "NamuHelperCode")
+    add_highlight(buf, ns_id, current_line, 7, -1, "NamuHelperKind")
+    add_highlight(buf, ns_id, current_line + 1, 4, -1, "NamuHelperFilter")
     current_line = current_line + 3
   end
+
   return buf, win
 end
 
 -- Analyzer functionality
----@return number buffer ID, number window ID
+---@return number, number buffer ID, number window ID
 function M.create_analysis_buffer()
   local current_buf = vim.api.nvim_get_current_buf()
   local current_bufname = vim.api.nvim_buf_get_name(current_buf)
@@ -270,18 +244,12 @@ function M.create_analysis_buffer()
 
   setup_buffer(buf, "namu-analysis")
   -- Create initial window while waiting for symbols
+  set_buffer_lines(buf, { "Loading symbols..." })
   local win = create_floating_window(buf, { "Loading symbols..." })
 
   -- Setup highlights
+  helper_highlights()
   local ns_id = vim.api.nvim_create_namespace("namu_analysis")
-  setup_highlights({
-    NamuAnalysisHeader = "Title",
-    NamuAnalysisSubHeader = "Statement",
-    NamuAnalysisCount = "Number",
-    NamuAnalysisKind = "Type",
-    NamuAnalysisFilter = "Special",
-    NamuAnalysisPath = "Comment",
-  })
 
   -- Collect and analyze symbols
   request_symbols(current_buf, function(err, symbols)
@@ -301,30 +269,47 @@ function M.create_analysis_buffer()
 
     -- Create and set content
     local lines =
-      M.create_analysis_content(current_bufname, total_symbols, kind_count, kind_examples, default_symbol_types)
+      M.create_analysis_content(current_bufname, total_symbols, kind_count, kind_examples, filter_symbol_types)
 
-    set_buffer_lines(buf, lines)
-    win = create_floating_window(buf, lines)
+    if win and vim.api.nvim_win_is_valid(win) then
+      vim.api.nvim_win_set_buf(win, buf)
+      set_buffer_lines(buf, lines)
+      -- Adjust window height for new content
+      local new_height = math.min(#lines, vim.o.lines - 6)
+      local width = math.min(70, vim.o.columns - 4)
 
-    -- Apply highlights for the analysis buffer
-    -- Header
-    add_highlight(buf, ns_id, 0, 0, -1, "NamuAnalysisHeader")
-    -- File info
-    add_highlight(buf, ns_id, 3, 6, -1, "NamuAnalysisPath")
-    add_highlight(buf, ns_id, 4, 15, -1, "NamuAnalysisCount")
-    -- Symbol Distribution header
+      -- Update both height and position
+      vim.api.nvim_win_set_config(win, {
+        relative = "editor",
+        row = math.floor((vim.o.lines - new_height - 4) / 2),
+        col = math.floor((vim.o.columns - width) / 2),
+        height = new_height,
+      })
+    end
+
+    add_highlight(buf, ns_id, 0, 0, -1, "NamuHelperHeader")
+    add_highlight(buf, ns_id, 3, 0, 5, "NamuHelperSubHeader")
+    add_highlight(buf, ns_id, 3, 6, -1, "NamuHelperPath")
+    add_highlight(buf, ns_id, 4, 0, 14, "NamuHelperSubHeader")
+    add_highlight(buf, ns_id, 4, 15, -1, "NamuHelperCount")
+    add_highlight(buf, ns_id, 6, 0, -1, "NamuHelperSubHeader")
+
+    -- Symbol Distribution section
     add_highlight(buf, ns_id, 6, 0, -1, "NamuAnalysisSubHeader")
-    -- Highlight each symbol type section
+
+    -- Highlight symbol sections
     local current_line = 9
-    for _ in pairs(kind_count) do
-      -- Kind and count
-      add_highlight(buf, ns_id, current_line, 2, -1, "NamuAnalysisKind")
-      -- Filter
-      add_highlight(buf, ns_id, current_line + 1, 12, -1, "NamuAnalysisFilter")
+    for kind, _ in pairs(kind_count) do
+      -- Kind line
+      add_highlight(buf, ns_id, current_line, 2, -1, "NamuHelperKind")
+      -- Filter line
+      add_highlight(buf, ns_id, current_line + 1, 12, -1, "NamuHelperFilter")
       current_line = current_line + 4
     end
-    -- Usage tips header
+
+    -- Usage section
     add_highlight(buf, ns_id, current_line, 0, -1, "NamuAnalysisSubHeader")
+    add_highlight(buf, ns_id, current_line + 1, 0, -1, "NamuAnalysisFilter")
   end)
 
   return buf, win
