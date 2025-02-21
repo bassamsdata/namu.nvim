@@ -223,75 +223,47 @@ M.config = {
   filter_symbol_types = {
     -- Functions
     fn = {
-      kinds = {
-        "Function",
-        "Method",
-        "Constructor",
-      },
+      kinds = { "Function", "Constructor" },
       description = "Functions, methods and constructors",
+    },
+    -- Methods:
+    me = {
+      kinds = { "Method", "Accessor" },
+      description = "Methods",
     },
     -- Variables
     va = {
-      kinds = {
-        "Variable",
-        "Parameter",
-        "TypeParameter",
-      },
+      kinds = { "Variable", "Parameter", "TypeParameter" },
       description = "Variables and parameters",
     },
     -- Classes
     cl = {
-      kinds = {
-        "Class",
-        "Interface",
-        "Struct",
-      },
+      kinds = { "Class", "Interface", "Struct" },
       description = "Classes, interfaces and structures",
     },
     -- Constants
     co = {
-      kinds = {
-        "Constant",
-        "Boolean",
-        "Number",
-        "String",
-      },
+      kinds = { "Constant", "Boolean", "Number", "String" },
       description = "Constants and literal values",
     },
     -- Fields
     fi = {
-      kinds = {
-        "Field",
-        "Property",
-        "EnumMember",
-      },
+      kinds = { "Field", "Property", "EnumMember" },
       description = "Object fields and properties",
     },
     -- Modules
     mo = {
-      kinds = {
-        "Module",
-        "Package",
-        "Namespace",
-      },
+      kinds = { "Module", "Package", "Namespace" },
       description = "Modules and packages",
     },
     -- Arrays
     ar = {
-      kinds = {
-        "Array",
-        "List",
-        "Sequence",
-      },
+      kinds = { "Array", "List", "Sequence" },
       description = "Arrays, lists and sequences",
     },
     -- Objects
     ob = {
-      kinds = {
-        "Object",
-        "Class",
-        "Instance",
-      },
+      kinds = { "Object", "Class", "Instance" },
       description = "Objects and class instances",
     },
   },

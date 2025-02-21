@@ -1,6 +1,7 @@
 if vim.g.namu_loaded then
   return
 end
+---@diagnostic disable-next-line: inject-field
 vim.g.namu_loaded = true
 
 -- Command documentation
@@ -8,7 +9,7 @@ vim.g.namu_loaded = true
 local command_descriptions = {
   symbols = "Jump to location using namu functionality",
   colorscheme = "Select and apply colorscheme",
-  help = "Show help for all commands",
+  help = "Show help information (use 'help symbols' or 'help analysis' for detailed views)",
 }
 -- Argument validators
 ---@type table<string, fun(args: string[]): boolean, string?>
@@ -38,6 +39,7 @@ local command_validators = {
         ["event"] = true,
         ["operator"] = true,
       }
+      ---@diagnostic disable-next-line: undefined-field
       if not valid_types[args[1]:lower()] then
         return false, "invalid symbol type. valid types: function, variable, class, method"
       end
@@ -46,6 +48,19 @@ local command_validators = {
   end,
   colorscheme = function(args)
     return #args == 0, "sel_colorscheme doesn't accept arguments"
+  end,
+  help = function(args)
+    if #args > 1 then
+      return false, "help command accepts only one optional argument (symbols/analysis)"
+    end
+    if #args == 1 then
+      local valid_help = { symbols = true, analysis = true }
+      ---@diagnostic disable-next-line: undefined-field
+      if not valid_help[args[1]:lower()] then
+        return false, "invalid help type. Valid types: symbols, analysis"
+      end
+    end
+    return true
   end,
 }
 
@@ -82,17 +97,30 @@ local registry = {
   colorscheme = function(_)
     require("namu.colorscheme").show()
   end,
-  help = function()
-    local help_text = "Namu Commands:\n"
-    for cmd, desc in pairs(command_descriptions) do
-      help_text = help_text .. string.format("  %-15s%s\n", cmd, desc)
+  help = function(args)
+    if #args == 0 then
+      -- Show general help
+      local help_text = "Namu Commands:\n"
+      for cmd, desc in pairs(command_descriptions) do
+        help_text = help_text .. string.format("  %-15s%s\n", cmd, desc)
+      end
+      help_text = help_text .. "\nSymbol Types:\n"
+      help_text = help_text .. "  function    Show only functions\n"
+      help_text = help_text .. "  variable    Show only variables\n"
+      help_text = help_text .. "  class       Show only classes\n"
+      help_text = help_text .. "\nHelp Types:\n"
+      help_text = help_text .. "  symbols     Show detailed symbol filtering help\n"
+      help_text = help_text .. "  analysis    Show symbol analysis for current buffer\n"
+      vim.notify(help_text, vim.log.levels.INFO)
+      return
     end
-    help_text = help_text .. "\nSymbol Types:\n"
-    help_text = help_text .. "  function    Show only functions\n"
-    help_text = help_text .. "  variable    Show only variables\n"
-    help_text = help_text .. "  class       Show only classes\n"
-    help_text = help_text .. "  method      Show only methods\n"
-    vim.notify(help_text, vim.log.levels.INFO)
+
+    local help_type = args[1]:lower()
+    if help_type == "symbols" then
+      require("namu.namu_symbols.helpers").create_help_buffer()
+    elseif help_type == "analysis" then
+      require("namu.namu_symbols.helpers").create_analysis_buffer()
+    end
   end,
 }
 
@@ -134,6 +162,7 @@ end
 ---@param col number
 ---@return string[]
 local function command_complete(_, line, col)
+  ---@diagnostic disable-next-line: undefined-field
   local words = vim.split(line:sub(1, col), "%s+")
 
   if #words <= 2 then
@@ -142,17 +171,27 @@ local function command_complete(_, line, col)
   end
 
   if words[2] == "symbols" then
+    -- stylua: ignore start 
     local symbol_types = {
-      "function",
-      "variable",
-      "class",
-      "method",
+      "function", "variable", "class", "method", "interface", "enum",
+      "struct", "constant", "property", "field", "constructor", "namespace",
+      "package", "module", "parameter", "typeParameter", "event", "operator",
     }
+    -- stylua: ignore end
     local prefix = words[3] or ""
     local candidates = vim.tbl_filter(function(type)
+      ---@diagnostic disable-next-line: undefined-field
       return vim.startswith(type, prefix:lower())
     end, symbol_types)
     return candidates
+  end
+  if words[2] == "help" then
+    local help_types = { "symbols", "analysis" }
+    local prefix = words[3] or ""
+    return vim.tbl_filter(function(type)
+      ---@diagnostic disable-next-line: undefined-field
+      return vim.startswith(type, prefix:lower())
+    end, help_types)
   end
 
   return {}
