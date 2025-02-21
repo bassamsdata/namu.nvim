@@ -235,11 +235,13 @@ T["Selecta.highlights"]["sets up highlight groups"] = function()
   local match_hl = vim.api.nvim_get_hl(0, { name = "SelectaMatch" })
   local prefix_hl = vim.api.nvim_get_hl(0, { name = "SelectaPrefix" })
   local cursor_hl = vim.api.nvim_get_hl(0, { name = "SelectaCursor" })
+  local filter_hl = vim.api.nvim_get_hl(0, { name = "SelectaFilter" })
 
   -- Verify highlight attributes
   h.eq(type(match_hl), "table")
   h.eq(type(prefix_hl), "table")
   h.eq(type(cursor_hl), "table")
+  h.eq(type(filter_hl), "table")
 
   -- Check specific attributes
   h.eq(cursor_hl.blend, 100)
@@ -373,6 +375,112 @@ T["Selecta.error_handling"]["handles window creation errors"] = function()
   end)
   h.eq(ok, false)
   h.eq(type(err), "string")
+end
+
+--Window Positioning-----------------------------------------------------
+T["Window.positioning"] = new_set()
+
+-- test 19
+T["Window.positioning"]["parse_position handles all position types correctly"] = function()
+  local parse_position = selecta._test.parse_position
+
+  -- Test top with percentage
+  local result = parse_position("top20")
+  h.eq(result.type, "top")
+  h.eq(result.ratio, 0.2)
+
+  -- Test top with percentage and right alignment
+  result = parse_position("top25_right")
+  h.eq(result.type, "top_right")
+  h.eq(result.ratio, 0.25)
+
+  -- Test fixed center position
+  result = parse_position("center")
+  h.eq(result.type, "center")
+  h.eq(result.ratio, 0.5)
+
+  -- Test fixed bottom position
+  result = parse_position("bottom")
+  h.eq(result.type, "bottom")
+  h.eq(result.ratio, 0.8)
+
+  -- Test invalid input fallback
+  result = parse_position("invalid_position")
+  h.eq(result.type, "top")
+  h.eq(result.ratio, 0.1)
+
+  -- Test nil input fallback
+  result = parse_position(nil)
+  h.eq(result and result.type, "top")
+  h.eq(result and result.ratio, 0.1)
+end
+
+-- test 20
+T["Window.positioning"]["get_window_position calculates correct positions"] = function()
+  local get_window_position = selecta._test.get_window_position
+
+  -- Mock vim.o values
+  local _original_o = vim.o
+  vim.o = {
+    lines = 100,
+    columns = 200,
+    cmdheight = 1,
+  }
+
+  -- Test center position
+  local row, col = get_window_position(40, "center")
+  h.eq(row, 48) -- (100 - 1 - 2) * 0.5 = 48.5, floor to 48
+  h.eq(col, 80) -- (200 - 40) / 2
+
+  -- Test top percentage
+  row, col = get_window_position(40, "top20")
+  h.eq(row, 20) -- 100 * 0.2
+  h.eq(col, 80) -- (200 - 40) / 2
+
+  -- Test top percentage with right alignment
+  row, col = get_window_position(40, "top25_right")
+  h.eq(row, 25) -- 100 * 0.25
+  h.eq(col, 156) -- 200 - 40 - 4
+
+  -- Test bottom position
+  row, col = get_window_position(40, "bottom")
+  h.eq(row, 76) -- (100 * 0.8) - 4
+  h.eq(col, 80) -- (200 - 40) / 2
+
+  -- Restore vim.o
+  vim.o = _original_o
+end
+
+-- test 21
+-- right position with fixed ratio
+T["Window.positioning"]["handles fixed right position correctly"] = function()
+  local get_window_position = selecta._test.get_window_position
+
+  -- Mock vim.o and config
+  local _original_o = vim.o
+  vim.o = {
+    lines = 100,
+    columns = 200,
+    cmdheight = 1,
+  }
+
+  local _original_config = selecta.config
+  selecta.config = {
+    right_position = {
+      fixed = true,
+      ratio = 0.8,
+    },
+  }
+
+  -- Test fixed right position
+  ---@diagnostic disable-next-line: param-type-mismatch
+  local row, col = get_window_position(40, "top20_right")
+  h.eq(row, 20) -- 100 * 0.2
+  h.eq(col, 160) -- 200 * 0.8
+
+  -- Restore mocks
+  vim.o = _original_o
+  selecta.config = _original_config
 end
 
 return T
