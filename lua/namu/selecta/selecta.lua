@@ -1541,11 +1541,6 @@ end
 ---@param opts? SelectaOptions
 ---@return SelectaItem|nil
 function M.pick(items, opts)
-  M.log("pick called with " .. #items .. " items")
-  for group, _ in pairs(highlights) do
-    local hl = vim.api.nvim_get_hl(0, { name = group })
-    M.log(string.format("Current highlight for %s: %s", group, vim.inspect(hl)))
-  end
   -- Merge options with defaults
   opts = vim.tbl_deep_extend("force", {
     title = "Select",
@@ -1640,52 +1635,26 @@ M._test = {
   parse_position = parse_position,
 }
 
----Show picker without using internal defaults
----@param items SelectaItem[] Items to display
----@param display_opts {window: table, display: table, position: string, title: string?, on_select: function?, on_cancel: function?, on_move: function?}
----@return number|nil window_id Returns the window ID if created successfully
-function M.show_picker(items, display_opts)
-  -- No merging with defaults, use options directly
-  local picker_opts = {
-    title = display_opts.title or "Select",
-    window = display_opts.window,
-    display = display_opts.display,
-    row_position = display_opts.position,
-    -- Core callbacks
-    on_select = display_opts.on_select,
-    on_cancel = display_opts.on_cancel,
-    on_move = display_opts.on_move,
-    -- Essential options that shouldn't be configurable
-    fuzzy = false,
-    preserve_order = true,
-  }
+local function async_update(state, new_items, opts)
+  vim.schedule(function()
+    if not state or not state.active then
+      return
+    end
 
-  -- Use existing picker creation but with direct options
-  local state = create_picker(items, picker_opts)
-  update_display(state, picker_opts)
-  vim.cmd("redraw")
+    logger.log("Updating items")
+    state.items = new_items
+    state.filtered_items = new_items
 
-  -- Main input loop
-  local ok, result = pcall(function()
-    while state.active do
-      local char = vim.fn.getchar()
-      local result = handle_char(state, char, picker_opts)
-      if result ~= nil then
-        return result
-      end
+    if vim.api.nvim_win_is_valid(state.win) and vim.api.nvim_buf_is_valid(state.buf) then
+      update_display(state, opts)
       vim.cmd("redraw")
+      logger.log("Display updated")
+    else
     end
   end)
-
-  if not ok then
-    vim.schedule(function()
-      restore_cursor()
-    end)
-    error(result)
-  end
-
-  return state.win
 end
+
+M.async_update = async_update
 
 ---@param opts? table
 function M.setup(opts)
