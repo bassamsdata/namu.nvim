@@ -62,6 +62,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
         options = {}, -- here you can configure namu
       },
       -- Optional: Enable other modules if needed
+      ui_select = { enable = false }, -- vim.ui.select() wrapper
       colorscheme = {
         enable = false,
         options = {
@@ -70,11 +71,8 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
           write_shada = false, -- If you open multiple nvim instances, then probably you need to enable this
         },
       },
-      ui_select = { enable = false }, -- vim.ui.select() wrapper
     })
     -- === Suggested Keymaps: ===
-    local namu = require("namu.namu_symbols")
-    local colorscheme = require("namu.colorscheme")
     vim.keymap.set("n", "<leader>ss",":Namu symbols<cr>" , {
       desc = "Jump to LSP symbol",
       silent = true,
@@ -107,7 +105,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 </details>
 
-### Default Keymaps
+### Keymaps
 
 <details>
 <summary>Default keymaps are:</summary>
@@ -123,16 +121,6 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 | `<Up>` | Previous item |
 | `q` | Close help |
 
-to change the movement keys to `C-j` and `C-k`:
-```lua
--- in namu_symbols.options
-movement = {
-    next = "<C-j>",
-    previous = "<C-k>",
-    alternative_next = "<DOWN>",
-    alternative_previous = "<UP>",
-},
-```
 
 
 #### Multiselect
@@ -149,12 +137,62 @@ movement = {
 | `<C-y>` | Yank symbol/concatenate selected symbols and yank |
 | `<C-d>` | Delete symbol/concatenate selected symbols and delete |
 | `<C-v>` | Open symbol buffer on vertical split |
+| `<C-h>` | Open symbol buffer on horizontal split |
 | `<C-o>` | Add symbol/concatenate selected symbols and add them to codecompanion chat buffer |
 
 </details>
 
+### Change Keymaps:
 
-## Available Commands
+<details>
+<summary>change the default keymaps:</summary>
+
+```lua
+-- in namu_symbols.options
+  movement = {
+    next = { "<C-n>", "<DOWN>" }, -- Support multiple keys
+    previous = { "<C-p>", "<UP>" }, -- Support multiple keys
+    close = { "<ESC>" }, -- close mapping
+    select = { "<CR>" }, -- select mapping
+    delete_word = {}, -- delete word mapping
+    clear_line = {}, -- clear line mapping
+  },
+  multiselect = {
+    enabled = false,
+    indicator = "●", -- or "✓"◉
+    keymaps = {
+      toggle = "<Tab>",
+      select_all = "<C-a>",
+      clear_all = "<C-l>",
+      untoggle = "<S-Tab>",
+    },
+    max_items = nil, -- No limit by default
+  },
+  custom_keymaps = {
+    yank = {
+      keys = { "<C-y>" }, -- yank symbol text
+    },
+    delete = {
+      keys = { "<C-d>" }, -- delete symbol text
+    },
+    vertical_split = {
+      keys = { "<C-v>" }, -- open in vertical split
+    },
+    horizontal_split = {
+      keys = { "<C-h>" }, -- open in horizontal split
+    },
+    codecompanion = {
+      keys = "<C-o>", -- Add symbols to CodeCompanion
+    },
+    avante = {
+      keys = "<C-t>", -- Add symbol to Avante
+    },
+  },
+```
+
+</details>
+
+## Commands
 
 The `Namu` command provides several subcommands with autocomplete:
 
@@ -175,228 +213,223 @@ You can check the [configuration documentation](https://github.com/bassamsdata/n
   <summary>Here's the full setup with defaults:</summary>
 
 ```lua
-M.config = {
-  AllowKinds = {
-    default = {
-      "Function",
-      "Method",
-      "Class",
-      "Module",
-      "Property",
-      "Variable",
-      -- "Constant",
-      -- "Enum",
-      -- "Interface",
-      -- "Field",
-      -- "Struct",
-    },
-    go = {
-      "Function",
-      "Method",
-      "Struct", -- For struct definitions
-      "Field", -- For struct fields
-      "Interface",
-      "Constant",
-      -- "Variable",
-      "Property",
-      -- "TypeParameter", -- For type parameters if using generics
-    },
-    lua = { "Function", "Method", "Table", "Module" },
-    python = { "Function", "Class", "Method" },
-    -- Filetype specific
-    yaml = { "Object", "Array" },
-    json = { "Module" },
-    toml = { "Object" },
-    markdown = { "String" },
-  },
-  BlockList = {
-    default = {},
-    -- Filetype-specific
-    lua = {
-      "^vim%.", -- anonymous functions passed to nvim api
-      "%.%.%. :", -- vim.iter functions
-      ":gsub", -- lua string.gsub
-      "^callback$", -- nvim autocmds
-      "^filter$",
-      "^map$", -- nvim keymaps
-    },
-    -- another example:
-    -- python = { "^__" }, -- ignore __init__ functions
-  },
-  display = {
-    mode = "text", -- "icon" or "raw"
-    padding = 2,
-  },
-  kindText = {
-    Function = "function",
-    Method = "method",
-    Class = "class",
-    Module = "module",
-    Constructor = "constructor",
-    Interface = "interface",
-    Property = "property",
-    Field = "field",
-    Enum = "enum",
-    Constant = "constant",
-    Variable = "variable",
-  },
-  kindIcons = {
-    File = "󰈙",
-    Module = "󰏗",
-    Namespace = "󰌗",
-    Package = "󰏖",
-    Class = "󰌗",
-    Method = "󰆧",
-    Property = "󰜢",
-    Field = "󰜢",
-    Constructor = "󰆧",
-    Enum = "󰒻",
-    Interface = "󰕘",
-    Function = "󰊕",
-    Variable = "󰀫",
-    Constant = "󰏿",
-    String = "󰀬",
-    Number = "󰎠",
-    Boolean = "󰨙",
-    Array = "󰅪",
-    Object = "󰅩",
-    Key = "󰌋",
-    Null = "󰟢",
-    EnumMember = "󰒻",
-    Struct = "󰌗",
-    Event = "󰉁",
-    Operator = "󰆕",
-    TypeParameter = "󰊄",
-  },
-  preview = {
-    highlight_on_move = true, -- Whether to highlight symbols as you move through them
-    -- TODO: still needs implmenting, keep it always now
-    highlight_mode = "always", -- "always" | "select" (only highlight when selecting)
-  },
-  icon = "󱠦", -- 󱠦 -  -  -- 󰚟
-  highlight = "NamuPreview",
-  highlights = {
-    parent = "NamuParent",
-    nested = "NamuNested",
-    style = "NamuStyle",
-  },
-  kinds = {
-    prefix_kind_colors = true,
-    enable_highlights = true,
-    highlights = {
-      PrefixSymbol = "NamuPrefixSymbol",
-      Function = "NamuSymbolFunction",
-      Method = "NamuSymbolMethod",
-      Class = "NamuSymbolClass",
-      Interface = "NamuSymbolInterface",
-      Variable = "NamuSymbolVariable",
-      Constant = "NamuSymbolConstant",
-      Property = "NamuSymbolProperty",
-      Field = "NamuSymbolField",
-      Enum = "NamuSymbolEnum",
-      Module = "NamuSymbolModule",
-    },
-  },
-  window = {
-    auto_size = true,
-    min_width = 30,
-    padding = 4,
-    border = "rounded",
-    show_footer = true,
-    footer_pos = "right",
-  },
-  debug = false, -- Debug flag for both namu and selecta
-  focus_current_symbol = true, -- Add this option to control the feature
-  auto_select = false,
-  row_position = "top10", -- options: "center"|"top10",
-  initially_hidden = false,
-  multiselect = {
-    enabled = true,
-    indicator = "●", -- or "✓"
-    keymaps = {
-      toggle = "<Tab>",
-      untoggle = "<S-Tab>",
-      select_all = "<C-a>",
-      clear_all = "<C-l>",
-    },
-    max_items = nil, -- No limit by default
-  },
-  actions = {
-    close_on_yank = false, -- Whether to close picker after yanking
-    close_on_delete = true, -- Whether to close picker after deleting
-  },
-  keymaps = {
-    {
-      key = "<C-y>",
-      handler = function(items_or_item, state)
-        local success = M.yank_symbol_text(items_or_item, state)
-        -- Only close if yanking was successful and config says to close
-        if success and M.config.actions.close_on_yank then
-          M.clear_preview_highlight()
-          return false -- This should close the picker
-        end
-      end,
-      desc = "Yank symbol text",
-    },
-    {
-      key = "<C-d>",
-      handler = function(items_or_item, state)
-        local deleted = M.delete_symbol_text(items_or_item, state)
-        -- Only close if deletion was successful and config says to close
-        if deleted and M.config.actions.close_on_delete then
-          M.clear_preview_highlight()
-          return false
-        end
-      end,
-      desc = "Delete symbol text",
-    },
-    {
-      key = "<C-v>",
-      handler = function(item, state)
-        if not state.original_buf then
-          vim.notify("No original buffer available", vim.log.levels.ERROR)
-          return
-        end
-
-        local new_win = selecta.open_in_split(state, item, "vertical")
-        if new_win then
-          local symbol = item.value
-          if symbol and symbol.lnum and symbol.col then
-            -- Set cursor to symbol position
-            pcall(vim.api.nvim_win_set_cursor, new_win, { symbol.lnum, symbol.col - 1 })
-            vim.cmd("normal! zz")
-          end
-          M.clear_preview_highlight()
-          return false
-        end
-      end,
-      desc = "Open in vertical split",
-    },
-    {
-      key = "<C-o>",
-      handler = function(items_or_item)
-        if type(items_or_item) == "table" and items_or_item[1] then
-          M.add_symbol_to_codecompanion(items_or_item, state.original_buf)
-        else
-          -- Single item case
-          M.add_symbol_to_codecompanion({ items_or_item }, state.original_buf)
-        end
-      end,
-      desc = "Add symbol to CodeCompanion",
-    },
-    {
-      key = "<C-t>",
-      handler = function(items_or_item)
-        if type(items_or_item) == "table" and items_or_item[1] then
-          M.add_symbol_to_avante(items_or_item, state.original_buf)
-        else
-          -- Single item case
-          M.add_symbol_to_avante({ items_or_item }, state.original_buf)
-        end
-      end,
-      desc = "Add symbol to Avante",
-    },
-  },
+{ -- Those are the default options
+  "bassamsdata/namu.nvim",
+  config = function()
+    require("namu").setup({
+      -- Enable symbols navigator which is the default
+      namu_symbols = {
+        enable = true,
+        ---@type NamuConfig
+        options = {
+          AllowKinds = {
+            default = {
+              "Function",
+              "Method",
+              "Class",
+              "Module",
+              "Property",
+              "Variable",
+              -- "Constant",
+              -- "Enum",
+              -- "Interface",
+              -- "Field",
+              -- "Struct",
+            },
+            go = {
+              "Function",
+              "Method",
+              "Struct", -- For struct definitions
+              "Field", -- For struct fields
+              "Interface",
+              "Constant",
+              -- "Variable",
+              "Property",
+              -- "TypeParameter", -- For type parameters if using generics
+            },
+            lua = { "Function", "Method", "Table", "Module" },
+            python = { "Function", "Class", "Method" },
+            -- Filetype specific
+            yaml = { "Object", "Array" },
+            json = { "Module" },
+            toml = { "Object" },
+            markdown = { "String" },
+          },
+          BlockList = {
+            default = {},
+            -- Filetype-specific
+            lua = {
+              "^vim%.", -- anonymous functions passed to nvim api
+              "%.%.%. :", -- vim.iter functions
+              ":gsub", -- lua string.gsub
+              "^callback$", -- nvim autocmds
+              "^filter$",
+              "^map$", -- nvim keymaps
+            },
+            -- another example:
+            -- python = { "^__" }, -- ignore __init__ functions
+          },
+          display = {
+            mode = "icon", -- "icon" or "raw"
+            padding = 2,
+          },
+          -- This is a preset that let's set window without really get into the hassle of tuning window options
+          -- top10 meaning top 10% of the window
+          row_position = "top10", -- options: "center"|"top10"|"top10_right"|"center_right"|"bottom",
+          preview = {
+            highlight_on_move = true, -- Whether to highlight symbols as you move through them
+            -- still needs implmenting, keep it always now
+            highlight_mode = "always", -- "always" | "select" (only highlight when selecting)
+          },
+          window = {
+            auto_size = true,
+            min_height = 1,
+            min_width = 20,
+            max_width = 120,
+            max_height = 30,
+            padding = 2,
+            border = "rounded",
+            title_pos = "left",
+            show_footer = true,
+            footer_pos = "right",
+            relative = "editor",
+            style = "minimal",
+            width_ratio = 0.6,
+            height_ratio = 0.6,
+            title_prefix = "󱠦 ",
+          },
+          debug = false,
+          focus_current_symbol = true,
+          auto_select = false,
+          initially_hidden = false,
+          multiselect = {
+            enabled = true,
+            indicator = "✓", -- or "✓"●
+            keymaps = {
+              toggle = "<Tab>",
+              untoggle = "<S-Tab>",
+              select_all = "<C-a>",
+              clear_all = "<C-l>",
+            },
+            max_items = nil, -- No limit by default
+          },
+          actions = {
+            close_on_yank = false, -- Whether to close picker after yanking
+            close_on_delete = true, -- Whether to close picker after deleting
+          },
+          movement = {-- Support multiple keys
+            next = { "<C-n>", "<DOWN>" },
+            previous = { "<C-p>", "<UP>" },
+            close = { "<ESC>" }, -- "<C-c>" can be added as well
+            select = { "<CR>" },
+            delete_word = {}, -- it can assign "<C-w>"
+            clear_line = {}, -- it can be "<C-u>"
+          },
+          custom_keymaps = {
+            yank = {
+              keys = { "<C-y>" },
+              desc = "Yank symbol text",
+            },
+            delete = {
+              keys = { "<C-d>" },
+              desc = "Delete symbol text",
+            },
+            vertical_split = {
+              keys = { "<C-v>" },
+              desc = "Open in vertical split",
+            },
+            horizontal_split = {
+              keys = { "<C-h>" },
+              desc = "Open in horizontal split",
+            },
+            codecompanion = {
+              keys = "<C-o>",
+              desc = "Add symbol to CodeCompanion",
+            },
+            avante = {
+              keys = "<C-t>",
+              desc = "Add symbol to Avante",
+            },
+          },
+          icon = "󱠦", -- 󱠦 -  -  -- 󰚟
+          kindText = {
+            Function = "function",
+            Class = "class",
+            Module = "module",
+            Constructor = "constructor",
+            Interface = "interface",
+            Property = "property",
+            Field = "field",
+            Enum = "enum",
+            Constant = "constant",
+            Variable = "variable",
+          },
+          kindIcons = {
+            File = "󰈙",
+            Module = "󰏗",
+            Namespace = "󰌗",
+            Package = "󰏖",
+            Class = "󰌗",
+            Method = "󰆧",
+            Property = "󰜢",
+            Field = "󰜢",
+            Constructor = "󰆧",
+            Enum = "󰒻",
+            Interface = "󰕘",
+            Function = "󰊕",
+            Variable = "󰀫",
+            Constant = "󰏿",
+            String = "󰀬",
+            Number = "󰎠",
+            Boolean = "󰨙",
+            Array = "󰅪",
+            Object = "󰅩",
+            Key = "󰌋",
+            Null = "󰟢",
+            EnumMember = "󰒻",
+            Struct = "󰌗",
+            Event = "󰉁",
+            Operator = "󰆕",
+            TypeParameter = "󰊄",
+          },
+          highlight = "NamuPreview",
+          highlights = {
+            parent = "NamuParent",
+            nested = "NamuNested",
+            style = "NamuStyle",
+          },
+          kinds = {
+            prefix_kind_colors = true,
+            enable_highlights = true,
+            highlights = {
+              PrefixSymbol = "NamuPrefixSymbol",
+              Function = "NamuSymbolFunction",
+              Method = "NamuSymbolMethod",
+              Class = "NamuSymbolClass",
+              Interface = "NamuSymbolInterface",
+              Variable = "NamuSymbolVariable",
+              Constant = "NamuSymbolConstant",
+              Property = "NamuSymbolProperty",
+              Field = "NamuSymbolField",
+              Enum = "NamuSymbolEnum",
+              Module = "NamuSymbolModule",
+            },
+          },
+        }
+      }
+      colorscheme = {
+        enable = false,
+        options = {
+          -- NOTE: if you activate persist, then please remove any vim.cmd("colorscheme ...") in your config, no needed anymore
+          persist = true, -- very efficient mechanism to Remember selected colorscheme
+          write_shada = false, -- If you open multiple nvim instances, then probably you need to enable this
+          excluded_schemes = {}, -- exclude any colorscheme from the list
+          -- it accept the same row_position and movement keys as the one in namy symbols
+        },
+      },
+      ui_select = { enable = false }, -- vim.ui.select() wrapper
+    })
+  end,
 }
 ```
 
@@ -461,5 +494,5 @@ Any suggestions to improve and integrate with other plugins are also welcome.
 - [Mini.pick](https://github.com/echasnovski/mini.nvim) @echasnovski for the idea of `getchar()`, without which this plugin wouldn't exist.
 - Magnet module (couldn’t find it anymore on GitHub, sorry!), which intrigued me a lot.
 - @folke for handling multiple versions of Neovim LSP requests in [Snacks.nvim](https://github.com/folke/snacks.nvim).
-- tests structure, thanks to @Oli [CodeCompanion](https://github.com/olimorris/codecompanion.nvim)
+- tests and ci structure, thanks to @Oli [CodeCompanion](https://github.com/olimorris/codecompanion.nvim)
 - A simple mechanism to persist the colorscheme, thanks to this [Reddit comment](https://www.reddit.com/r/neovim/comments/1edwhk8/comment/lfb1m2f/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button).

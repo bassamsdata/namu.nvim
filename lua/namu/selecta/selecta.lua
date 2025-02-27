@@ -37,7 +37,6 @@ require('selecta').pick(items, {
     end
 })
 ]]
-local M = {}
 
 ---@class SelectaState
 ---@field buf number Buffer handle
@@ -89,6 +88,14 @@ local M = {}
 ---@field footer_pos? "left"|"center"|"right"
 ---@field title_pos? "left"|string
 
+---@class SelectaMovementConfig
+---@field next string|string[] Key(s) for moving to next item
+---@field previous string|string[] Key(s) for moving to previous item
+---@field close string|string[] Key(s) for closing picker
+---@field select string|string[] Key(s) for selecting item
+---@field alternative_next? string @deprecated Use next array instead
+---@field alternative_previous? string @deprecated Use previous array instead
+
 ---@class SelectaOptions
 ---@field title? string
 ---@field formatter? fun(item: SelectaItem): string
@@ -110,11 +117,19 @@ local M = {}
 ---@field initially_hidden? boolean
 ---@field initial_index? number
 ---@field debug? boolean
+---@field movement? SelectaMovementConfig
+---@field custom_keymaps? table<string, SelectaCustomAction> Custom actions
+---@field pre_filter? fun(items: SelectaItem[], query: string): SelectaItem[], string Function to pre-filter items before matcher
 
 ---@class SelectaHooks
 ---@field on_render? fun(buf: number, items: SelectaItem[], opts: SelectaOptions) Called after items are rendered
 ---@field on_window_create? fun(win_id: number, buf_id: number, opts: SelectaOptions) Called after window creation
 ---@field before_render? fun(items: SelectaItem[], opts: SelectaOptions) Called before rendering items
+
+---@class SelectaCustomAction
+---@field keys string|string[] The key(s) for this action
+---@field handler fun(item: SelectaItem|SelectaItem[], state: SelectaState): boolean? The handler function
+---@field desc? string Optional description
 
 ---@class SelectaMultiselect
 ---@field enabled boolean Whether multiselect is enabled
@@ -137,6 +152,10 @@ local M = {}
 
 ---@class CursorCache
 ---@field guicursor string|nil The cached guicursor value
+
+local M = {}
+local matcher = require("namu.selecta.matcher")
+local logger = require("namu.utils.logger")
 
 -- Default configuration
 M.config = {
@@ -163,7 +182,7 @@ M.config = {
     padding = 1,
   },
   offset = 0,
-  debug = false, -- Debug logging flag
+  debug = false,
   preserve_order = false, -- Default to false unless the other module handle it
   keymaps = {},
   auto_select = false,
@@ -174,10 +193,15 @@ M.config = {
     ratio = 0.7, -- percentage of screen width where right-aligned windows start
   },
   movement = {
-    next = "<C-n>",
-    previous = "<C-p>",
-    alternative_next = "<DOWN>",
-    alternative_previous = "<UP>",
+    next = { "<C-n>", "<DOWN>" }, -- Support multiple keys
+    previous = { "<C-p>", "<UP>" }, -- Support multiple keys
+    close = { "<ESC>" },
+    select = { "<CR>" },
+    delete_word = {},
+    clear_line = {},
+    -- Deprecated mappings (but still working)
+    -- alternative_next = "<DOWN>", -- @deprecated: Will be removed in v1.0
+    -- alternative_previous = "<UP>", -- @deprecated: Will be removed in v1.0
   },
   multiselect = {
     enabled = false,
@@ -190,6 +214,7 @@ M.config = {
     },
     max_items = nil, -- No limit by default
   },
+  custom_keymaps = {},
 }
 
 ---@type CursorCache
@@ -197,23 +222,11 @@ local cursor_cache = {
   guicursor = nil,
 }
 
--- Scoring constants
-local MATCH_SCORES = {
-  prefix = 100, -- Starts with the query
-  contains = 60, -- Contains the query somewhere
-  fuzzy = 25, -- Fuzzy match
-}
+function M.log(message)
+  logger.log(message)
+end
 
-local SCORE_ADJUSTMENTS = {
-  gap_penalty = -3, -- Penalty for each gap in fuzzy match
-  consecutive_bonus = 7, -- Bonus for consecutive matches
-  start_bonus = 9, -- Bonus for matching at word start
-  word_boundary_bonus = 20, -- Bonus for matching at word boundaries
-  position_weight = 0.5, -- 0.5 points per position closer to start
-  length_weight = 1.5, -- 1.5 points per character shorter
-  max_gap_penalty = -20, -- Cap on total gap penalty
-  exact_match_bonus = 25, -- bonus for exact substring matches
-}
+M.clear_log = logger.clear_log
 
 local ns_id = vim.api.nvim_create_namespace("selecta_highlights")
 
@@ -249,6 +262,8 @@ end
 local highlights = {
   SelectaPrefix = { link = "Special" },
   SelectaMatch = { link = "Identifier" }, -- or maybe DiagnosticFloatingOk
+  -- BUG: only selectafilter cleared when changing colorscheme - drive me crazy
+  SelectaFilter = { link = "Type" },
   SelectaCursor = { blend = 100, nocombine = true },
   SelectaPrompt = { link = "FloatTitle" },
   SelectaSelected = { link = "Statement" },
@@ -258,78 +273,10 @@ local highlights = {
 ---Set up the highlight groups
 ---@return nil
 local function setup_highlights()
-  -- Ensure highlights exist even if colorscheme doesn't provide them
-  local fallbacks = {
-    SelectaMatch = { fg = "#89dceb", bold = true }, -- Preserve original match highlighting
-    SelectaPrefix = { fg = "#89b4fa", bold = true },
-    SelectaCursor = { blend = 100, nocombine = true },
-    SelectaSelected = { fg = "#b5581a", bold = true },
-    SelectaFooter = { fg = "#6c7086", italic = true },
-  }
-
-  for group, opts in pairs(highlights) do
-    -- Try to set linked highlight first
-    local success = pcall(vim.api.nvim_set_hl, 0, group, opts)
-    -- If link fails, use fallback
-    if not success and fallbacks[group] then
-      vim.api.nvim_set_hl(0, group, fallbacks[group])
-    end
-  end
-end
-
--- Input validation functions
----@param text string
----@param query string
----@return boolean, string?
-local function validate_input(text, query)
-  if type(text) ~= "string" then
-    return false, "text must be a string"
-  end
-  if type(query) ~= "string" then
-    return false, "query must be a string"
-  end
-  if #text == 0 then
-    return false, "text cannot be empty"
-  end
-  if #query == 0 then
-    return false, "query cannot be empty"
-  end
-  return true
-end
-
-local log_file = vim.fn.stdpath("cache") .. "/selecta_debug.log"
-
----@param message string|table
-function M.log(message)
-  if not M.config.debug then
-    return
-  end
-  -- Convert table to string if message is a table
-  if type(message) == "table" then
-    message = vim.inspect(message)
-  end
-
-  -- Ensure message is a string
-  message = tostring(message)
-
-  -- Add timestamp
-  local timestamp = os.date("%Y-%m-%d %H:%M:%S")
-  local log_line = string.format("[%s] %s\n", timestamp, message)
-
-  -- Append to log file
-  local file = io.open(log_file, "a")
-  if file then
-    file:write(log_line)
-    file:close()
-  end
-end
-
--- Helper function to clear the log file
-function M.clear_log()
-  local file = io.open(log_file, "w")
-  if file then
-    file:write("=== Log cleared ===\n")
-    file:close()
+  M.log("Setting up highlights...")
+  M.log("Current highlights table: " .. vim.inspect(highlights))
+  for name, attrs in pairs(highlights) do
+    vim.api.nvim_set_hl(0, name, attrs)
   end
 end
 
@@ -352,12 +299,45 @@ local function get_prefix_info(item, max_prefix_width)
   }
 end
 
-local POSITION_RATIOS = {
-  top10 = 0.1,
-  bottom = 0.8,
-  center = 0.5,
-  right = 0.7,
-}
+---@param position string|nil
+---@return {type: string, ratio: number}
+local function parse_position(position)
+  if type(position) ~= "string" then
+    return {
+      type = "top",
+      ratio = 0.1,
+    }
+  end
+
+  -- Match patterns like "top10", "top20_right", "center", etc.
+  ---@diagnostic disable-next-line: undefined-field
+  local base, percent, right = position:match("^(top)(%d+)(.*)$")
+
+  if base and percent then
+    -- Convert percentage to ratio (e.g., 10 -> 0.1)
+    return {
+      type = base .. (right == "_right" and "_right" or ""),
+      ratio = tonumber(percent) / 100,
+    }
+  end
+
+  local fixed_positions = {
+    center = 0.5,
+    bottom = 0.8,
+  }
+  -- Handle fixed positions
+  if fixed_positions[position] then
+    return {
+      type = position,
+      ratio = fixed_positions[position],
+    }
+  end
+  return {
+    type = "top",
+    ratio = 0.1,
+  }
+end
+
 ---@param items SelectaItem[]
 ---@param opts SelectaOptions
 ---@param formatter fun(item: SelectaItem): string
@@ -379,7 +359,8 @@ local function calculate_window_size(items, opts, formatter)
     content_width = content_width + padding
     -- Calculate max available width based on position
     local max_available_width
-    if opts.row_position:match("_right") then
+    local row_position = opts.row_position or M.config.row_position or "top10"
+    if row_position:match("_right") then
       if M.config.right_position.fixed then
         -- For right-aligned windows, available width is from right position to screen edge
         local right_col = math.floor(vim.o.columns * M.config.right_position.ratio)
@@ -417,322 +398,6 @@ local function calculate_window_size(items, opts, formatter)
   content_height = math.max(content_height, min_height)
 
   return content_width, content_height
-end
-
---- Fuzzy matches query characters in text with scoring
----@param text string
----@param query string
----@param has_uppercase boolean
----@return number[][]|nil positions, number score, number gaps
-function M.find_fuzzy_match(text, query, has_uppercase)
-  -- Validate input
-  local is_valid, error_msg = validate_input(text, query)
-  if not is_valid then
-    M.log("Fuzzy match error: " .. error_msg)
-    return nil, 0, 0
-  end
-  if #query > 4 then -- Only log for longer queries to reduce noise
-    M.log(string.format("Fuzzy: '%s' → '%s'", text, query))
-  end
-
-  -- Initialize variables
-  local positions = {}
-  local last_match_pos = nil
-  local current_range = nil
-  local score = MATCH_SCORES.fuzzy
-  local gaps = 0
-  local consecutive_matches = 0 -- Track consecutive matches
-
-  local text_pos = 1
-  local query_pos = 1
-
-  while query_pos <= #query and text_pos <= #text do
-    -- Add early exit if remaining text < remaining query
-    if (#text - text_pos) < (#query - query_pos) then
-      break
-    end
-    local query_char = has_uppercase and query:sub(query_pos, query_pos) or query:lower():sub(query_pos, query_pos)
-    local text_char = has_uppercase and text:sub(text_pos, text_pos) or text:lower():sub(text_pos, text_pos)
-
-    if text_char == query_char then
-      -- If this is consecutive with last match
-      if last_match_pos and text_pos == last_match_pos + 1 then
-        consecutive_matches = consecutive_matches + 1
-        -- Cap consecutive bonus to prevent over-scoring
-        if consecutive_matches <= 3 then
-          score = score + SCORE_ADJUSTMENTS.consecutive_bonus
-        end
-        if current_range then
-          current_range[2] = text_pos
-        else
-          current_range = { text_pos, text_pos }
-        end
-      else
-        if last_match_pos then
-          local gap_size = text_pos - last_match_pos - 1
-          gaps = gaps + gap_size
-          -- Apply penalty with diminishing effect for larger gaps
-          local gap_penalty = math.max(SCORE_ADJUSTMENTS.max_gap_penalty, SCORE_ADJUSTMENTS.gap_penalty * gap_size)
-          score = score + gap_penalty
-          if current_range then
-            table.insert(positions, current_range)
-          end
-        end
-        current_range = { text_pos, text_pos }
-        consecutive_matches = 1
-      end
-
-      -- Bonus for matching at word boundary
-      if text_pos == 1 or text:sub(text_pos - 1, text_pos - 1):match("[^%w]") then
-        score = score + SCORE_ADJUSTMENTS.start_bonus
-      end
-
-      last_match_pos = text_pos
-      query_pos = query_pos + 1
-    end
-    text_pos = text_pos + 1
-  end
-
-  -- Add final range if exists
-  if current_range then
-    table.insert(positions, current_range)
-  end
-
-  -- Return nil if we didn't match all characters
-  if query_pos <= #query then
-    return nil, 0, 0
-  end
-
-  return positions, score, gaps
-end
-
-local function is_word_boundary(text, pos)
-  -- Start of string is always a boundary
-  if pos == 1 then
-    return true
-  end
-
-  local prev_char = text:sub(pos - 1, pos - 1)
-  local curr_char = text:sub(pos, pos)
-
-  -- Check for traditional word boundaries (spaces, underscores, etc.)
-  if prev_char:match("[^%w]") ~= nil or prev_char == "_" then
-    return true
-  end
-
-  -- Check for camelCase and PascalCase boundaries
-  -- Current char is uppercase and previous char is lowercase
-  if curr_char:match("[A-Z]") and prev_char:match("[a-z]") then
-    return true
-  end
-
-  return false
-end
-
----@param text string The text to search in
----@param query string The query to search for
----@return MatchResult|nil
-function M.get_match_positions(text, query)
-  -- Work with raw text, no formatting adjustments here
-  if query == "" then
-    return nil
-  end
-  -- Smart-case: check if query has any uppercase
-  local has_uppercase = query:match("[A-Z]") ~= nil
-
-  -- Helper function for smart-case comparison
-  local function smart_compare(a, b)
-    if has_uppercase then
-      return a == b -- Case-sensitive if query has uppercase
-    else
-      return a:lower() == b:lower() -- Case-insensitive otherwise
-    end
-  end
-
-  -- Check for prefix match
-  local is_prefix = true
-  for i = 1, #query do
-    if not smart_compare(text:sub(i, i), query:sub(i, i)) then
-      is_prefix = false
-      break
-    end
-  end
-
-  -- Calculate position and length bonuses
-  local position_bonus = SCORE_ADJUSTMENTS.position_weight * 100 -- For prefix, always position 1
-  local length_bonus = (1 / math.max(#text, 1)) * SCORE_ADJUSTMENTS.length_weight * 100
-
-  -- Check for prefix match
-  if is_prefix then
-    -- Base score calculation
-    -- TEST: Testing this neo ones
-    local score = MATCH_SCORES.prefix
-      + SCORE_ADJUSTMENTS.exact_match_bonus
-      + SCORE_ADJUSTMENTS.word_boundary_bonus
-      + position_bonus
-      + length_bonus
-    -- Add special bonus for exact full-word matches
-    if #query == #text then
-      score = score + (SCORE_ADJUSTMENTS.exact_match_bonus * 2)
-      -- Optional: Add additional length bonus for perfect matches
-      score = score + (SCORE_ADJUSTMENTS.length_weight * 100)
-    end
-    return {
-      positions = { { 1, #query } },
-      -- TODO: this position bonus probably not needed, since pos = 1 is always
-      score = score, -- MATCH_SCORES.prefix + position_bonus + length_bonus,
-      type = "prefix",
-      matched_chars = #query,
-      gaps = 0,
-    }
-  end
-
-  -- Enhanced substring match with word boundary detection
-  local function find_best_substring_match()
-    local best_start = nil
-    local best_score = -1
-    local curr_pos = 1
-
-    while true do
-      local start_idx
-      if has_uppercase then
-        start_idx = text:find(query, curr_pos, true) -- Case-sensitive
-      else
-        start_idx = text:lower():find(query:lower(), curr_pos, true) -- Case-insensitive
-      end
-
-      if not start_idx then
-        break
-      end
-
-      -- Calculate score for this match position
-      local curr_score = MATCH_SCORES.contains
-
-      -- Add exact match bonus
-      if #query > 1 then -- Only for queries longer than 1 char
-        curr_score = curr_score + SCORE_ADJUSTMENTS.exact_match_bonus
-      end
-
-      -- Add word boundary bonus with improved detection
-      if is_word_boundary(text, start_idx) then
-        curr_score = curr_score + SCORE_ADJUSTMENTS.word_boundary_bonus
-        -- Extra bonus if it matches at a word after a separator
-        if start_idx > 1 and text:sub(start_idx - 1, start_idx - 1):match("[:/_%-%.]") then
-          curr_score = curr_score + SCORE_ADJUSTMENTS.word_boundary_bonus * 0.5
-        end
-      end
-
-      -- Position bonus relative to start
-      curr_score = curr_score + (1 / start_idx) * SCORE_ADJUSTMENTS.position_weight * 100
-
-      if curr_score > best_score then
-        best_score = curr_score
-        best_start = start_idx
-      end
-
-      curr_pos = start_idx + 1
-    end
-
-    return best_start, best_score
-  end
-
-  -- Find best substring match
-  local start_idx, substring_score = find_best_substring_match()
-  if start_idx then
-    position_bonus = (1 / start_idx) * SCORE_ADJUSTMENTS.position_weight * 100 -- Recalculate for non-prefix position
-
-    return {
-      positions = { { start_idx, start_idx + #query - 1 } },
-      score = substring_score + position_bonus + length_bonus,
-      type = "contains",
-      matched_chars = #query,
-      gaps = 0,
-    }
-  end
-
-  -- Fuzzy match
-  local fuzzy_positions, fuzzy_score, fuzzy_gaps = M.find_fuzzy_match(text, query, has_uppercase)
-  if fuzzy_positions then
-    -- Get position of first match from fuzzy_positions
-    local first_match_pos = fuzzy_positions[1][1]
-    position_bonus = (1 / first_match_pos) * SCORE_ADJUSTMENTS.position_weight * 100
-    length_bonus = (1 / #text) * SCORE_ADJUSTMENTS.length_weight * 100
-
-    return {
-      positions = fuzzy_positions,
-      score = fuzzy_score + position_bonus + length_bonus,
-      type = "fuzzy",
-      matched_chars = #query,
-      gaps = fuzzy_gaps,
-    }
-  end
-
-  return nil
-end
-
----sorter function
----@param items SelectaItem[]
----@param query string
----@param preserve_order boolean
-function M.sort_items(items, query, preserve_order)
-  -- Store match results for each item
-  local item_matches = {}
-  local best_score = -1
-  local best_index = 1
-
-  -- Get match results for all items
-  for i, item in ipairs(items) do
-    local match = M.get_match_positions(item.text, query)
-    if match then
-      -- Log detailed scoring information
-      -- print(string.format("Item: %-30s Score: %d Type: %-8s Gaps: %d", item.text, match.score, match.type, match.gaps))
-      table.insert(item_matches, {
-        item = item,
-        match = match,
-        original_index = i,
-      })
-
-      -- Track best match for cursor positioning (only for preserve_order)
-      if preserve_order and match.score > best_score then
-        best_score = match.score
-        best_index = #item_matches
-      end
-    end
-  end
-
-  if preserve_order then
-    -- Sort only by original index
-    table.sort(item_matches, function(a, b)
-      return a.original_index < b.original_index
-    end)
-  else
-    -- Sort based on match score and additional factors
-    table.sort(item_matches, function(a, b)
-      -- First compare by match type/score
-      if a.match.score ~= b.match.score then
-        return a.match.score > b.match.score
-      end
-
-      -- Then by number of gaps (fewer is better)
-      if a.match.gaps ~= b.match.gaps then
-        return a.match.gaps < b.match.gaps
-      end
-
-      -- Finally by text length (shorter is better)
-      return #a.item.text < #b.item.text
-    end)
-
-    -- When not preserving order, best match is always first item
-    best_index = 1
-  end
-
-  -- Extract sorted items
-  local sorted_items = {}
-  for _, match in ipairs(item_matches) do
-    table.insert(sorted_items, match.item)
-  end
-
-  return sorted_items, best_index
 end
 
 local function calculate_max_prefix_width(items, display_mode)
@@ -840,29 +505,43 @@ end
 ---@param query string
 ---@param opts SelectaOptions
 function M.update_filtered_items(state, query, opts)
-  if query ~= "" then
+  local items_to_filter = state.items
+  local actual_query = query
+
+  if opts.pre_filter then
+    local new_items, new_query = opts.pre_filter(state.items, query)
+    if new_items then
+      items_to_filter = new_items
+      -- Show the filtered items even if new_query is empty
+      state.filtered_items = new_items
+    end
+    actual_query = new_query or ""
+  end
+
+  -- Only proceed with further filtering if there's an actual query
+  if actual_query ~= "" then
     state.filtered_items = {}
-    for _, item in ipairs(state.items) do
-      local match = M.get_match_positions(item.text, query)
+    for _, item in ipairs(items_to_filter) do
+      local match = matcher.get_match_positions(item.text, actual_query)
       if match then
         table.insert(state.filtered_items, item)
       end
     end
+
     local best_index
-    state.filtered_items, best_index = M.sort_items(state.filtered_items, query, opts.preserve_order)
-    -- Store best match index for cursor positioning
+    state.filtered_items, best_index = matcher.sort_items(state.filtered_items, actual_query, opts.preserve_order)
     state.best_match_index = best_index
 
-    -- Handle auto-select here
     if opts.auto_select and #state.filtered_items == 1 and not state.initial_open then
       local selected = state.filtered_items[1]
       if selected and opts.on_select then
-        opts.on_select(selected) -- Call directly without scheduling
+        opts.on_select(selected)
         M.close_picker(state)
       end
     end
-  else
-    state.filtered_items = state.items
+  elseif not opts.pre_filter then
+    -- Only set to all items if there's no pre_filter
+    state.filtered_items = items_to_filter
     state.best_match_index = nil
   end
 end
@@ -900,12 +579,40 @@ end
 ---@param opts SelectaOptions
 ---@param query string
 local function apply_highlights(buf, line_nr, item, opts, query, line_length, state)
-  -- Get the formatted display string
   local display_str = opts.formatter(item)
+
+  -- First, check if this is a symbol filter query
+  -- local filter = query:match("^%%%w%w(.*)$")
+  -- local actual_query = filter and query:sub(4) or query -- Use everything after %xx if filter exists
+  local filter, remaining = query:match("^(/[%w][%w])(.*)$")
+  local actual_query = remaining or query
+
+  -- Highlight title prefix in prompt buffer
+  if state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) then
+    -- Highlight the title prefix
+    local prefix = opts.window.title_prefix
+    if prefix then
+      vim.api.nvim_buf_set_extmark(state.prompt_buf, ns_id, 0, 0, {
+        end_col = #prefix,
+        hl_group = "SelectaFilter",
+        priority = 200,
+      })
+    end
+    -- If there's a filter, highlight it in the prompt buffer
+    if filter then
+      local prefix_len = #(opts.window.title_prefix or "")
+      vim.api.nvim_buf_set_extmark(state.prompt_buf, ns_id, 0, prefix_len, {
+        end_col = prefix_len + 3, -- Length of %xx is 3
+        hl_group = "SelectaFilter",
+        priority = 200,
+      })
+    end
+  end
+  -- Get the formatted display string
   if opts.display.mode == "raw" then
     local offset = opts.offset and opts.offset(item) or 0
     if query ~= "" then
-      local match = M.get_match_positions(item.text, query)
+      local match = matcher.get_match_positions(item.text, query)
       if match then
         for _, pos in ipairs(match.positions) do
           local start_col = offset + pos[1] - 1
@@ -946,21 +653,21 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
     end
 
     -- Debug log
-    M.log(
-      string.format(
-        "Highlighting item: %s\nFull display: '%s'\nIcon boundary: %d\nQuery: '%s'",
-        item.text,
-        display_str,
-        icon_end,
-        query
-      )
-    )
+    -- M.log(
+    --   string.format(
+    --     "Highlighting item: %s\nFull display: '%s'\nIcon boundary: %d\nQuery: '%s'",
+    --     item.text,
+    --     display_str,
+    --     icon_end,
+    --     query
+    --   )
+    -- )
     -- Calculate base offset for query highlights (icon + space)
     local base_offset = item.icon and (vim.api.nvim_strwidth(item.icon) + 1) or 0
 
-    -- Highlight matches in the text
-    if query ~= "" then
-      local match = M.get_match_positions(item.text, query)
+    -- Highlight matches in the text using actual_query
+    if actual_query ~= "" then
+      local match = matcher.get_match_positions(item.text, actual_query)
       if match then
         for _, pos in ipairs(match.positions) do
           -- Get the matched text
@@ -976,9 +683,9 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
             local highlight_text = display_str:sub(start_col + 1, end_col)
 
             -- Debug log
-            M.log(
-              string.format("Match position: [%d, %d]\nFinal position: [%d, %d]", pos[1], pos[2], start_col, end_col)
-            )
+            -- M.log(
+            --   string.format("Match position: [%d, %d]\nFinal position: [%d, %d]", pos[1], pos[2], start_col, end_col)
+            -- )
 
             vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, start_col, {
               end_col = end_col,
@@ -1094,6 +801,13 @@ local function resize_window(state, opts)
   vim.api.nvim_win_set_config(state.win, win_config)
   if state.prompt_win and vim.api.nvim_win_is_valid(state.prompt_win) then
     vim.api.nvim_win_set_config(state.prompt_win, prompt_config)
+  end
+
+  -- Simple fix: if filtered items are less than window height,
+  -- ensure we're viewing from the top
+  if #state.filtered_items <= new_height then
+    vim.api.nvim_win_set_cursor(state.win, { 1, 0 })
+    vim.cmd("normal! zt")
   end
 end
 
@@ -1278,10 +992,16 @@ local function get_window_position(width, row_position)
   local cmdheight = vim.o.cmdheight
   local available_lines = lines - cmdheight - 2
 
+  -- Parse the position
+  local pos_info = parse_position(row_position)
+  -- this will never return nil. I did tis to satisfy lua annotations
+  if not pos_info then
+    return 0, 0
+  end
+
   -- Calculate column position once
-  local is_right = row_position:match("_right")
   local col
-  if is_right then
+  if pos_info.type:find("_right$") then -- Changed from row_position:match
     if M.config.right_position.fixed then
       -- Fixed right position regardless of width
       col = math.floor(columns * M.config.right_position.ratio)
@@ -1296,12 +1016,12 @@ local function get_window_position(width, row_position)
 
   -- Calculate row position
   local row
-  if row_position:match("top") then
-    row = math.floor(lines * POSITION_RATIOS.top10)
-  elseif row_position == "bottom" then
-    row = math.floor(lines * POSITION_RATIOS.bottom) - 4
+  if pos_info.type:match("^top") then
+    row = math.floor(lines * pos_info.ratio)
+  elseif pos_info.type == "bottom" then
+    row = math.floor(lines * pos_info.ratio) - 4
   else -- center positions
-    row = math.max(1, math.floor(available_lines * POSITION_RATIOS.center))
+    row = math.max(1, math.floor(available_lines * pos_info.ratio))
   end
 
   return row, col
@@ -1434,19 +1154,90 @@ local SPECIAL_KEYS = {
   MOUSE = vim.api.nvim_replace_termcodes("<LeftMouse>", true, true, true),
 }
 
+---Delete last word from query
+---@param state SelectaState
+local function delete_last_word(state)
+  -- If we're at the start, nothing to delete
+  if state.cursor_pos <= 1 then
+    return
+  end
+
+  -- Find the last non-space character before cursor
+  local last_char_pos = state.cursor_pos - 1
+  while last_char_pos > 1 and state.query[last_char_pos] == " " do
+    last_char_pos = last_char_pos - 1
+  end
+
+  -- Find the start of the word
+  local word_start = last_char_pos
+  while word_start > 1 and state.query[word_start - 1] ~= " " do
+    word_start = word_start - 1
+  end
+
+  -- Remove characters from word_start to last_char_pos
+  for i = word_start, last_char_pos do
+    table.remove(state.query, word_start)
+  end
+
+  -- Update cursor position
+  state.cursor_pos = word_start
+  state.initial_open = false
+  state.cursor_moved = false
+end
+
+---Clear the entire query line
+---@param state SelectaState
+local function clear_query_line(state)
+  state.query = {}
+  state.cursor_pos = 1
+  state.initial_open = false
+  state.cursor_moved = false
+end
+
 -- Pre-compute the movement keys
+---@param opts SelectaOptions
+---@return table<string, string[]>
 local function get_movement_keys(opts)
   local movement_config = opts.movement or M.config.movement
-  return {
-    next = {
-      vim.api.nvim_replace_termcodes(movement_config.next or "<C-n>", true, true, true),
-      vim.api.nvim_replace_termcodes(movement_config.alternative_next or "<C-j>", true, true, true),
-    },
-    previous = {
-      vim.api.nvim_replace_termcodes(movement_config.previous or "<C-p>", true, true, true),
-      vim.api.nvim_replace_termcodes(movement_config.alternative_previous or "<C-k>", true, true, true),
-    },
+  local keys = {
+    next = {},
+    previous = {},
+    close = {},
+    select = {},
+    delete_word = {},
+    clear_line = {},
   }
+
+  -- Handle arrays of keys
+  for action, mapping in pairs(movement_config) do
+    if action ~= "alternative_next" and action ~= "alternative_previous" then
+      if type(mapping) == "table" then
+        -- Handle array of keys
+        for _, key in ipairs(mapping) do
+          table.insert(keys[action], vim.api.nvim_replace_termcodes(key, true, true, true))
+        end
+      elseif type(mapping) == "string" then
+        -- Handle single key as string
+        table.insert(keys[action], vim.api.nvim_replace_termcodes(mapping, true, true, true))
+      end
+    end
+  end
+
+  -- Handle deprecated alternative mappings
+  if movement_config.alternative_next then
+    -- TODO: version 0.6.0 will start sending this message
+    -- vim.notify_once(
+    --   "alternative_next/previous are deprecated and will be removed in v1.0. "
+    --     .. "Use movement.next/previous arrays instead.",
+    --   vim.log.levels.WARN
+    -- )
+    table.insert(keys.next, vim.api.nvim_replace_termcodes(movement_config.alternative_next, true, true, true))
+  end
+  if movement_config.alternative_previous then
+    table.insert(keys.previous, vim.api.nvim_replace_termcodes(movement_config.alternative_previous, true, true, true))
+  end
+
+  return keys
 end
 
 -- Simplified movement handler
@@ -1605,46 +1396,50 @@ local function handle_char(state, char, opts)
   end
 
   local char_key = type(char) == "number" and vim.fn.nr2char(char) or char
+  local movement_keys = get_movement_keys(opts)
 
-  if opts.keymaps then
-    for _, keymap in ipairs(opts.keymaps) do
-      if char_key == vim.api.nvim_replace_termcodes(keymap.key, true, true, true) then
-        local selected = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
-        if selected then
-          -- Check for multiselect state
-          if opts.multiselect and opts.multiselect.enabled and state.selected_count > 0 then
-            -- Collect selected items
-            local selected_items = {}
-            for _, item in ipairs(state.filtered_items) do
-              if state.selected[tostring(item.value or item.text)] then
-                table.insert(selected_items, item)
+  -- Handle custom keymaps first
+  if opts.custom_keymaps and type(opts.custom_keymaps) == "table" then
+    for action_name, action in pairs(opts.custom_keymaps) do
+      -- Check if action is properly formatted
+      if action and action.keys then
+        local keys = type(action.keys) == "string" and { action.keys } or action.keys
+        for _, key in ipairs(keys) do
+          if char_key == vim.api.nvim_replace_termcodes(key, true, true, true) then
+            local selected = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
+            if selected and action.handler then
+              if opts.multiselect and opts.multiselect.enabled and state.selected_count > 0 then
+                -- Handle multiselect case
+                local selected_items = {}
+                for _, item in ipairs(state.filtered_items) do
+                  if state.selected[get_item_id(item)] then
+                    table.insert(selected_items, item)
+                  end
+                end
+                local should_close = action.handler(selected_items, state)
+                if should_close == false then
+                  M.close_picker(state)
+                  return nil
+                end
+              else
+                -- Handle single item case
+                local should_close = action.handler(selected, state)
+                if should_close == false then
+                  M.close_picker(state)
+                  return nil
+                end
               end
             end
-            -- Pass all selected items to handler if there are any
-            local should_close = keymap.handler(selected_items, state, M.close_picker)
-            if should_close == false then
-              M.close_picker(state)
-              return nil
-            end
-          else
-            -- Original single-item behavior
-            local should_close = keymap.handler(selected, state, M.close_picker)
-            if should_close == false then
-              M.close_picker(state)
-              return nil
-            end
+            return nil
           end
         end
-        return nil
       end
     end
   end
 
+  -- Handle multiselect keymaps
   if opts.multiselect and opts.multiselect.enabled then
     local multiselect_keys = opts.multiselect.keymaps or M.config.multiselect.keymaps
-
-    M.clear_log() -- Optional: clear the log when starting new session
-    -- Handle multiselect keymaps
     if char_key == vim.api.nvim_replace_termcodes(multiselect_keys.toggle, true, true, true) then
       if handle_toggle(state, opts, 1) then
         return nil
@@ -1663,30 +1458,62 @@ local function handle_char(state, char, opts)
       return nil
     end
   end
-  -- Handle mouse clicks
-  if char_key == SPECIAL_KEYS.MOUSE and vim.v.mouse_win ~= state.win and vim.v.mouse_win ~= state.prompt_win then
+
+  -- Handle movement and control keys
+  if vim.tbl_contains(movement_keys.previous, char_key) then
+    state.cursor_moved = true
+    state.initial_open = false
+    handle_movement(state, -1, opts)
+    return nil
+  elseif vim.tbl_contains(movement_keys.next, char_key) then
+    state.cursor_moved = true
+    state.initial_open = false
+    handle_movement(state, 1, opts)
+    return nil
+  elseif vim.tbl_contains(movement_keys.close, char_key) then
     if opts.on_cancel then
       opts.on_cancel()
     end
     M.close_picker(state)
     return nil
-  end
-
-  local movement_keys = get_movement_keys(opts)
-  local movement = nil
-
-  -- Determine movement direction from configured keys only
-  if vim.tbl_contains(movement_keys.previous, char_key) then
-    movement = -1
-  elseif vim.tbl_contains(movement_keys.next, char_key) then
-    movement = 1
-  end
-
-  if movement then
-    state.cursor_moved = true
-    state.initial_open = false
-    handle_movement(state, movement, opts)
-    return nil -- prevent further processing
+  elseif vim.tbl_contains(movement_keys.select, char_key) then
+    if opts.multiselect and opts.multiselect.enabled then
+      local selected_items = {}
+      for _, item in ipairs(state.items) do
+        if state.selected[get_item_id(item)] then
+          table.insert(selected_items, item)
+        end
+      end
+      if #selected_items > 0 and opts.multiselect.on_select then
+        opts.multiselect.on_select(selected_items)
+      elseif #selected_items == 0 then
+        local current = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
+        if current and opts.on_select then
+          opts.on_select(current)
+        end
+      end
+    else
+      local selected = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
+      if selected and opts.on_select then
+        opts.on_select(selected)
+      end
+    end
+    M.close_picker(state)
+    return nil
+  elseif vim.tbl_contains(movement_keys.delete_word, char_key) then
+    delete_last_word(state)
+    update_display(state, opts)
+    return nil
+  elseif vim.tbl_contains(movement_keys.clear_line, char_key) then
+    clear_query_line(state)
+    update_display(state, opts)
+    return nil
+  elseif char_key == SPECIAL_KEYS.MOUSE and vim.v.mouse_win ~= state.win and vim.v.mouse_win ~= state.prompt_win then
+    if opts.on_cancel then
+      opts.on_cancel()
+    end
+    M.close_picker(state)
+    return nil
   elseif char_key == SPECIAL_KEYS.LEFT then
     state.cursor_pos = math.max(1, state.cursor_pos - 1)
   elseif char_key == SPECIAL_KEYS.RIGHT then
@@ -1698,38 +1525,6 @@ local function handle_char(state, char, opts)
       state.initial_open = false
       state.cursor_moved = false
     end
-  elseif char_key == SPECIAL_KEYS.CR then
-    if opts.multiselect and opts.multiselect.enabled then
-      local selected_items = {}
-      for _, item in ipairs(state.items) do
-        if state.selected[get_item_id(item)] then
-          table.insert(selected_items, item)
-        end
-      end
-      if #selected_items > 0 and opts.multiselect.on_select then
-        opts.multiselect.on_select(selected_items)
-      elseif #selected_items == 0 then
-        -- If no items selected, treat as single select
-        local current = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
-        if current and opts.on_select then
-          opts.on_select(current)
-        end
-      end
-    else
-      -- Existing single-select behavior
-      local selected = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
-      if selected and opts.on_select then
-        opts.on_select(selected)
-      end
-    end
-    M.close_picker(state)
-    return nil
-  elseif char_key == SPECIAL_KEYS.ESC then
-    if opts.on_cancel then
-      opts.on_cancel()
-    end
-    M.close_picker(state)
-    return nil
   elseif type(char) == "number" and char >= 32 and char <= 126 then
     table.insert(state.query, state.cursor_pos, vim.fn.nr2char(char))
     state.cursor_pos = state.cursor_pos + 1
@@ -1755,11 +1550,13 @@ function M.pick(items, opts)
     end,
     fuzzy = false,
     offnet = 0,
-    keymaps = M.config.keymaps,
+    custom_keymaps = vim.tbl_deep_extend("force", M.config.custom_keymaps, {}),
     movement = vim.tbl_deep_extend("force", M.config.movement, {}),
     auto_select = M.config.auto_select,
     window = vim.tbl_deep_extend("force", M.config.window, {}),
+    pre_filter = nil,
     row_position = M.config.row_position,
+    debug = M.config.debug,
   }, opts or {})
 
   -- Calculate max_prefix_width before creating formatter
@@ -1827,73 +1624,57 @@ function M.pick(items, opts)
 end
 
 M._test = {
-  get_match_positions = M.get_match_positions,
-  is_word_boundary = is_word_boundary,
+  get_match_positions = matcher.get_match_positions,
+  is_word_boundary = matcher.is_word_boundary,
   update_filtered_items = M.update_filtered_items,
   calculate_window_size = calculate_window_size,
-  validate_input = validate_input,
+  validate_input = matcher.validate_input,
   apply_highlights = apply_highlights,
   setup_highlights = setup_highlights,
+  get_window_position = get_window_position,
+  parse_position = parse_position,
 }
 
----Show picker without using internal defaults
----@param items SelectaItem[] Items to display
----@param display_opts {window: table, display: table, position: string, title: string?, on_select: function?, on_cancel: function?, on_move: function?}
----@return number|nil window_id Returns the window ID if created successfully
-function M.show_picker(items, display_opts)
-  -- No merging with defaults, use options directly
-  local picker_opts = {
-    title = display_opts.title or "Select",
-    window = display_opts.window,
-    display = display_opts.display,
-    row_position = display_opts.position,
-    -- Core callbacks
-    on_select = display_opts.on_select,
-    on_cancel = display_opts.on_cancel,
-    on_move = display_opts.on_move,
-    -- Essential options that shouldn't be configurable
-    fuzzy = false,
-    preserve_order = true,
-  }
+local function async_update(state, new_items, opts)
+  vim.schedule(function()
+    if not state or not state.active then
+      return
+    end
 
-  -- Use existing picker creation but with direct options
-  local state = create_picker(items, picker_opts)
-  update_display(state, picker_opts)
-  vim.cmd("redraw")
+    logger.log("Updating items")
+    state.items = new_items
+    state.filtered_items = new_items
 
-  -- Main input loop
-  local ok, result = pcall(function()
-    while state.active do
-      local char = vim.fn.getchar()
-      local result = handle_char(state, char, picker_opts)
-      if result ~= nil then
-        return result
-      end
+    if vim.api.nvim_win_is_valid(state.win) and vim.api.nvim_buf_is_valid(state.buf) then
+      update_display(state, opts)
       vim.cmd("redraw")
+      logger.log("Display updated")
+    else
     end
   end)
-
-  if not ok then
-    vim.schedule(function()
-      restore_cursor()
-    end)
-    error(result)
-  end
-
-  return state.win
 end
+
+M.async_update = async_update
 
 ---@param opts? table
 function M.setup(opts)
   opts = opts or {}
   M.config = vim.tbl_deep_extend("force", M.config, opts)
   -- Set up initial highlights
-  setup_highlights()
+  logger.setup(opts)
+  M.log("Calling setup_highlights from M.setup")
+  vim.schedule(function()
+    setup_highlights()
+  end)
 
   -- Create autocmd for ColorScheme event
+  M.log("Creating ColorScheme autocmd")
   vim.api.nvim_create_autocmd("ColorScheme", {
     group = vim.api.nvim_create_augroup("SelectaHighlights", { clear = true }),
-    callback = setup_highlights,
+    callback = function()
+      M.log("ColorScheme autocmd triggered")
+      setup_highlights()
+    end,
   })
 end
 

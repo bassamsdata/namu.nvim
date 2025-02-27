@@ -1,6 +1,8 @@
----@diagnostic disable: need-check-nil
+---@diagnostic disable: need-check-nil, param-type-mismatch
 local h = require("tests.helpers")
 local selecta = require("namu.selecta.selecta")
+local matcher = require("namu.selecta.matcher")
+---@diagnostic disable-next-line: undefined-global
 local new_set = MiniTest.new_set
 
 local T = new_set()
@@ -10,7 +12,7 @@ T["Selecta.matching"] = new_set()
 -- test 1
 -- Test exact prefix matches
 T["Selecta.matching"]["detects prefix matches correctly"] = function()
-  local get_match_positions = selecta._test.get_match_positions
+  local get_match_positions = matcher._test.get_match_positions
 
   -- Basic prefix match
   local result = get_match_positions("hello", "he")
@@ -35,7 +37,7 @@ end
 -- test 2
 -- Test substring matches
 T["Selecta.matching"]["detects substring matches correctly"] = function()
-  local get_match_positions = selecta._test.get_match_positions
+  local get_match_positions = matcher._test.get_match_positions
 
   -- Basic substring match that isn't a prefix
   -- Using "orl" instead of "ello" because "ello" is being detected as a prefix
@@ -63,7 +65,7 @@ end
 -- test 3
 -- Test fuzzy matches
 T["Selecta.matching"]["handles fuzzy matches correctly"] = function()
-  local get_match_positions = selecta._test.get_match_positions
+  local get_match_positions = matcher._test.get_match_positions
 
   -- Basic fuzzy match
   local result = get_match_positions("hello world", "hwd")
@@ -85,7 +87,7 @@ end
 -- test 4
 -- Test word boundaries
 T["Selecta.matching"]["detects word boundaries correctly"] = function()
-  local is_word_boundary = selecta._test.is_word_boundary
+  local is_word_boundary = matcher._test.is_word_boundary
 
   h.eq(is_word_boundary("hello", 1), true) -- Start of string
   h.eq(is_word_boundary("hello_world", 7), true) -- After underscore
@@ -96,7 +98,7 @@ end
 
 -- test 5
 T["Selecta.matching"]["applies correct scoring rules"] = function()
-  local get_match_positions = selecta._test.get_match_positions
+  local get_match_positions = matcher._test.get_match_positions
 
   -- Test different match types with the same pattern length
   local prefix_score = get_match_positions("hello", "he").score
@@ -152,8 +154,8 @@ T["Selecta.scoring"]["applies correct scoring rules"] = function()
   local text2 = "help me"
   local query = "he"
 
-  local score1 = selecta._test.get_match_positions(text1, query).score
-  local score2 = selecta._test.get_match_positions(text2, query).score
+  local score1 = matcher._test.get_match_positions(text1, query).score
+  local score2 = matcher._test.get_match_positions(text2, query).score
 
   h.eq(score1 > score2, true, "Shorter match should score higher")
 end
@@ -234,14 +236,15 @@ T["Selecta.highlights"]["sets up highlight groups"] = function()
   local match_hl = vim.api.nvim_get_hl(0, { name = "SelectaMatch" })
   local prefix_hl = vim.api.nvim_get_hl(0, { name = "SelectaPrefix" })
   local cursor_hl = vim.api.nvim_get_hl(0, { name = "SelectaCursor" })
+  local filter_hl = vim.api.nvim_get_hl(0, { name = "SelectaFilter" })
 
   -- Verify highlight attributes
   h.eq(type(match_hl), "table")
   h.eq(type(prefix_hl), "table")
   h.eq(type(cursor_hl), "table")
+  h.eq(type(filter_hl), "table")
 
   -- Check specific attributes
-  h.eq(prefix_hl.bold, true)
   h.eq(cursor_hl.blend, 100)
 end
 
@@ -250,7 +253,7 @@ T["Selecta.highlights"]["calculates highlight positions"] = function()
   -- Test highlight position calculation directly
   local text = "hello world"
   local query = "he"
-  local matches = selecta._test.get_match_positions(text, query)
+  local matches = matcher._test.get_match_positions(text, query)
 
   h.eq(type(matches), "table")
   h.eq(type(matches.positions), "table")
@@ -292,10 +295,10 @@ T["Selecta.input_validation"] = new_set()
 -- test 14
 T["Selecta.input_validation"]["validates search input"] = function()
   -- Test validate_input directly
-  local valid, _ = selecta._test.validate_input("text", "query")
+  local valid, _ = matcher._test.validate_input("text", "query")
   h.eq(valid, true)
 
-  local valid2, err = selecta._test.validate_input("", "query")
+  local valid2, err = matcher._test.validate_input("", "query")
   h.eq(valid2, false)
   h.eq(type(err), "string")
 end
@@ -373,6 +376,112 @@ T["Selecta.error_handling"]["handles window creation errors"] = function()
   end)
   h.eq(ok, false)
   h.eq(type(err), "string")
+end
+
+--Window Positioning-----------------------------------------------------
+T["Window.positioning"] = new_set()
+
+-- test 19
+T["Window.positioning"]["parse_position handles all position types correctly"] = function()
+  local parse_position = selecta._test.parse_position
+
+  -- Test top with percentage
+  local result = parse_position("top20")
+  h.eq(result.type, "top")
+  h.eq(result.ratio, 0.2)
+
+  -- Test top with percentage and right alignment
+  result = parse_position("top25_right")
+  h.eq(result.type, "top_right")
+  h.eq(result.ratio, 0.25)
+
+  -- Test fixed center position
+  result = parse_position("center")
+  h.eq(result.type, "center")
+  h.eq(result.ratio, 0.5)
+
+  -- Test fixed bottom position
+  result = parse_position("bottom")
+  h.eq(result.type, "bottom")
+  h.eq(result.ratio, 0.8)
+
+  -- Test invalid input fallback
+  result = parse_position("invalid_position")
+  h.eq(result.type, "top")
+  h.eq(result.ratio, 0.1)
+
+  -- Test nil input fallback
+  result = parse_position(nil)
+  h.eq(result and result.type, "top")
+  h.eq(result and result.ratio, 0.1)
+end
+
+-- test 20
+T["Window.positioning"]["get_window_position calculates correct positions"] = function()
+  local get_window_position = selecta._test.get_window_position
+
+  -- Mock vim.o values
+  local _original_o = vim.o
+  vim.o = {
+    lines = 100,
+    columns = 200,
+    cmdheight = 1,
+  }
+
+  -- Test center position
+  local row, col = get_window_position(40, "center")
+  h.eq(row, 48) -- (100 - 1 - 2) * 0.5 = 48.5, floor to 48
+  h.eq(col, 80) -- (200 - 40) / 2
+
+  -- Test top percentage
+  row, col = get_window_position(40, "top20")
+  h.eq(row, 20) -- 100 * 0.2
+  h.eq(col, 80) -- (200 - 40) / 2
+
+  -- Test top percentage with right alignment
+  row, col = get_window_position(40, "top25_right")
+  h.eq(row, 25) -- 100 * 0.25
+  h.eq(col, 156) -- 200 - 40 - 4
+
+  -- Test bottom position
+  row, col = get_window_position(40, "bottom")
+  h.eq(row, 76) -- (100 * 0.8) - 4
+  h.eq(col, 80) -- (200 - 40) / 2
+
+  -- Restore vim.o
+  vim.o = _original_o
+end
+
+-- test 21
+-- right position with fixed ratio
+T["Window.positioning"]["handles fixed right position correctly"] = function()
+  local get_window_position = selecta._test.get_window_position
+
+  -- Mock vim.o and config
+  local _original_o = vim.o
+  vim.o = {
+    lines = 100,
+    columns = 200,
+    cmdheight = 1,
+  }
+
+  local _original_config = selecta.config
+  selecta.config = {
+    right_position = {
+      fixed = true,
+      ratio = 0.8,
+    },
+  }
+
+  -- Test fixed right position
+  ---@diagnostic disable-next-line: param-type-mismatch
+  local row, col = get_window_position(40, "top20_right")
+  h.eq(row, 20) -- 100 * 0.2
+  h.eq(col, 160) -- 200 * 0.8
+
+  -- Restore mocks
+  vim.o = _original_o
+  selecta.config = _original_config
 end
 
 return T

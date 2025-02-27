@@ -13,7 +13,9 @@ local allowed_keys = {
     keymaps = {},
     root = {
         "window", "display", "offset", "debug", "preserve_order", "keymaps",
-        "auto_select", "row_position", "multiselect", "title", "filter",
+        "auto_select", "row_position", "AllowKinds", "BlockList", "multiselect", "title", "filter",
+        "kindText" , "kindIcons", "preview", "icon", "highlight",  "highlights", "kinds",
+        "focus_current_symbol", "initially_hidden", "actions", "movement", "custom_keymaps",
         "fuzzy", "offnet", "initial_index", "formatter", "on_move", "hooks"
     },
   -- stylua: ignore end
@@ -29,6 +31,33 @@ local function check_unknown_keys(user_opts, allowed_keys, section, issues)
       table.insert(issues, { level = "warn", msg = string.format("Unknown option '%s' in %s", key, section) })
     end
   end
+end
+
+local function is_valid_position(pos)
+  if not pos then
+    return true
+  end
+
+  -- Static positions
+  local static_positions = {
+    "center",
+    "bottom",
+    "center_right",
+    "bottom_right",
+  }
+
+  if vim.tbl_contains(static_positions, pos) then
+    return true
+  end
+
+  -- Check for topN or topN_right patterns
+  local num = pos:match("^top(%d+)$") or pos:match("^top(%d+)_right$")
+  if num then
+    local n = tonumber(num)
+    return n >= 5 and n <= 70
+  end
+
+  return false
 end
 
 function M.validate_picker_options(opts)
@@ -68,7 +97,10 @@ function M.validate_picker_options(opts)
   check(not opts.debug or type(opts.debug) == "boolean", "debug must be a boolean")
   check(not opts.preserve_order or type(opts.preserve_order) == "boolean", "preserve_order must be a boolean")
   check(not opts.auto_select or type(opts.auto_select) == "boolean", "auto_select must be a boolean")
-  check(not opts.row_position or vim.tbl_contains({ "center", "top10" }, opts.row_position), "Invalid row_position")
+  check(
+    is_valid_position(opts.row_position),
+    "Invalid row_position: must be one of 'center', 'bottom', 'center_right', 'bottom_right', or 'topN'/'topN_right' where N is 5-70"
+  )
 
   if opts.multiselect and opts.multiselect.keymaps then
     check(type(opts.multiselect.keymaps) == "table", "multiselect.keymaps must be a table")

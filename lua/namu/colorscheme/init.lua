@@ -115,7 +115,7 @@ function M.show(opts)
   -- Get a list of available colorschemes
   local colorschemes = vim.fn.getcompletion("", "color")
 
-  -- stylua: ignore start 
+  -- stylua: ignore start
   local default_colorschemes = {
     "vim", "blue", "darkblue", "default", "delek", "desert", "elflord", "evening",
     "habamax", "industry", "koehler", "lunaperche", "morning", "murphy", "pablo",
@@ -166,7 +166,7 @@ function M.show(opts)
     movement = vim.tbl_deep_extend("force", M.config.movement, {}),
     on_select = function(item)
       if item then
-        vim.cmd.colorscheme(item.value)
+        pcall(vim.cmd.colorscheme, item.value)
         if opts.write_shada then
           vim.cmd("silent! wshada")
         end
@@ -181,7 +181,10 @@ function M.show(opts)
     on_move = function(item)
       if item then
         vim.wait(2, function()
-          return vim.cmd.colorscheme(item.value)
+          local ok, _ = pcall(vim.cmd.colorscheme, item.value)
+          if not ok then
+            vim.notify(('Cannot load colorscheme %s'):format(item.value), vim.log.levels.ERROR)
+          end
         end)
       end
     end,
