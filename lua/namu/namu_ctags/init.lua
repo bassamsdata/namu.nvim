@@ -140,8 +140,8 @@ local function symbols_to_selecta_items(raw_symbols)
   local bufnr = vim.api.nvim_get_current_buf()
   local cache_key = string.format("%d_%d", bufnr, vim.b[bufnr].changedtick or 0)
 
-  if M.symbol_cache and M.symbol_cache.key == cache_key then
-    return M.symbol_cache.items
+  if symbol_cache and symbol_cache.key == cache_key then
+    return symbol_cache.items
   end
 
   local items = {}
@@ -246,10 +246,10 @@ local function show_picker(selectaItems, notify_opts)
     row_position = M.config.row_position,
     hooks = {
       on_render = function(buf, filtered_items)
-        ui.apply_kind_highlights(buf, filtered_items)
+        ui.apply_kind_highlights(buf, filtered_items, M.config)
       end,
       on_buffer_clear = function()
-        ui.clear_preview_highlight()
+        ui.clear_preview_highlight(state.original_win, state.preview_ns)
         if state.original_win and state.original_pos and vim.api.nvim_win_is_valid(state.original_win) then
           vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
         end
@@ -263,9 +263,9 @@ local function show_picker(selectaItems, notify_opts)
       on_select = function(selected_items)
         -- TODO: we need smart mechanis on here.
         if M.config.preview.highlight_mode == "select" then
-          ui.clear_preview_highlight()
+          ui.clear_preview_highlight(state.original_win, state.preview_ns)
           if type(selected_items) == "table" and selected_items[1] then
-            ui.highlight_symbol(selected_items[1].value)
+            ui.highlight_symbol(selected_items[1].value, state.original_win, state.preview_ns)
           end
         end
         if type(selected_items) == "table" and selected_items[1] then
@@ -273,16 +273,16 @@ local function show_picker(selectaItems, notify_opts)
         end
       end,
     },
-    initial_index = M.config.focus_current_symbol and current_symbol and find_symbol_index(
+    initial_index = M.config.focus_current_symbol and current_symbol and ui.find_symbol_index(
       selectaItems,
       current_symbol
     ) or nil,
     on_select = function(item)
-      ui.clear_preview_highlight()
+      ui.clear_preview_highlight(state.original_win, state.preview_ns)
       jump_to_symbol(item.value)
     end,
     on_cancel = function()
-      ui.clear_preview_highlight()
+      ui.clear_preview_highlight(state.original_win, state.preview_ns)
       if state.original_win and state.original_pos and vim.api.nvim_win_is_valid(state.original_win) then
         vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
       end
@@ -290,7 +290,7 @@ local function show_picker(selectaItems, notify_opts)
     on_move = function(item)
       if M.config.preview.highlight_on_move and M.config.preview.highlight_mode == "always" then
         if item then
-          ui.highlight_symbol(item.value)
+          ui.highlight_symbol(item.value, state.original_win, state.preview_ns)
         end
       end
     end,
@@ -318,7 +318,7 @@ local function show_picker(selectaItems, notify_opts)
       group = augroup,
       pattern = tostring(picker_win),
       callback = function()
-        ui.clear_preview_highlight()
+        ui.clear_preview_highlight(state.original_win, state.preview_ns)
         vim.api.nvim_del_augroup_by_name("NamuCleanup")
       end,
       once = true,
@@ -383,7 +383,8 @@ local function request_symbols(bufnr, callback)
 end
 
 ---Main entry point for symbol jumping functionality
-function M.show()
+function M.show(opts)
+  opts = opts or {}
   -- Store current window and position
   state.original_win = vim.api.nvim_get_current_win()
   state.original_buf = vim.api.nvim_get_current_buf()
@@ -401,8 +402,15 @@ function M.show()
   local bufnr = vim.api.nvim_get_current_buf()
   local cache_key = string.format("%d_%d", bufnr, vim.b[bufnr].changedtick or 0)
 
-  if M.symbol_cache and M.symbol_cache.key == cache_key then
-    show_picker(M.symbol_cache.items, notify_opts)
+  if symbol_cache and symbol_cache.key == cache_key then
+    local items = symbol_cache.items
+    -- If filter_kind is specified, filter the cached items
+    if opts.filter_kind then
+      items = vim.tbl_filter(function(item)
+        return item.kind == opts.filter_kind
+      end, items)
+    end
+    show_picker(items, notify_opts)
     return
   end
 
