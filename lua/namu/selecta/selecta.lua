@@ -383,9 +383,12 @@ local function calculate_window_size(items, opts, formatter)
   local row_position = opts.row_position
   local lines = vim.o.lines
   local max_available_height
-  if row_position == "top10" or row_position == "top10_right" then
-    max_available_height = lines - math.floor(lines * 0.1) - vim.o.cmdheight - 4
-  elseif row_position == "bottom" then
+  local position_info = parse_position(row_position)
+
+  if position_info.type:match("^top") then
+    -- Handle any top position (top, top_right, with any percentage)
+    max_available_height = lines - math.floor(lines * position_info.ratio) - vim.o.cmdheight - 4
+  elseif position_info.type == "bottom" then
     max_available_height = math.floor(vim.o.lines * 0.2)
   else
     max_available_height = lines - math.floor(lines / 2) - 4
@@ -748,22 +751,20 @@ local function resize_window(state, opts)
   if not (state.active and vim.api.nvim_win_is_valid(state.win)) then
     return
   end
-
   -- Calculate new dimensions based on filtered items
   local new_width, new_height = calculate_window_size(state.filtered_items, opts, opts.formatter)
-
-  -- Get current window config
   local current_config = vim.api.nvim_win_get_config(state.win)
-
   -- Calculate maximum height based on available space below the initial row
   local max_available_height
-  if opts.row_position == "top10" or M.config.row_position == "top10" then
-    max_available_height = vim.o.lines - math.floor(vim.o.lines * 0.1) - vim.o.cmdheight - 4 -- Leave some space for status line
+  local row_position = opts.row_position or M.config.row_position
+  local position_info = parse_position(row_position)
+  if position_info.type:match("^top") then
+    -- Handle any top position (top, top_right, with any percentage)
+    max_available_height = vim.o.lines - math.floor(vim.o.lines * position_info.ratio) - vim.o.cmdheight - 4
   else
     max_available_height = vim.o.lines - state.row - vim.o.cmdheight - 4 -- Leave some space for status line
   end
   new_height = math.min(new_height, max_available_height)
-
   -- print(
   --   string.format(
   --     "Resizing window: row=%d, col=%d, width=%d, height=%d, max_available_height=%d, num_items=%d",
