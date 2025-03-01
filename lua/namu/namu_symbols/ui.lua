@@ -1,4 +1,5 @@
 local M = {}
+local logger = require("namu.utils.logger")
 
 -- Internal state for UI operations
 local state = {
@@ -6,9 +7,6 @@ local state = {
 }
 
 local ns_id = vim.api.nvim_create_namespace("namu_symbols")
-
--- Cache for symbol ranges
-local symbol_range_cache = {}
 
 function M.setup_highlights()
   local highlights = {
@@ -57,7 +55,33 @@ end
 ---@param items SelectaItem[] The filtered items list
 ---@param symbol SelectaItem table The symbol to find
 ---@return number|nil index The index of the symbol if found
-function M.find_symbol_index(items, symbol)
+function M.find_symbol_index(items, symbol, is_ctags)
+  if is_ctags then
+    -- TODO: make it more robust
+    -- For CTags, just match by name and line number (ignore column)
+    for i, item in ipairs(items) do
+      if item.value.lnum == symbol.value.lnum and item.value.name == symbol.value.name then
+        return i
+      end
+    end
+    -- If no exact match, try matching just by line number
+    for i, item in ipairs(items) do
+      if item.value.lnum == symbol.value.lnum then
+        return i
+      end
+    end
+    -- If still no match, try matching just by name
+    for i, item in ipairs(items) do
+      if item.value.name == symbol.value.name then
+        return i
+      end
+    end
+
+    logger.log("find_symbol_index() - No match found for CTags symbol")
+    return nil
+  end
+
+  -- Standard matching for LSP symbols
   for i, item in ipairs(items) do
     if
       item.value.lnum == symbol.value.lnum
@@ -86,6 +110,7 @@ function M.find_meaningful_node(node, lnum)
 
   local current = node
   local target_node = node
+  -- First pass: Find the deepest node at our position
   while current and starts_at_line(current) do
     target_node = current
     ---@diagnostic disable-next-line: undefined-field

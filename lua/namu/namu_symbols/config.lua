@@ -52,6 +52,7 @@ M.defaults = {
   display = {
     mode = "icon", -- "icon" or "raw"
     padding = 2,
+    style = 2,
   },
   kindText = {
     Function = "function",

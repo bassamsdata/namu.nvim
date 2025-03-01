@@ -23,6 +23,14 @@
 ---@field ar NamuSymbolType Array symbols
 ---@field ob NamuSymbolType Object symbols
 
+---@class TagEntry
+---@field _type string
+---@field name string
+---@field kind string
+---@field line number
+---@field end number
+---@field scope string
+
 ---@class NamuActionConfig
 ---@field close_on_yank boolean Whether to close picker after yanking text
 ---@field close_on_delete boolean Whether to close picker after deleting text
@@ -45,9 +53,11 @@
 ---@field custom_keymaps table Keymap configuration
 ---@field movement? SelectaMovementConfig
 ---@field initially_hidden? boolean
+---@field kinds table Configuration for kinds
 ---@field preview table highlight_mode
 ---@field filter_symbol_types NamuSymbolTypes Configuration for symbol type filtering
 ---@field actions NamuActionConfig Configuration for picker actions
+---@field max_items number|nil
 
 ---@class NamuState
 ---@field original_win number|nil Original window
