@@ -95,6 +95,13 @@ function M.find_meaningful_node(node, lnum)
   ---@diagnostic disable-next-line: undefined-field
   local type = target_node:type()
 
+  local filetype = vim.o.filetype
+  -- TODO: this is hack for python first method highlight. I need to test it in rust or TS or ruby
+  if filetype == "python" then
+    if type == "block" then
+      return node
+    end
+  end
   if type == "function_definition" then
     return node
   end
