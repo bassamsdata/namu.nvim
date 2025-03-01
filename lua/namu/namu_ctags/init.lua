@@ -3,7 +3,10 @@ local symbolKindMap = require("namu.namu_ctags.kindmap").symbolKindMap
 local ui = require("namu.namu_symbols.ui")
 local ext = require("namu.namu_symbols.external_plugins")
 local utils = require("namu.namu_symbols.utils")
+local config = require("namu.namu_symbols.config")
 local M = {}
+-- Reference the shared config
+M.config = config.values
 
 ---@class TagEntry
 ---@field _type string
@@ -223,6 +226,23 @@ local function jump_to_symbol(symbol)
   vim.api.nvim_win_set_cursor(state.original_win, { symbol.lnum, symbol.col - 1 })
 end
 
+---@class SymbolTypeFilter
+local function parse_symbol_filter(query)
+  if #query >= 3 and query:sub(1, 1) == "/" then
+    local type_code = query:sub(2, 3)
+    local symbol_type = M.config.filter_symbol_types[type_code]
+
+    if symbol_type then
+      return {
+        kinds = symbol_type.kinds,
+        remaining = query:sub(4),
+        description = symbol_type.description,
+      }
+    end
+  end
+  return nil
+end
+
 ---Displays the fuzzy finder UI with symbol list
 ---@param selectaItems SelectaItem[]
 ---@param notify_opts? {title: string, icon: string}
@@ -244,6 +264,24 @@ local function show_picker(selectaItems, notify_opts)
     initially_hidden = M.config.initially_hidden,
     movement = vim.tbl_deep_extend("force", M.config.movement, {}),
     row_position = M.config.row_position,
+    debug = M.config.debug,
+    pre_filter = function(items, query)
+      local filter = parse_symbol_filter(query)
+      if filter then
+        local kinds_lower = vim.tbl_map(string.lower, filter.kinds)
+        local filtered = vim.tbl_filter(function(item)
+          return item.kind and vim.tbl_contains(kinds_lower, string.lower(item.kind))
+        end, items)
+
+        -- TODO: make this notifications configureable
+        -- if #filtered == 0 then
+        --   vim.notify(string.format("No symbols of type '%s' found", filter.type), vim.log.levels.INFO)
+        -- end
+
+        return filtered, filter.remaining
+      end
+      return items, query
+    end,
     hooks = {
       on_render = function(buf, filtered_items)
         ui.apply_kind_highlights(buf, filtered_items, M.config)
@@ -255,7 +293,7 @@ local function show_picker(selectaItems, notify_opts)
         end
       end,
     },
-    keymaps = M.config.keymaps,
+    custom_keymaps = M.config.custom_keymaps,
     -- TODO: Enable multiselect if configured
     multiselect = {
       enabled = M.config.multiselect.enabled,
@@ -432,10 +470,17 @@ function M.show(opts)
     local selectaItems = symbols_to_selecta_items(result)
 
     -- Update cache
-    M.symbol_cache = {
+    symbol_cache = {
       key = cache_key,
       items = selectaItems,
     }
+
+    -- Apply filter if specified
+    if opts.filter_kind then
+      selectaItems = vim.tbl_filter(function(item)
+        return item.kind == opts.filter_kind
+      end, selectaItems)
+    end
 
     show_picker(selectaItems, notify_opts)
   end)
@@ -444,7 +489,66 @@ end
 ---Initializes the module with user configuration
 function M.setup(opts)
   -- Merge user options with our defaults
+  config.setup(opts or {})
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+  -- Initialize all the handlers properly with access to the correct state
+  if M.config.custom_keymaps then
+    M.config.custom_keymaps.yank.handler = function(items_or_item)
+      local success = utils.yank_symbol_text(items_or_item, state)
+      if success and M.config.actions.close_on_yank then
+        ui.clear_preview_highlight(state.original_win, state.preview_ns)
+        return false
+      end
+    end
+    M.config.custom_keymaps.delete.handler = function(items_or_item)
+      local deleted = utils.delete_symbol_text(items_or_item, state)
+      if deleted and M.config.actions.close_on_delete then
+        ui.clear_preview_highlight(state.original_win, state.preview_ns)
+        return false
+      end
+    end
+    M.config.custom_keymaps.vertical_split.handler = function(item, selecta_state)
+      if not state.original_buf then
+        vim.notify("No original buffer available", vim.log.levels.ERROR)
+        return
+      end
+
+      local new_win = selecta.open_in_split(selecta_state, item, "vertical", state)
+      if new_win then
+        local symbol = item.value
+        if symbol and symbol.lnum and symbol.col then
+          -- Set cursor to symbol position
+          pcall(vim.api.nvim_win_set_cursor, new_win, { symbol.lnum, symbol.col - 1 })
+          vim.cmd("normal! zz")
+        end
+        ui.clear_preview_highlight(state.original_win, state.preview_ns)
+        return false
+      end
+    end
+    M.config.custom_keymaps.horizontal_split.handler = function(item, selecta_state)
+      if not state.original_buf then
+        vim.notify("No original buffer available", vim.log.levels.ERROR)
+        return
+      end
+      local new_win = selecta.open_in_split(selecta_state, item, "horizontal", state)
+      if new_win then
+        local symbol = item.value
+        if symbol and symbol.lnum and symbol.col then
+          -- Set cursor to symbol position
+          pcall(vim.api.nvim_win_set_cursor, new_win, { symbol.lnum, symbol.col - 1 })
+          vim.cmd("normal! zz")
+        end
+        ui.clear_preview_highlight(state.original_win, state.preview_ns)
+        return false
+      end
+    end
+    M.config.custom_keymaps.codecompanion.handler = function(items_or_item)
+      ext.codecompanion_handler(items_or_item, state.original_buf)
+    end
+    M.config.custom_keymaps.avante.handler = function(items_or_item)
+      ext.avante_handler(items_or_item, state.original_buf)
+    end
+  end
 end
 
 return M

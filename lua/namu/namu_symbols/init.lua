@@ -38,7 +38,11 @@ local lsp = require("namu.namu_symbols.lsp")
 local ui = require("namu.namu_symbols.ui")
 local ext = require("namu.namu_symbols.external_plugins")
 local utils = require("namu.namu_symbols.utils")
+local config = require("namu.namu_symbols.config")
 local M = {}
+
+-- For backward compatibility, we still use M.config but it points to the shared config
+M.config = config.values
 
 -- Store original window and position for preview
 ---@type NamuState
@@ -47,308 +51,6 @@ local state = {
   original_buf = nil,
   original_pos = nil,
   preview_ns = vim.api.nvim_create_namespace("namu_preview"),
-}
-
----@type NamuConfig
-M.config = {
-  AllowKinds = {
-    default = {
-      "Function",
-      "Method",
-      "Class",
-      "Module",
-      "Property",
-      "Variable",
-      -- "Constant",
-      -- "Enum",
-      -- "Interface",
-      -- "Field",
-      -- "Struct",
-    },
-    go = {
-      "Function",
-      "Method",
-      "Struct", -- For struct definitions
-      "Field", -- For struct fields
-      "Interface",
-      "Constant",
-      -- "Variable",
-      "Property",
-      -- "TypeParameter", -- For type parameters if using generics
-    },
-    lua = { "Function", "Method", "Table", "Module" },
-    python = { "Function", "Class", "Method" },
-    -- Filetype specific
-    yaml = { "Object", "Array" },
-    json = { "Module" },
-    toml = { "Object" },
-    markdown = { "String" },
-  },
-  BlockList = {
-    default = {},
-    -- Filetype-specific
-    lua = {
-      "^vim%.", -- anonymous functions passed to nvim api
-      "%.%.%. :", -- vim.iter functions
-      ":gsub", -- lua string.gsub
-      "^callback$", -- nvim autocmds
-      "^filter$",
-      "^map$", -- nvim keymaps
-    },
-    -- another example:
-    -- python = { "^__" }, -- ignore __init__ functions
-  },
-  display = {
-    mode = "icon", -- "icon" or "raw"
-    padding = 2,
-  },
-  kindText = {
-    Function = "function",
-    Class = "class",
-    Module = "module",
-    Constructor = "constructor",
-    Interface = "interface",
-    Property = "property",
-    Field = "field",
-    Enum = "enum",
-    Constant = "constant",
-    Variable = "variable",
-  },
-  kindIcons = {
-    File = "󰈙",
-    Module = "󰏗",
-    Namespace = "󰌗",
-    Package = "󰏖",
-    Class = "󰌗",
-    Method = "󰆧",
-    Property = "󰜢",
-    Field = "󰜢",
-    Constructor = "󰆧",
-    Enum = "󰒻",
-    Interface = "󰕘",
-    Function = "󰊕",
-    Variable = "󰀫",
-    Constant = "󰏿",
-    String = "󰀬",
-    Number = "󰎠",
-    Boolean = "󰨙",
-    Array = "󰅪",
-    Object = "󰅩",
-    Key = "󰌋",
-    Null = "󰟢",
-    EnumMember = "󰒻",
-    Struct = "󰌗",
-    Event = "󰉁",
-    Operator = "󰆕",
-    TypeParameter = "󰊄",
-  },
-  preview = {
-    highlight_on_move = true, -- Whether to highlight symbols as you move through them
-    -- TODO: still needs implmenting, keep it always now
-    highlight_mode = "always", -- "always" | "select" (only highlight when selecting)
-  },
-  icon = "󱠦", -- 󱠦 -  -  -- 󰚟
-  highlight = "NamuPreview",
-  highlights = {
-    parent = "NamuParent",
-    nested = "NamuNested",
-    style = "NamuStyle",
-  },
-  kinds = {
-    prefix_kind_colors = true,
-    enable_highlights = true,
-    highlights = {
-      PrefixSymbol = "NamuPrefixSymbol",
-      Function = "NamuSymbolFunction",
-      Method = "NamuSymbolMethod",
-      Class = "NamuSymbolClass",
-      Interface = "NamuSymbolInterface",
-      Variable = "NamuSymbolVariable",
-      Constant = "NamuSymbolConstant",
-      Property = "NamuSymbolProperty",
-      Field = "NamuSymbolField",
-      Enum = "NamuSymbolEnum",
-      Module = "NamuSymbolModule",
-    },
-  },
-  -- This is a preset that let's set window without really get into the hassle of tuning window options
-  -- top10 meaning top 10% of the window
-  row_position = "top10", -- options: "center"|"top10"|"top10_right"|"center_right"|"bottom",
-  window = {
-    auto_size = true,
-    min_height = 1,
-    min_width = 20,
-    max_width = 120,
-    max_height = 30,
-    padding = 2,
-    border = "rounded",
-    title_pos = "left",
-    show_footer = true,
-    footer_pos = "right",
-    relative = "editor",
-    style = "minimal",
-    width_ratio = 0.6,
-    height_ratio = 0.6,
-    title_prefix = "󱠦 ",
-  },
-  debug = true,
-  focus_current_symbol = true,
-  auto_select = false,
-  initially_hidden = false,
-  multiselect = {
-    enabled = true,
-    indicator = "✓", -- or "✓"●
-    keymaps = {
-      toggle = "<Tab>",
-      untoggle = "<S-Tab>",
-      select_all = "<C-a>",
-      clear_all = "<C-l>",
-    },
-    max_items = nil, -- No limit by default
-  },
-  actions = {
-    close_on_yank = false, -- Whether to close picker after yanking
-    close_on_delete = true, -- Whether to close picker after deleting
-  },
-  movement = {
-    next = { "<C-n>", "<DOWN>" }, -- Support multiple keys
-    previous = { "<C-p>", "<UP>" }, -- Support multiple keys
-    close = { "<ESC>" },
-    select = { "<CR>" },
-    delete_word = {},
-    clear_line = {},
-    -- Deprecated mappings (but still working)
-    -- alternative_next = "<DOWN>", -- @deprecated: Will be removed in v1.0
-    -- alternative_previous = "<UP>", -- @deprecated: Will be removed in v1.0
-  },
-  filter_symbol_types = {
-    -- Functions
-    fn = {
-      kinds = { "Function", "Constructor" },
-      description = "Functions, methods and constructors",
-    },
-    -- Methods:
-    me = {
-      kinds = { "Method", "Accessor" },
-      description = "Methods",
-    },
-    -- Variables
-    va = {
-      kinds = { "Variable", "Parameter", "TypeParameter" },
-      description = "Variables and parameters",
-    },
-    -- Classes
-    cl = {
-      kinds = { "Class", "Interface", "Struct" },
-      description = "Classes, interfaces and structures",
-    },
-    -- Constants
-    co = {
-      kinds = { "Constant", "Boolean", "Number", "String" },
-      description = "Constants and literal values",
-    },
-    -- Fields
-    fi = {
-      kinds = { "Field", "Property", "EnumMember" },
-      description = "Object fields and properties",
-    },
-    -- Modules
-    mo = {
-      kinds = { "Module", "Package", "Namespace" },
-      description = "Modules and packages",
-    },
-    -- Arrays
-    ar = {
-      kinds = { "Array", "List", "Sequence" },
-      description = "Arrays, lists and sequences",
-    },
-    -- Objects
-    ob = {
-      kinds = { "Object", "Class", "Instance" },
-      description = "Objects and class instances",
-    },
-  },
-  custom_keymaps = {
-    yank = {
-      keys = { "<C-y>" },
-      handler = function(items_or_item)
-        local success = utils.yank_symbol_text(items_or_item, state)
-        if success and M.config.actions.close_on_yank then
-          ui.clear_preview_highlight(state.original_win, state.preview_ns)
-          return false
-        end
-      end,
-      desc = "Yank symbol text",
-    },
-    delete = {
-      keys = { "<C-d>" },
-      handler = function(items_or_item)
-        local deleted = utils.delete_symbol_text(items_or_item, state)
-        if deleted and M.config.actions.close_on_delete then
-          ui.clear_preview_highlight(state.original_win, state.preview_ns)
-          return false
-        end
-      end,
-      desc = "Delete symbol text",
-    },
-    vertical_split = {
-      keys = { "<C-v>" },
-      handler = function(item, selecta_state)
-        if not state.original_buf then
-          vim.notify("No original buffer available", vim.log.levels.ERROR)
-          return
-        end
-
-        local new_win = selecta.open_in_split(selecta_state, item, "vertical", state)
-        if new_win then
-          local symbol = item.value
-          if symbol and symbol.lnum and symbol.col then
-            -- Set cursor to symbol position
-            pcall(vim.api.nvim_win_set_cursor, new_win, { symbol.lnum, symbol.col - 1 })
-            vim.cmd("normal! zz")
-          end
-          ui.clear_preview_highlight(state.original_win, state.preview_ns)
-          return false
-        end
-      end,
-      desc = "Open in vertical split",
-    },
-    horizontal_split = {
-      keys = { "<C-h>" },
-      handler = function(item, selecta_state)
-        if not state.original_buf then
-          vim.notify("No original buffer available", vim.log.levels.ERROR)
-          return
-        end
-        local new_win = selecta.open_in_split(selecta_state, item, "horizontal", state)
-        if new_win then
-          local symbol = item.value
-          if symbol and symbol.lnum and symbol.col then
-            -- Set cursor to symbol position
-            pcall(vim.api.nvim_win_set_cursor, new_win, { symbol.lnum, symbol.col - 1 })
-            vim.cmd("normal! zz")
-          end
-          ui.clear_preview_highlight(state.original_win, state.preview_ns)
-          return false
-        end
-      end,
-      desc = "Open in horizontal split",
-    },
-    codecompanion = {
-      keys = "<C-o>",
-      handler = function(items_or_item)
-        ext.codecompanion_handler(items_or_item, state.original_buf)
-      end,
-      desc = "Add symbol to CodeCompanion",
-    },
-    avante = {
-      keys = "<C-t>",
-      handler = function(items_or_item)
-        ext.avante_handler(items_or_item, state.original_buf)
-      end,
-      desc = "Add symbol to Avante",
-    },
-  },
 }
 
 -- Symbol cache
@@ -762,8 +464,67 @@ end
 ---Initializes the module with user configuration
 function M.setup(opts)
   -- Merge user options with our defaults
+  -- config.setup(opts or {})
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
   ui.setup(M.config)
+
+  if M.config.custom_keymaps then
+    M.config.custom_keymaps.yank.handler = function(items_or_item)
+      local success = utils.yank_symbol_text(items_or_item, state)
+      if success and M.config.actions.close_on_yank then
+        ui.clear_preview_highlight(state.original_win, state.preview_ns)
+        return false
+      end
+    end
+    M.config.custom_keymaps.delete.handler = function(items_or_item)
+      local deleted = utils.delete_symbol_text(items_or_item, state)
+      if deleted and M.config.actions.close_on_delete then
+        ui.clear_preview_highlight(state.original_win, state.preview_ns)
+        return false
+      end
+    end
+    M.config.custom_keymaps.vertical_split.handler = function(item, selecta_state)
+      if not state.original_buf then
+        vim.notify("No original buffer available", vim.log.levels.ERROR)
+        return
+      end
+
+      local new_win = selecta.open_in_split(selecta_state, item, "vertical", state)
+      if new_win then
+        local symbol = item.value
+        if symbol and symbol.lnum and symbol.col then
+          -- Set cursor to symbol position
+          pcall(vim.api.nvim_win_set_cursor, new_win, { symbol.lnum, symbol.col - 1 })
+          vim.cmd("normal! zz")
+        end
+        ui.clear_preview_highlight(state.original_win, state.preview_ns)
+        return false
+      end
+    end
+    M.config.custom_keymaps.horizontal_split.handler = function(item, selecta_state)
+      if not state.original_buf then
+        vim.notify("No original buffer available", vim.log.levels.ERROR)
+        return
+      end
+      local new_win = selecta.open_in_split(selecta_state, item, "horizontal", state)
+      if new_win then
+        local symbol = item.value
+        if symbol and symbol.lnum and symbol.col then
+          -- Set cursor to symbol position
+          pcall(vim.api.nvim_win_set_cursor, new_win, { symbol.lnum, symbol.col - 1 })
+          vim.cmd("normal! zz")
+        end
+        ui.clear_preview_highlight(state.original_win, state.preview_ns)
+        return false
+      end
+    end
+    M.config.custom_keymaps.codecompanion.handler = function(items_or_item)
+      ext.codecompanion_handler(items_or_item, state.original_buf)
+    end
+    M.config.custom_keymaps.avante.handler = function(items_or_item)
+      ext.avante_handler(items_or_item, state.original_buf)
+    end
+  end
 
   if M.config.kinds and M.config.kinds.enable_highlights then
     vim.schedule(function()

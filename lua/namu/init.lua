@@ -14,6 +14,9 @@ M.setup = function(opts)
   -- Merge the top-level config
   M.config = vim.tbl_deep_extend("force", M.config, opts)
 
+  -- First initialize the shared config module
+  -- require("namu.namu_symbols.config").setup({})
+
   if M.config.namu_symbols.enable then
     require("namu.selecta.selecta").setup(M.config.namu_symbols.options)
     require("namu.namu_symbols").setup(M.config.namu_symbols.options)
