@@ -103,6 +103,13 @@ function M.find_meaningful_node(node, lnum)
     return nil
   end
 
+  local filetype = vim.o.filetype
+  -- NOTE: we need to account if the fucntion at the start of the file make lnum = lunm + 1
+  -- this solved many issue except teh decorator below.
+  if filetype == "python" then
+    lnum = lnum + 1
+  end
+
   local function starts_at_line(n)
     local start_row = select(1, n:range())
     return start_row == lnum
@@ -110,22 +117,20 @@ function M.find_meaningful_node(node, lnum)
 
   local current = node
   local target_node = node
+  local parent_node = node:parent()
   -- First pass: Find the deepest node at our position
   while current and starts_at_line(current) do
     target_node = current
     ---@diagnostic disable-next-line: undefined-field
     current = current:parent()
   end
-
   ---@diagnostic disable-next-line: undefined-field
   local type = target_node:type()
 
-  local filetype = vim.o.filetype
-  -- TODO: this is hack for python first method highlight. I need to test it in rust or TS or ruby
-  if filetype == "python" then
-    if type == "block" then
-      return node
-    end
+  -- HACK: if there is  decorator, catch the whole decorator which is
+  -- "decorated_definition".
+  if filetype == "python" and type == "decorator" then
+    return parent_node
   end
   if type == "function_definition" then
     return node
@@ -185,12 +190,12 @@ function M.highlight_symbol(symbol, win, ns_id)
   })
 
   if node then
+    logger.log("highlight_symbol() - before finding meaningful node, its type is: " .. node:type())
     node = M.find_meaningful_node(node, symbol.lnum - 1)
   end
 
   if node then
     local srow, scol, erow, ecol = node:range()
-
     vim.api.nvim_buf_set_extmark(bufnr, ns_id, srow, 0, {
       end_row = erow,
       end_col = ecol,
