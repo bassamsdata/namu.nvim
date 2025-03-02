@@ -276,7 +276,7 @@ local function setup_highlights()
     SelectaPrompt = { link = "FloatTitle" },
     SelectaSelected = { link = "Statement" },
     SelectaFooter = { link = "Comment" },
-    -- SelectaCurrentLine = { link = M.config.current_highlight.hl_group },
+    -- NamuCurrentLine = { link = M.config.current_highlight.hl_group },
   }
 
   -- NOTE: for some wierd reason, this is the only way those 2 highlight groups works
@@ -284,7 +284,7 @@ local function setup_highlights()
   vim.cmd(string.format(
     [[
     highlight default link SelectaFilter Type
-    highlight default link SelectaCurrentLine %s
+    highlight default link NamuCurrentLine %s
   ]],
     current_hl_group
   ))
@@ -760,14 +760,14 @@ local function update_current_highlight(state, opts, line_nr)
     end_row = line_nr + 1,
     end_col = 0,
     hl_eol = true,
-    hl_group = "SelectaCurrentLine",
+    hl_group = "NamuCurrentLine",
     priority = 201, -- Higher than regular highlights but lower than matches
   })
 
   -- Add the prefix icon if enabled
   if M.config.current_highlight.enabled and #M.config.current_highlight.prefix_icon > 0 then
     vim.api.nvim_buf_set_extmark(state.buf, current_selection_ns, line_nr, 0, {
-      virt_text = { { M.config.current_highlight.prefix_icon, "SelectaCurrentLine" } },
+      virt_text = { { M.config.current_highlight.prefix_icon, "NamuCurrentLine" } },
       virt_text_pos = "overlay",
       priority = 100, -- Higher priority than the line highlight
     })
