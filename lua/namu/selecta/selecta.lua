@@ -271,14 +271,24 @@ local function setup_highlights()
   local highlights = {
     SelectaPrefix = { link = "Special" },
     SelectaMatch = { link = "Identifier" }, -- or maybe DiagnosticFloatingOk
-    -- BUG: only selectafilter cleared when changing colorscheme - drive me crazy
-    SelectaFilter = { link = "Type" },
+    -- SelectaFilter = { link = "Type" },
     SelectaCursor = { blend = 100, nocombine = true },
     SelectaPrompt = { link = "FloatTitle" },
     SelectaSelected = { link = "Statement" },
     SelectaFooter = { link = "Comment" },
-    SelectaCurrentLine = { link = M.config.current_highlight.hl_group },
+    -- SelectaCurrentLine = { link = M.config.current_highlight.hl_group },
   }
+
+  -- NOTE: for some wierd reason, this is the only way those 2 highlight groups works
+  local current_hl_group = M.config.current_highlight.hl_group
+  vim.cmd(string.format(
+    [[
+    highlight default link SelectaFilter Type
+    highlight default link SelectaCurrentLine %s
+  ]],
+    current_hl_group
+  ))
+
   M.log("Setting up highlights...")
   for name, attrs in pairs(highlights) do
     vim.api.nvim_set_hl(0, name, attrs)
@@ -1729,18 +1739,15 @@ function M.setup(opts)
     setup_highlights()
   end)
 
-  if M.config.current_highlight.enabled then
-    vim.api.nvim_set_hl(0, "SelectaCurrentLine", {
-      link = M.config.current_highlight.hl_group,
-    })
-  end
   -- Create autocmd for ColorScheme event
   M.log("Creating ColorScheme autocmd")
   vim.api.nvim_create_autocmd("ColorScheme", {
     group = vim.api.nvim_create_augroup("SelectaHighlights", { clear = true }),
     callback = function()
       M.log("ColorScheme autocmd triggered")
-      setup_highlights()
+      vim.schedule(function()
+        setup_highlights()
+      end)
     end,
   })
 end
