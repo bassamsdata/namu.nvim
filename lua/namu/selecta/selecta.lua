@@ -181,6 +181,11 @@ M.config = {
     mode = "icon",
     padding = 1,
   },
+  current_highlight = {
+    enabled = false, -- Enable custom selection highlight
+    hl_group = "CursorLine", -- Default highlight group (could also create a custom one)
+    prefix_icon = " ", --▎ ▎󰇙┆Vertical bar icon for current selection
+  },
   offset = 0,
   debug = false,
   preserve_order = false, -- Default to false unless the other module handle it
@@ -229,6 +234,7 @@ end
 M.clear_log = logger.clear_log
 
 local ns_id = vim.api.nvim_create_namespace("selecta_highlights")
+local current_selection_ns = vim.api.nvim_create_namespace("selecta_current_selection")
 
 ---Thanks to folke and mini.nvim for this utlity of hiding the cursor
 ---Hide the cursor by setting guicursor and caching the original value
@@ -259,22 +265,21 @@ local function restore_cursor()
   end
 end
 
-local highlights = {
-  SelectaPrefix = { link = "Special" },
-  SelectaMatch = { link = "Identifier" }, -- or maybe DiagnosticFloatingOk
-  -- BUG: only selectafilter cleared when changing colorscheme - drive me crazy
-  SelectaFilter = { link = "Type" },
-  SelectaCursor = { blend = 100, nocombine = true },
-  SelectaPrompt = { link = "FloatTitle" },
-  SelectaSelected = { link = "Statement" },
-  SelectaFooter = { link = "Comment" },
-}
-
 ---Set up the highlight groups
 ---@return nil
 local function setup_highlights()
+  local highlights = {
+    SelectaPrefix = { link = "Special" },
+    SelectaMatch = { link = "Identifier" }, -- or maybe DiagnosticFloatingOk
+    -- BUG: only selectafilter cleared when changing colorscheme - drive me crazy
+    SelectaFilter = { link = "Type" },
+    SelectaCursor = { blend = 100, nocombine = true },
+    SelectaPrompt = { link = "FloatTitle" },
+    SelectaSelected = { link = "Statement" },
+    SelectaFooter = { link = "Comment" },
+    SelectaCurrentLine = { link = M.config.current_highlight.hl_group },
+  }
   M.log("Setting up highlights...")
-  M.log("Current highlights table: " .. vim.inspect(highlights))
   for name, attrs in pairs(highlights) do
     vim.api.nvim_set_hl(0, name, attrs)
   end
@@ -584,6 +589,10 @@ end
 local function apply_highlights(buf, line_nr, item, opts, query, line_length, state)
   local display_str = opts.formatter(item)
 
+  local padding_width = 0
+  if M.config.current_highlight.enabled and #M.config.current_highlight.prefix_icon > 0 then
+    padding_width = vim.api.nvim_strwidth(M.config.current_highlight.prefix_icon)
+  end
   -- First, check if this is a symbol filter query
   -- local filter = query:match("^%%%w%w(.*)$")
   -- local actual_query = filter and query:sub(4) or query -- Use everything after %xx if filter exists
@@ -614,6 +623,7 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
   -- Get the formatted display string
   if opts.display.mode == "raw" then
     local offset = opts.offset and opts.offset(item) or 0
+    offset = offset + padding_width -- Add the padding width to the offset
     if query ~= "" then
       local match = matcher.get_match_positions(item.text, query)
       if match then
@@ -637,9 +647,10 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
     end
   else
     -- Find the actual icon boundary by looking for the padding
-    local _, icon_end = display_str:find("^[^%s]+%s+")
+    local _, icon_end = display_str:find("^" .. string.rep(" ", padding_width) .. "[^%s]+%s+")
+    -- local _, icon_end = display_str:find("^[^%s]+%s+")
     if not icon_end then
-      icon_end = 2 -- fallback if pattern not found
+      icon_end = padding_width + 2 -- fallback if pattern not found, accounting for padding
     end
 
     -- Allow modules to customize prefix highlighting
@@ -647,7 +658,7 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
       opts.prefix_highlighter(buf, line_nr, item, icon_end, ns_id)
     else
       -- Highlight prefix/icon
-      vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, 0, {
+      vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, padding_width, {
         end_col = icon_end,
         hl_group = get_prefix_info(item, opts.display.prefix_width).hl_group,
         priority = 100,
@@ -716,6 +727,43 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
   end
 end
 
+---@param state SelectaState The current state of the selecta picker
+---@param opts SelectaOptions The options for the selecta picker
+---@param line_nr number The 0-based line number to highlight
+---@return nil
+local function update_current_highlight(state, opts, line_nr)
+  if not state or not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then
+    return
+  end
+
+  -- Clear previous highlights in this namespace
+  vim.api.nvim_buf_clear_namespace(state.buf, current_selection_ns, 0, -1)
+
+  -- Get the line content
+  local lines = vim.api.nvim_buf_get_lines(state.buf, line_nr, line_nr + 1, false)
+  if #lines == 0 then
+    return
+  end
+
+  -- Apply highlight to the whole line
+  vim.api.nvim_buf_set_extmark(state.buf, current_selection_ns, line_nr, 0, {
+    end_row = line_nr + 1,
+    end_col = 0,
+    hl_eol = true,
+    hl_group = "SelectaCurrentLine",
+    priority = 201, -- Higher than regular highlights but lower than matches
+  })
+
+  -- Add the prefix icon if enabled
+  if M.config.current_highlight.enabled and #M.config.current_highlight.prefix_icon > 0 then
+    vim.api.nvim_buf_set_extmark(state.buf, current_selection_ns, line_nr, 0, {
+      virt_text = { { M.config.current_highlight.prefix_icon, "SelectaCurrentLine" } },
+      virt_text_pos = "overlay",
+      priority = 100, -- Higher priority than the line highlight
+    })
+  end
+end
+
 ---@param state SelectaState
 ---@param opts SelectaOptions
 local function update_cursor_position(state, opts)
@@ -737,6 +785,7 @@ local function update_cursor_position(state, opts)
       end
     end
     vim.api.nvim_win_set_cursor(state.win, new_pos)
+    update_current_highlight(state, opts, new_pos[1] - 1) -- 0-indexed for extmarks
 
     -- Only trigger on_move if not in initial state
     if opts.on_move and not state.initial_open then
@@ -889,8 +938,11 @@ local function update_display(state, opts)
       if opts.hooks and opts.hooks.on_render then
         opts.hooks.on_render(state.buf, state.filtered_items, opts)
       end
+      -- M.add_padding_to_all_items(state, opts)
 
       update_cursor_position(state, opts)
+      local cursor_pos = vim.api.nvim_win_get_cursor(state.win)
+      update_current_highlight(state, opts, cursor_pos[1] - 1)
     end
   else
     if vim.api.nvim_buf_is_valid(state.buf) then
@@ -1265,6 +1317,7 @@ local function handle_movement(state, direction, opts)
   end
 
   pcall(vim.api.nvim_win_set_cursor, state.win, { new_pos, 0 })
+  update_current_highlight(state, opts, new_pos - 1) -- 0-indexed for extmarks
 
   if opts.on_move then
     opts.on_move(state.filtered_items[new_pos])
@@ -1303,6 +1356,7 @@ local function handle_toggle(state, opts, direction)
 
       -- Set new cursor position
       pcall(vim.api.nvim_win_set_cursor, state.win, { next_pos, 0 })
+      update_current_highlight(state, opts, next_pos - 1)
 
       -- Trigger move callback if exists
       if opts.on_move then
@@ -1371,6 +1425,7 @@ local function handle_untoggle(state, opts)
 
     -- Ensure cursor stays at the correct position
     pcall(vim.api.nvim_win_set_cursor, state.win, { prev_selected_pos, 0 })
+    update_current_highlight(state, opts, prev_selected_pos - 1)
 
     -- Trigger move callback if exists
     if opts.on_move then
@@ -1553,6 +1608,7 @@ function M.pick(items, opts)
     offnet = 0,
     custom_keymaps = vim.tbl_deep_extend("force", M.config.custom_keymaps, {}),
     movement = vim.tbl_deep_extend("force", M.config.movement, {}),
+    current_highlight = vim.tbl_deep_extend("force", M.config.current_highlight, {}),
     auto_select = M.config.auto_select,
     window = vim.tbl_deep_extend("force", M.config.window, {}),
     pre_filter = nil,
@@ -1567,15 +1623,19 @@ function M.pick(items, opts)
   -- Set up formatter
   opts.formatter = opts.formatter
     or function(item)
+      local prefix_padding = ""
+      if M.config.current_highlight.enabled and #M.config.current_highlight.prefix_icon > 0 then
+        prefix_padding = string.rep(" ", vim.api.nvim_strwidth(M.config.current_highlight.prefix_icon))
+      end
       if opts.display.mode == "raw" then
-        return item.text
+        return prefix_padding .. item.text
       elseif opts.display.mode == "icon" then
         local icon = item.icon or "  "
-        return icon .. string.rep(" ", opts.display.padding or 1) .. item.text
+        return prefix_padding .. icon .. string.rep(" ", opts.display.padding or 1) .. item.text
       else
         local prefix_info = get_prefix_info(item, opts.display.prefix_width)
         local padding = string.rep(" ", prefix_info.padding)
-        return prefix_info.text .. padding .. item.text
+        return prefix_padding .. prefix_info.text .. padding .. item.text
       end
     end
 
@@ -1588,6 +1648,7 @@ function M.pick(items, opts)
     local target_pos = math.min(opts.initial_index, #state.filtered_items)
     if target_pos > 0 then
       vim.api.nvim_win_set_cursor(state.win, { target_pos, 0 })
+      update_current_highlight(state, opts, target_pos - 1)
       if opts.on_move then
         opts.on_move(state.filtered_items[target_pos])
       end
@@ -1668,6 +1729,11 @@ function M.setup(opts)
     setup_highlights()
   end)
 
+  if M.config.current_highlight.enabled then
+    vim.api.nvim_set_hl(0, "SelectaCurrentLine", {
+      link = M.config.current_highlight.hl_group,
+    })
+  end
   -- Create autocmd for ColorScheme event
   M.log("Creating ColorScheme autocmd")
   vim.api.nvim_create_autocmd("ColorScheme", {

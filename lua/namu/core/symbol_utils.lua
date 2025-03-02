@@ -224,6 +224,8 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
     auto_select = config.auto_select,
     initially_hidden = config.initially_hidden,
     movement = vim.tbl_deep_extend("force", config.movement, {}),
+    current_highlight = vim.tbl_deep_extend("force", config.current_highlight, {}),
+    -- current_highlight = vim.tbl_deep_extend("force", config.current_highlight, {}),
     row_position = config.row_position,
     debug = config.debug,
     pre_filter = function(items, query)

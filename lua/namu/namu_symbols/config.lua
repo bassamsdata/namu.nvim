@@ -94,9 +94,15 @@ M.defaults = {
     Operator = "󰆕",
     TypeParameter = "󰊄",
   },
+  current_highlight = {
+    enabled = false, -- Enable custom selection highlight
+    hl_group = "CursorLine", -- Default highlight group (could also create a custom one)
+    -- Please keep space after the icon for better viewing
+    prefix_icon = " ", --icon for current selection, some other example ▎ 󰇙 ┆
+  },
   preview = {
     highlight_on_move = true, -- Whether to highlight symbols as you move through them
-    -- TODO: still needs implmenting, keep it always now
+    -- TODO: still needs implementing, keep it always now
     highlight_mode = "always", -- "always" | "select" (only highlight when selecting)
   },
   icon = "󱠦", -- 󱠦 -  -  -- 󰚟

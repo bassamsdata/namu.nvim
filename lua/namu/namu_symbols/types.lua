@@ -35,6 +35,11 @@
 ---@field close_on_yank boolean Whether to close picker after yanking text
 ---@field close_on_delete boolean Whether to close picker after deleting text
 
+---@class CurrentHighlightConfig
+---@field enabled boolean Enable custom selection highlight
+---@field hl_group string Highlight group for the selection
+---@field prefix_icon string Icon to show before the selected item
+
 ---@class NamuConfig
 ---@field AllowKinds table<string, string[]> Symbol kinds to include
 ---@field display table<string, string|number> Display configuration
@@ -58,6 +63,7 @@
 ---@field filter_symbol_types NamuSymbolTypes Configuration for symbol type filtering
 ---@field actions NamuActionConfig Configuration for picker actions
 ---@field max_items number|nil
+---@field current_highlight CurrentHighlightConfig Configuration for selection highlighting
 
 ---@class NamuState
 ---@field original_win number|nil Original window

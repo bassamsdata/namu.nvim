@@ -189,6 +189,7 @@ local function command_complete(_, line, col)
     return candidates
   end
   if words[2] == "help" then
+    -- BUG: after modulize the plugin request_symbol is not working with those.
     local help_types = { "symbols", "analysis" }
     local prefix = words[3] or ""
     return vim.tbl_filter(function(type)

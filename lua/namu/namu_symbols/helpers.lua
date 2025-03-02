@@ -1,5 +1,5 @@
 local M = {}
-local request_symbols = require("namu.namu_symbols").request_symbols
+local request_symbols = require("namu.namu_symbols.lsp").request_symbols
 local filter_symbol_types = require("namu.namu_symbols").config.filter_symbol_types
 
 -- Shared constants and utilities
