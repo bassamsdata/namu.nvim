@@ -23,6 +23,27 @@ local CallDirection = {
   BOTH = "both",
 }
 
+-- Utility function to generate tree guide lines
+local function make_tree_guides(tree_state)
+  local tree = ""
+  for idx, level_last in ipairs(tree_state) do
+    if idx == #tree_state then
+      if level_last then
+        tree = tree .. "└╴"
+      else
+        tree = tree .. "├╴"
+      end
+    else
+      if level_last then
+        tree = tree .. "  "
+      else
+        tree = tree .. "┆ "
+      end
+    end
+  end
+  return tree
+end
+
 local function update_preview(item, win, ns_id)
   if not item or item.value.is_section then
     return nil
@@ -129,11 +150,16 @@ end
 ---@param direction string "incoming" or "outgoing"
 ---@param depth number Indentation depth level
 ---@return SelectaItem[]
-local function calls_to_selecta_items(calls, direction, depth)
+local function calls_to_selecta_items(calls, direction, depth, tree_state)
   depth = depth or 1 -- Start with depth 1 for first level items
+  tree_state = tree_state or {}
   local items = {}
 
-  for _, call in ipairs(calls) do
+  for i, call in ipairs(calls) do
+    local is_last = (i == #calls)
+    local current_tree_state = vim.deepcopy(tree_state)
+    table.insert(current_tree_state, is_last)
+
     local item_data
     local call_type = direction
 
@@ -160,25 +186,18 @@ local function calls_to_selecta_items(calls, direction, depth)
     local uri = item_data.uri
     local file_path = vim.uri_to_fname(uri)
     local short_path = file_path:match("([^/\\]+)$") or file_path
-
     -- Clean name (same as symbols)
     local clean_name = item_data.name:match("^([^%s%(]+)") or item_data.name
-
-    -- Format exactly like symbols
-    local style = tonumber(M.config.display.style) or 2
-    local prefix = ui.get_prefix(depth, style)
-    local display_text = prefix .. clean_name
-
-    -- Add file info at the end (optional)
-    if M.config.show_file_info then
-      display_text = display_text .. " " .. string.format("[%s:%d]", short_path, range.start.line + 1)
-    end
+    -- Add file location info
+    local file_info = string.format(" [%s:%d]", short_path, range.start.line + 1)
+    local display_text = clean_name .. file_info
 
     -- Create the selecta item
     local item = {
       text = display_text,
       value = {
         text = display_text,
+        -- text = clean_name .. file_info, -- Include file info in the value.text too
         name = clean_name,
         kind = item_data.kind and lsp.symbol_kind(item_data.kind) or "Function",
         lnum = range.start.line + 1,
@@ -189,17 +208,19 @@ local function calls_to_selecta_items(calls, direction, depth)
         file_path = file_path,
         call_item = call,
         call_type = call_type,
+        file_info = file_info, -- Store file info separately
       },
       icon = M.config.kindIcons[lsp.symbol_kind(item_data.kind)] or M.config.icon, -- Add icon like in symbols
       kind = item_data.kind and lsp.symbol_kind(item_data.kind) or "Function",
       depth = depth,
+      tree_state = current_tree_state, -- Store tree state for highlighting
     }
 
     table.insert(items, item)
 
     -- Process nested calls if available
     if call.children and #call.children > 0 then
-      local nested_items = calls_to_selecta_items(call.children, direction, depth + 1)
+      local nested_items = calls_to_selecta_items(call.children, direction, depth + 1, current_tree_state)
       for _, nested_item in ipairs(nested_items) do
         table.insert(items, nested_item)
       end
@@ -209,6 +230,54 @@ local function calls_to_selecta_items(calls, direction, depth)
   end
 
   return items
+end
+
+-- Apply tree guide highlighting and file info highlighting
+local function apply_tree_guide_highlights(buf, items, config)
+  local ns_id = vim.api.nvim_create_namespace("namu_callhierarchy_tree_guides")
+  vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
+
+  for idx, item in ipairs(items) do
+    local line = idx - 1
+    local lines = vim.api.nvim_buf_get_lines(buf, line, line + 1, false)
+    if #lines == 0 then
+      goto continue
+    end
+
+    local line_text = lines[1]
+
+    -- Apply tree guide highlighting if available
+    if item.tree_state then
+      -- Calculate the position of tree guides
+      local guide_len = #item.tree_state * 2 -- Each level is 2 chars wide
+
+      -- Apply highlight to the tree guides using extmark
+      vim.api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
+        end_col = guide_len,
+        hl_group = "NamuTreeGuides",
+        priority = 100,
+      })
+    end
+
+    -- Find and highlight file information using regex pattern
+    local file_pattern = "%[.+:%d+%]"
+    local file_start = line_text:find(file_pattern)
+
+    if file_start then
+      -- Find how long the match is
+      local file_text = line_text:match(file_pattern)
+      local file_len = #file_text
+
+      -- Apply highlight to file info using extmark
+      vim.api.nvim_buf_set_extmark(buf, ns_id, line, file_start - 1, {
+        end_col = file_start + file_len - 1,
+        hl_group = "NamuFileInfo",
+        priority = 101, -- Higher priority than tree guides
+      })
+    end
+
+    ::continue::
+  end
 end
 
 -- Direct LSP request helper function to replace generic request_symbols
@@ -288,10 +357,8 @@ function M.show(direction)
 
   -- Prepare position params
   local params = vim.lsp.util.make_position_params()
-
   logger.log("Requesting call hierarchy at position " .. vim.inspect(params.position))
 
-  -- Step 1: Get call hierarchy items
   make_call_hierarchy_request("textDocument/prepareCallHierarchy", params, function(err, result)
     if err then
       local error_message = type(err) == "string" and err or (type(err) == "table" and err.message) or "Unknown error"
@@ -311,21 +378,24 @@ function M.show(direction)
 
     -- Store symbol name for display
     state.current_symbol_name = item.name
+    local current_file = vim.fn.expand("%:t")
+    local current_pos = vim.api.nvim_win_get_cursor(0)
+    local file_info = string.format(" [%s:%d]", current_file, current_pos[1])
 
     -- We'll collect results here
     local all_items = {}
 
     -- Add the current symbol with file info - format it like a regular symbol
     table.insert(all_items, {
-      text = item.name,
+      text = item.name .. file_info,
       value = {
-        text = item.name,
+        text = item.name .. file_info,
         name = item.name,
         kind = item.kind and lsp.symbol_kind(item.kind) or "Function",
-        lnum = cursor_pos[1],
-        col = cursor_pos[2] + 1,
-        end_lnum = cursor_pos[1],
-        end_col = cursor_pos[2] + 1 + #item.name,
+        lnum = current_pos[1],
+        col = current_pos[2] + 1,
+        end_lnum = current_pos[1],
+        end_col = current_pos[2] + 1 + #item.name,
         file_path = vim.fn.expand("%:p"),
         uri = vim.uri_from_bufnr(0),
         is_current = true,
@@ -416,6 +486,34 @@ function M.show_call_picker(selectaItems, notify_opts)
     vim.notify("No call hierarchy items found.", nil, notify_opts)
     return
   end
+  -- Create a custom formatter that properly handles tree guides and icons
+  local formatter = function(item)
+    -- Handle current highlight prefix padding
+    local prefix_padding = ""
+    if M.config.current_highlight.enabled and #M.config.current_highlight.prefix_icon > 0 then
+      prefix_padding = string.rep(" ", vim.api.nvim_strwidth(M.config.current_highlight.prefix_icon))
+    end
+
+    -- Get the tree guides if available
+    local guides = ""
+    if item.tree_state then
+      guides = make_tree_guides(item.tree_state)
+    end
+
+    -- Get the appropriate icon
+    local icon = item.icon or "  "
+    -- local icon = item.icon or M.config.kindIcons[item.kind] or "  "
+
+    local indicator = ""
+    if item.value.is_current then
+      indicator = "▼ "
+    end
+    -- Extract the clean name and file info
+    local name_and_info = item.text
+
+    -- Put it all together: prefix padding + tree guides + icon + content
+    return prefix_padding .. guides .. indicator .. icon .. " " .. name_and_info
+  end
 
   local picker_opts = {
     title = "Call Hierarchy",
@@ -429,9 +527,11 @@ function M.show_call_picker(selectaItems, notify_opts)
     current_highlight = vim.tbl_deep_extend("force", M.config.current_highlight, {}),
     row_position = M.config.row_position,
     debug = M.config.debug,
+    formatter = formatter, -- Add our custom formatter
     hooks = {
       on_render = function(buf, filtered_items)
         ui.apply_kind_highlights(buf, filtered_items, M.config)
+        apply_tree_guide_highlights(buf, filtered_items, M.config) -- Add this line
       end,
       on_buffer_clear = function()
         ui.clear_preview_highlight(state.original_win, state.preview_ns)
@@ -670,6 +770,15 @@ function M.setup(opts)
   if M.config.on_select == nil then
     M.config.on_select = M.jump_to_call
   end
+  -- Add tree guide highlight
+  vim.api.nvim_set_hl(0, "NamuTreeGuides", {
+    link = "Comment", -- Link to Comment by default
+    default = true,
+  })
+  vim.api.nvim_set_hl(0, "NamuFileInfo", {
+    link = "Comment", -- More visible color for file paths
+    default = true,
+  })
 end
 
 ---Setup default keymaps
