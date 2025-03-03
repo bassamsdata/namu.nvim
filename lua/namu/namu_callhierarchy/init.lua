@@ -23,67 +23,187 @@ local CallDirection = {
   BOTH = "both",
 }
 
+local function update_preview(item, win, ns_id)
+  if not item or item.value.is_section then
+    return nil
+  end
+
+  local value = item.value
+  local original_buf = vim.api.nvim_win_get_buf(win)
+  local target_buf
+
+  -- If it's in a different file, we need to load that file
+  if value.uri and value.uri ~= vim.uri_from_bufnr(original_buf) then
+    -- Check if buffer is already loaded
+    local filepath = value.file_path
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+      local bufpath = vim.api.nvim_buf_get_name(buf)
+      if bufpath == filepath then
+        target_buf = buf
+        break
+      end
+    end
+
+    -- If not found, create a new buffer and load the file
+    if not target_buf then
+      target_buf = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_name(target_buf, filepath)
+
+      -- Load the file content into the buffer
+      local file_content = vim.fn.readfile(filepath)
+      vim.api.nvim_buf_set_lines(target_buf, 0, -1, false, file_content)
+
+      -- Set the filetype for proper syntax highlighting
+      local ft = vim.filetype.match({ filename = filepath })
+      if ft then
+        vim.api.nvim_buf_set_option(target_buf, "filetype", ft)
+      end
+    end
+
+    -- Switch the window to the new buffer temporarily
+    vim.api.nvim_win_set_buf(win, target_buf)
+
+    -- After preview, we'll return to the original buffer
+    vim.api.nvim_create_autocmd("CursorMoved", {
+      once = true,
+      callback = function()
+        if vim.api.nvim_win_is_valid(win) then
+          vim.api.nvim_win_set_buf(win, original_buf)
+        end
+      end,
+    })
+  else
+    target_buf = original_buf
+  end
+
+  -- Now highlight the function in this buffer
+  if target_buf and vim.api.nvim_buf_is_valid(target_buf) then
+    -- Clear any existing highlights
+    vim.api.nvim_buf_clear_namespace(target_buf, ns_id, 0, -1)
+
+    -- Set cursor to the function position
+    if vim.api.nvim_win_is_valid(win) then
+      vim.api.nvim_win_set_cursor(win, { value.lnum, value.col - 1 })
+
+      -- Try to use treesitter for better highlighting if available
+      local node = vim.treesitter.get_node({
+        bufnr = target_buf,
+        pos = { value.lnum - 1, value.col - 1 },
+      })
+
+      if node then
+        node = ui.find_meaningful_node(node, value.lnum - 1)
+      end
+
+      if node then
+        local srow, scol, erow, ecol = node:range()
+        vim.api.nvim_buf_set_extmark(target_buf, ns_id, srow, 0, {
+          end_row = erow,
+          end_col = ecol,
+          hl_group = M.config.highlight,
+          hl_eol = true,
+          priority = 1,
+          strict = false,
+        })
+
+        -- Center the view on the highlighted area
+        vim.api.nvim_win_set_cursor(win, { srow + 1, scol })
+        vim.cmd("normal! zz")
+      else
+        -- Fallback: just highlight the line
+        vim.api.nvim_buf_set_extmark(target_buf, ns_id, value.lnum - 1, 0, {
+          end_line = value.lnum,
+          hl_group = M.config.highlight,
+          hl_eol = true,
+          priority = 1,
+        })
+      end
+    end
+  end
+
+  return target_buf
+end
+
 ---Converts call hierarchy items to selecta-compatible items
 ---@param calls table[] Call hierarchy items from LSP
 ---@param direction string "incoming" or "outgoing"
+---@param depth number Indentation depth level
 ---@return SelectaItem[]
 local function calls_to_selecta_items(calls, direction, depth)
-  depth = depth or 0
+  depth = depth or 1 -- Start with depth 1 for first level items
   local items = {}
 
   for _, call in ipairs(calls) do
     local item_data
-    local name
     local call_type = direction
 
     if direction == CallDirection.INCOMING then
       -- For incoming calls, we want the "from" information
       item_data = call.from
-      name = item_data.name .. " → " .. (state.current_symbol_name or "current")
     else
       -- For outgoing calls, we want the "to" information
       item_data = call.to
-      name = (state.current_symbol_name or "current") .. " → " .. item_data.name
+    end
+
+    if not item_data then
+      goto continue
     end
 
     -- Get range information from the item
     local range = item_data.selectionRange or item_data.range
 
-    if not range or not range.start or not range["end"] then
-      logger.log("Call item '" .. item_data.name .. "' has invalid range structure")
+    if not range or not range.start then
       goto continue
     end
 
     -- Extract the file URI for this call
     local uri = item_data.uri
+    local file_path = vim.uri_to_fname(uri)
+    local short_path = file_path:match("([^/\\]+)$") or file_path
+
+    -- Clean name (same as symbols)
+    local clean_name = item_data.name:match("^([^%s%(]+)") or item_data.name
+
+    -- Format exactly like symbols
+    local style = tonumber(M.config.display.style) or 2
+    local prefix = ui.get_prefix(depth, style)
+    local display_text = prefix .. clean_name
+
+    -- Add file info at the end (optional)
+    if M.config.show_file_info then
+      display_text = display_text .. " " .. string.format("[%s:%d]", short_path, range.start.line + 1)
+    end
 
     -- Create the selecta item
     local item = {
-      text = name,
+      text = display_text,
       value = {
-        text = name,
-        name = item_data.name,
+        text = display_text,
+        name = clean_name,
         kind = item_data.kind and lsp.symbol_kind(item_data.kind) or "Function",
         lnum = range.start.line + 1,
         col = range.start.character + 1,
-        end_lnum = range["end"].line + 1,
-        end_col = range["end"].character + 1,
+        end_lnum = range["end"] and range["end"].line + 1 or range.start.line + 1,
+        end_col = range["end"] and range["end"].character + 1 or range.start.character + 1,
         uri = uri,
-        file_path = vim.uri_to_fname(uri),
-        call_item = call, -- Store the original call item for reference
-        call_type = call_type, -- Store whether this is incoming or outgoing
+        file_path = file_path,
+        call_item = call,
+        call_type = call_type,
       },
-      icon = direction == CallDirection.INCOMING and "↓" or "↑", -- Use different icons for incoming vs outgoing
+      icon = M.config.kindIcons[lsp.symbol_kind(item_data.kind)] or M.config.icon, -- Add icon like in symbols
       kind = item_data.kind and lsp.symbol_kind(item_data.kind) or "Function",
       depth = depth,
     }
 
-    -- Add from/to ranges for detailed location information
-    if call.fromRanges and #call.fromRanges > 0 then
-      item.value.fromRanges = call.fromRanges
-    end
-
     table.insert(items, item)
+
+    -- Process nested calls if available
+    if call.children and #call.children > 0 then
+      local nested_items = calls_to_selecta_items(call.children, direction, depth + 1)
+      for _, nested_item in ipairs(nested_items) do
+        table.insert(items, nested_item)
+      end
+    end
 
     ::continue::
   end
@@ -133,8 +253,6 @@ local function make_call_hierarchy_request(method, params, callback)
   end, bufnr)
 end
 
----Show call hierarchy picker with incoming/outgoing calls
----@param direction? string "incoming", "outgoing", or "both"
 function M.show(direction)
   direction = direction or CallDirection.BOTH
 
@@ -197,22 +315,23 @@ function M.show(direction)
     -- We'll collect results here
     local all_items = {}
 
-    -- Add a section header for the current symbol
+    -- Add the current symbol with file info - format it like a regular symbol
     table.insert(all_items, {
-      text = "Current Symbol: " .. item.name,
+      text = item.name,
       value = {
-        text = "Current Symbol: " .. item.name,
+        text = item.name,
         name = item.name,
-        kind = "Header",
-        lnum = 1,
-        col = 1,
-        is_header = true,
-        -- Add placeholder range to avoid nil errors in binary search
-        end_lnum = 1,
-        end_col = 1,
+        kind = item.kind and lsp.symbol_kind(item.kind) or "Function",
+        lnum = cursor_pos[1],
+        col = cursor_pos[2] + 1,
+        end_lnum = cursor_pos[1],
+        end_col = cursor_pos[2] + 1 + #item.name,
+        file_path = vim.fn.expand("%:p"),
+        uri = vim.uri_from_bufnr(0),
+        is_current = true,
       },
-      icon = "📍", -- Marker icon
-      kind = "Header",
+      icon = M.config.kindIcons[lsp.symbol_kind(item.kind)] or M.config.icon,
+      kind = item.kind and lsp.symbol_kind(item.kind) or "Function",
       depth = 0,
     })
 
@@ -223,21 +342,6 @@ function M.show(direction)
     local function handle_completion()
       pending_requests = pending_requests - 1
       if pending_requests == 0 then
-        -- Sort items by direction (incoming first) and then by name
-        table.sort(all_items, function(a, b)
-          if a.value.is_header then
-            return true
-          end
-          if b.value.is_header then
-            return false
-          end
-
-          if a.value.call_type ~= b.value.call_type then
-            return a.value.call_type == CallDirection.INCOMING
-          end
-          return a.value.name < b.value.name
-        end)
-
         -- Cache the results
         calls_cache[cache_key] = all_items
 
@@ -249,27 +353,6 @@ function M.show(direction)
     -- Handle incoming calls if requested
     if direction == CallDirection.INCOMING or direction == CallDirection.BOTH then
       pending_requests = pending_requests + 1
-
-      -- Add header for incoming calls section
-      if direction == CallDirection.BOTH then
-        table.insert(all_items, {
-          text = "Incoming Calls",
-          value = {
-            text = "Incoming Calls",
-            name = "Incoming Calls",
-            kind = "Section",
-            lnum = 1,
-            col = 1,
-            is_section = true,
-            -- Add placeholder range to avoid nil errors
-            end_lnum = 1,
-            end_col = 1,
-          },
-          icon = "↓",
-          kind = "Section",
-          depth = 0,
-        })
-      end
 
       -- Make the request for incoming calls
       make_call_hierarchy_request("callHierarchy/incomingCalls", { item = item }, function(call_err, call_result)
@@ -284,12 +367,10 @@ function M.show(direction)
 
         if call_result and #call_result > 0 then
           -- Convert to selecta items and add to our collection
-          local items = calls_to_selecta_items(call_result, CallDirection.INCOMING, 1)
+          local items = calls_to_selecta_items(call_result, CallDirection.INCOMING)
           for _, item in ipairs(items) do
             table.insert(all_items, item)
           end
-        else
-          vim.notify("No incoming calls found.", vim.log.levels.WARN, notify_opts)
         end
 
         handle_completion()
@@ -299,27 +380,6 @@ function M.show(direction)
     -- Handle outgoing calls if requested
     if direction == CallDirection.OUTGOING or direction == CallDirection.BOTH then
       pending_requests = pending_requests + 1
-
-      -- Add header for outgoing calls section
-      if direction == CallDirection.BOTH then
-        table.insert(all_items, {
-          text = "Outgoing Calls",
-          value = {
-            text = "Outgoing Calls",
-            name = "Outgoing Calls",
-            kind = "Section",
-            lnum = 1,
-            col = 1,
-            is_section = true,
-            -- Add placeholder range to avoid nil errors
-            end_lnum = 1,
-            end_col = 1,
-          },
-          icon = "↑",
-          kind = "Section",
-          depth = 0,
-        })
-      end
 
       -- Make the request for outgoing calls
       make_call_hierarchy_request("callHierarchy/outgoingCalls", { item = item }, function(call_err, call_result)
@@ -334,12 +394,10 @@ function M.show(direction)
 
         if call_result and #call_result > 0 then
           -- Convert to selecta items and add to our collection
-          local items = calls_to_selecta_items(call_result, CallDirection.OUTGOING, 1)
+          local items = calls_to_selecta_items(call_result, CallDirection.OUTGOING)
           for _, item in ipairs(items) do
             table.insert(all_items, item)
           end
-        else
-          vim.notify("No outgoing calls found.", vim.log.levels.WARN, notify_opts)
         end
 
         handle_completion()
@@ -353,7 +411,6 @@ function M.show(direction)
   end)
 end
 
--- Custom show_picker function for call hierarchy items
 function M.show_call_picker(selectaItems, notify_opts)
   if #selectaItems == 0 then
     vim.notify("No call hierarchy items found.", nil, notify_opts)
@@ -381,6 +438,11 @@ function M.show_call_picker(selectaItems, notify_opts)
         if state.original_win and state.original_pos and vim.api.nvim_win_is_valid(state.original_win) then
           vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
         end
+
+        -- Restore original buffer if we switched to another buffer for preview
+        if state.original_win and state.original_buf and vim.api.nvim_win_is_valid(state.original_win) then
+          vim.api.nvim_win_set_buf(state.original_win, state.original_buf)
+        end
       end,
     },
     custom_keymaps = M.config.custom_keymaps,
@@ -400,24 +462,43 @@ function M.show_call_picker(selectaItems, notify_opts)
       end,
     },
     on_select = function(item)
-      ui.clear_preview_highlight(state.original_win, state.preview_ns)
+      pcall(ui.clear_preview_highlight, state.original_win, state.preview_ns)
+
+      -- Restore original buffer if we switched to another buffer for preview
+      if
+        state.original_win
+        and state.original_buf
+        and pcall(vim.api.nvim_win_is_valid, state.original_win)
+        and pcall(vim.api.nvim_buf_is_valid, state.original_buf)
+      then
+        pcall(vim.api.nvim_win_set_buf, state.original_win, state.original_buf)
+      end
+
       M.jump_to_call(item)
     end,
     on_cancel = function()
       ui.clear_preview_highlight(state.original_win, state.preview_ns)
+
+      -- Restore original buffer if we switched to another buffer for preview
+      if state.original_win and state.original_buf and vim.api.nvim_win_is_valid(state.original_win) then
+        vim.api.nvim_win_set_buf(state.original_win, state.original_buf)
+      end
+
       if state.original_win and state.original_pos and vim.api.nvim_win_is_valid(state.original_win) then
         vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
       end
     end,
     on_move = function(item)
       if M.config.preview.highlight_on_move and M.config.preview.highlight_mode == "always" then
-        if item and not item.value.is_header and not item.value.is_section then
+        if item and not item.value.is_header then
+          -- Update the preview with the currently selected item
           ui.highlight_symbol(item.value, state.original_win, state.preview_ns)
         end
       end
     end,
   }
 
+  -- Add custom prefix highlighter if needed
   if M.config.kinds.prefix_kind_colors then
     picker_opts.prefix_highlighter = function(buf, line_nr, item, icon_end, ns_id)
       local kind_hl = M.config.kinds.highlights[item.kind]
@@ -442,7 +523,17 @@ function M.show_call_picker(selectaItems, notify_opts)
       pattern = tostring(picker_win),
       callback = function()
         ui.clear_preview_highlight(state.original_win, state.preview_ns)
-        vim.api.nvim_del_augroup_by_name("NamuCallHierarchyCleanup")
+
+        if
+          state.original_win
+          and state.original_buf
+          and pcall(vim.api.nvim_win_is_valid, state.original_win)
+          and pcall(vim.api.nvim_buf_is_valid, state.original_buf)
+        then
+          pcall(vim.api.nvim_win_set_buf, state.original_win, state.original_buf)
+        end
+
+        pcall(vim.api.nvim_del_augroup_by_name, "NamuCallHierarchyCleanup")
       end,
       once = true,
     })
@@ -464,14 +555,83 @@ function M.jump_to_call(item)
     return
   end
 
+  -- Return to the original window if we're in the picker window
+  if state.original_win and vim.api.nvim_win_is_valid(state.original_win) then
+    vim.api.nvim_set_current_win(state.original_win)
+  end
+
+  -- Clean up any highlight that might be leftover
+  if state.preview_ns then
+    ui.clear_preview_highlight(0, state.preview_ns)
+  end
+
+  -- Record the current position in jumplist
+  vim.cmd.normal({ "m`", bang = true })
+
   -- If it's a different file, open it
-  if value.uri and value.uri ~= vim.uri_from_bufnr(state.original_buf) then
-    vim.cmd("edit " .. vim.fn.fnameescape(value.file_path))
+  if value.uri and value.file_path then
+    local current_uri = vim.uri_from_bufnr(vim.api.nvim_get_current_buf())
+
+    if value.uri ~= current_uri then
+      -- Use edit command to open the file in the current window
+      local cmd = "edit " .. vim.fn.fnameescape(value.file_path)
+
+      -- If the file is already open in another window, consider using that window
+      local bufnr = vim.fn.bufnr(value.file_path)
+      if bufnr ~= -1 then
+        -- Check if this buffer is visible in any window
+        local win_id = vim.fn.bufwinid(bufnr)
+        if win_id ~= -1 then
+          -- If the buffer is already visible in a window, switch to that window
+          vim.api.nvim_set_current_win(win_id)
+        else
+          -- Buffer exists but not visible, switch to it in current window
+          vim.api.nvim_set_current_buf(bufnr)
+          vim.api.nvim_buf_set_option(bufnr, "buflisted", true)
+        end
+      else
+        -- Open the file
+        vim.cmd(cmd)
+        -- Get the new buffer number
+        bufnr = vim.api.nvim_get_current_buf()
+
+        -- Ensure it's listed
+        vim.api.nvim_buf_set_option(bufnr, "buflisted", true)
+      end
+    end
   end
 
   -- Jump to position
-  vim.api.nvim_win_set_cursor(0, { value.lnum, value.col - 1 })
-  vim.cmd("normal! zz")
+  if value.lnum and value.col then
+    vim.api.nvim_win_set_cursor(0, { value.lnum, value.col - 1 })
+
+    -- Center the view on the line
+    vim.cmd("normal! zz")
+
+    -- Optionally flash the line to make it more obvious
+    if M.config.flash_line_on_jump then
+      local ns_id = vim.api.nvim_create_namespace("namu_callhierarchy_jump")
+      vim.api.nvim_buf_clear_namespace(0, ns_id, 0, -1)
+
+      local flash_hl_group = M.config.flash_highlight or "IncSearch"
+
+      -- Add highlight
+      vim.api.nvim_buf_add_highlight(0, ns_id, flash_hl_group, value.lnum - 1, 0, -1)
+
+      -- Remove highlight after a short delay
+      vim.defer_fn(function()
+        if vim.api.nvim_buf_is_valid(0) then
+          vim.api.nvim_buf_clear_namespace(0, ns_id, 0, -1)
+        end
+      end, 300)
+    end
+  end
+  -- Make sure the current buffer is in the buffer list
+  local current_buf = vim.api.nvim_get_current_buf()
+  vim.api.nvim_buf_set_option(current_buf, "buflisted", true)
+
+  -- Return true to indicate successful navigation
+  return true
 end
 
 ---Show incoming calls for symbol at cursor

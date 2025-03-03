@@ -174,27 +174,103 @@ end
 function M.highlight_symbol(symbol, win, ns_id)
   local picker_win = vim.api.nvim_get_current_win()
   vim.api.nvim_set_current_win(win)
-  vim.api.nvim_buf_clear_namespace(0, ns_id, 0, -1)
 
   local bufnr = vim.api.nvim_win_get_buf(win)
+
+  -- Handle symbols from different files
+  if symbol.uri and symbol.uri ~= vim.uri_from_bufnr(bufnr) then
+    -- Try to find if the buffer is already loaded
+    local target_bufnr
+    local filepath = symbol.file_path or vim.uri_to_fname(symbol.uri)
+
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+      if vim.api.nvim_buf_is_loaded(buf) and vim.api.nvim_buf_get_name(buf) == filepath then
+        target_bufnr = buf
+        break
+      end
+    end
+
+    -- If not found, create a new buffer for preview
+    if not target_bufnr then
+      target_bufnr = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_name(target_bufnr, filepath)
+
+      -- Try to load file content
+      local ok, file_content = pcall(vim.fn.readfile, filepath)
+      if ok and file_content then
+        vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, file_content)
+
+        -- Set filetype for syntax highlighting
+        local ft = vim.filetype.match({ filename = filepath })
+        if ft then
+          vim.api.nvim_buf_set_option(target_bufnr, "filetype", ft)
+        end
+      else
+        -- If can't load file, create a placeholder
+        vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, {
+          "-- File not available: " .. filepath,
+          "-- Symbol: " .. (symbol.name or "unknown") .. " at line " .. (symbol.lnum or "?"),
+        })
+      end
+    end
+
+    -- Switch to the new buffer temporarily
+    vim.api.nvim_win_set_buf(win, target_bufnr)
+
+    -- Schedule return to original buffer
+    vim.schedule(function()
+      if vim.api.nvim_win_is_valid(win) and vim.api.nvim_buf_is_valid(bufnr) then
+        vim.api.nvim_win_set_buf(win, bufnr)
+      end
+    end)
+
+    -- Update bufnr for highlighting
+    bufnr = target_bufnr
+  end
+
+  -- Clear any existing highlights
+  vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
+
+  -- Make sure the buffer and line number are valid
+  if not vim.api.nvim_buf_is_valid(bufnr) or symbol.lnum < 1 then
+    vim.api.nvim_set_current_win(picker_win)
+    return
+  end
+
+  -- Make sure the line exists in the buffer
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  if symbol.lnum > line_count then
+    vim.api.nvim_set_current_win(picker_win)
+    return
+  end
+
+  -- Get the line content safely
   local line = vim.api.nvim_buf_get_lines(bufnr, symbol.lnum - 1, symbol.lnum, false)[1]
+  if not line then
+    vim.api.nvim_set_current_win(picker_win)
+    return
+  end
+
   local first_char_col = line:find("%S")
   if not first_char_col then
+    vim.api.nvim_set_current_win(picker_win)
     return
   end
   first_char_col = first_char_col - 1
 
-  local node = vim.treesitter.get_node({
+  -- Try to use treesitter for better highlighting
+  local has_ts, node = pcall(vim.treesitter.get_node, {
     pos = { symbol.lnum - 1, first_char_col },
+    bufnr = bufnr,
     ignore_injections = false,
   })
 
-  if node then
+  if has_ts and node then
     logger.log("highlight_symbol() - before finding meaningful node, its type is: " .. node:type())
     node = M.find_meaningful_node(node, symbol.lnum - 1)
   end
 
-  if node then
+  if has_ts and node then
     local srow, scol, erow, ecol = node:range()
     vim.api.nvim_buf_set_extmark(bufnr, ns_id, srow, 0, {
       end_row = erow,
@@ -206,6 +282,18 @@ function M.highlight_symbol(symbol, win, ns_id)
     })
 
     vim.api.nvim_win_set_cursor(win, { srow + 1, scol })
+    vim.cmd("normal! zz")
+  else
+    -- Fallback: just highlight the line
+    vim.api.nvim_buf_set_extmark(bufnr, ns_id, symbol.lnum - 1, 0, {
+      end_line = symbol.lnum,
+      hl_group = M.config.highlight,
+      hl_eol = true,
+      priority = 1,
+    })
+
+    -- Set cursor to the symbol position
+    vim.api.nvim_win_set_cursor(win, { symbol.lnum, first_char_col })
     vim.cmd("normal! zz")
   end
 
