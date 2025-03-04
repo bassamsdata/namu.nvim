@@ -847,14 +847,14 @@ function M.show_call_picker(selectaItems, notify_opts)
     end
   end
 
-  -- if navigation and navigation.sort_by_nesting_depth then
-  --   unique_items = navigation.sort_by_nesting_depth(unique_items)
-  -- else
-  -- Only update tree guides manually if we didn't sort
-  if navigation and navigation.update_tree_guides_after_sorting then
-    unique_items = navigation.update_tree_guides_after_sorting(unique_items)
+  if navigation and navigation.sort_by_nesting_depth then
+    unique_items = navigation.sort_by_nesting_depth(unique_items)
+  else
+    -- Only update tree guides manually if we didn't sort
+    if navigation and navigation.update_tree_guides_after_sorting then
+      unique_items = navigation.update_tree_guides_after_sorting(unique_items)
+    end
   end
-  -- end
 
   -- Create a custom formatter that properly handles tree guides and icons
   local formatter = function(item)
@@ -910,6 +910,11 @@ function M.show_call_picker(selectaItems, notify_opts)
     parent_key = function(item)
       -- Return the parent signature or "root" if this is the top level
       return item.value and item.value.parent_signature or "root"
+    end,
+    always_include_root = true, -- Always include the root item in results
+    root_item_first = true, -- Make sure the root item appears first
+    is_root_item = function(item)
+      return item.value and item.value.is_current
     end,
     pre_filter = function(items, query)
       local filter = symbol_utils.parse_symbol_filter(query, M.config)

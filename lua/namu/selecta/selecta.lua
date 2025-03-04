@@ -542,6 +542,17 @@ function M.update_filtered_items(state, query, opts)
     local use_hierarchical = opts.hierarchical_mode and type(opts.parent_key) == "function"
 
     if use_hierarchical then
+      -- Track special root item if configured
+      local root_item = nil
+      if opts.always_include_root then
+        -- Find the root item based on the provided function
+        for _, item in ipairs(items_to_filter) do
+          if opts.is_root_item and opts.is_root_item(item) then
+            root_item = item
+            break
+          end
+        end
+      end
       -- Step 1: Find direct matches
       local matched_indices = {}
       local match_scores = {}
@@ -600,8 +611,32 @@ function M.update_filtered_items(state, query, opts)
           end
         end
       end
+      -- Special case: Always include the root item if requested
+      if root_item then
+        for i, item in ipairs(items_to_filter) do
+          if item == root_item then
+            include_indices[i] = true
+            break
+          end
+        end
+      end
       -- Step 4: Create filtered list preserving original order
       state.filtered_items = {}
+      -- If we have a root item and it should be first, add it first
+      if root_item and opts.root_item_first then
+        for i, item in ipairs(items_to_filter) do
+          if item == root_item and include_indices[i] then
+            -- Mark if it's a direct match
+            item.is_direct_match = matched_indices[i] or nil
+            if matched_indices[i] then
+              item.match_score = match_scores[i]
+            end
+            table.insert(state.filtered_items, item)
+            include_indices[i] = nil -- Remove so we don't add it again
+            break
+          end
+        end
+      end
       for i, item in ipairs(items_to_filter) do
         if include_indices[i] then
           -- Mark direct matches vs contextual items
@@ -678,12 +713,40 @@ local function get_item_id(item)
   return tostring(item.value or item.text)
 end
 
+-- Apply highlights to the parent item with hierarchical
+local function apply_hierarchical_highlights(buf, line_nr, item, opts)
+  -- Only apply if hierarchical mode is active
+  if not (opts.hierarchical_mode and item.is_direct_match ~= nil) then
+    return
+  end
+
+  -- If this is a parent item (not a direct match), add subtle styling
+  if item.is_direct_match == nil then
+    vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, 0, {
+      hl_group = "Comment",
+      priority = 203,
+      hl_mode = "blend",
+    })
+  else
+    -- If this is a direct match, we can optionally add emphasis
+    vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, 0, {
+      hl_group = "SpecialKey",
+      priority = 300,
+      hl_mode = "blend",
+    })
+  end
+end
+
 ---@param buf number
 ---@param line_nr number
 ---@param item SelectaItem
 ---@param opts SelectaOptions
 ---@param query string
 local function apply_highlights(buf, line_nr, item, opts, query, line_length, state)
+  -- Apply hierarchical highlighting if enabled
+  -- if opts.hierarchical_mode then
+  --   apply_hierarchical_highlights(buf, line_nr, item, opts)
+  -- end
   local display_str = opts.formatter(item)
 
   local padding_width = 0
