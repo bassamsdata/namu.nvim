@@ -538,17 +538,104 @@ function M.update_filtered_items(state, query, opts)
 
   -- Only proceed with further filtering if there's an actual query
   if actual_query ~= "" then
-    state.filtered_items = {}
-    for _, item in ipairs(items_to_filter) do
-      local match = matcher.get_match_positions(item.text, actual_query)
-      if match then
-        table.insert(state.filtered_items, item)
-      end
-    end
+    -- Check if hierarchical filtering is enabled
+    local use_hierarchical = opts.hierarchical_mode and type(opts.parent_key) == "function"
 
-    local best_index
-    state.filtered_items, best_index = matcher.sort_items(state.filtered_items, actual_query, opts.preserve_order)
-    state.best_match_index = best_index
+    if use_hierarchical then
+      -- Step 1: Find direct matches
+      local matched_indices = {}
+      local match_scores = {}
+      local best_score = -math.huge
+      local best_index = nil
+
+      for i, item in ipairs(items_to_filter) do
+        local match = matcher.get_match_positions(item.text, actual_query)
+        if match then
+          matched_indices[i] = true
+          match_scores[i] = match.score
+
+          if match.score > best_score then
+            best_score = match.score
+            best_index = i
+          end
+        end
+      end
+
+      -- Step 2: Build a map for parent lookups
+      local item_map = {}
+      for i, item in ipairs(items_to_filter) do
+        -- Create a unique identifier for this item
+        local item_id = tostring(item)
+        if item.value and item.value.signature then
+          item_id = item.value.signature
+        end
+        item_map[item_id] = { index = i, item = item }
+      end
+
+      -- Step 3: Include parents of matched items
+      local include_indices = {}
+      for i in pairs(matched_indices) do
+        -- Always include the direct match
+        include_indices[i] = true
+
+        -- Trace up through parents
+        local current = items_to_filter[i]
+        local visited = { [i] = true } -- Prevent cycles
+
+        while current do
+          -- Get parent key using the provided function
+          local parent_key = opts.parent_key(current)
+          if not parent_key or parent_key == "root" then
+            break -- Reached the root or no more parents
+          end
+
+          -- Find the parent item
+          local parent_entry = item_map[parent_key]
+          if parent_entry and not visited[parent_entry.index] then
+            include_indices[parent_entry.index] = true
+            visited[parent_entry.index] = true
+            current = parent_entry.item
+          else
+            break -- Parent not found or cycle detected
+          end
+        end
+      end
+      -- Step 4: Create filtered list preserving original order
+      state.filtered_items = {}
+      for i, item in ipairs(items_to_filter) do
+        if include_indices[i] then
+          -- Mark direct matches vs contextual items
+          item.is_direct_match = matched_indices[i] or nil
+          if matched_indices[i] then
+            item.match_score = match_scores[i]
+          end
+          table.insert(state.filtered_items, item)
+        end
+      end
+
+      -- Step 5: Set best match index for cursor positioning
+      if best_index then
+        -- Find where the best match ended up in the filtered list
+        for i, item in ipairs(state.filtered_items) do
+          if item == items_to_filter[best_index] then
+            state.best_match_index = i
+            break
+          end
+        end
+      end
+    else
+      state.filtered_items = {}
+      for _, item in ipairs(items_to_filter) do
+        local match = matcher.get_match_positions(item.text, actual_query)
+        if match then
+          table.insert(state.filtered_items, item)
+        end
+      end
+
+      local best_index
+      state.filtered_items, best_index = matcher.sort_items(state.filtered_items, actual_query, opts.preserve_order)
+      state.best_match_index = best_index
+    end
 
     if opts.auto_select and #state.filtered_items == 1 and not state.initial_open then
       local selected = state.filtered_items[1]
@@ -779,9 +866,29 @@ end
 local function update_cursor_position(state, opts)
   if #state.filtered_items > 0 then
     local new_pos
+
+    -- Check if we're in hierarchical mode and have direct matches
+    local has_hierarchical_results = false
+    local first_direct_match_index = nil
+
+    if opts.hierarchical_mode then
+      -- Find the first direct match in the filtered items
+      for i, item in ipairs(state.filtered_items) do
+        if item.is_direct_match then
+          first_direct_match_index = i
+          has_hierarchical_results = true
+          break
+        end
+      end
+    end
+
+    -- Determine cursor position based on various factors
+    if has_hierarchical_results and state.best_match_index and not state.cursor_moved then
+      -- Use the best match index we calculated during hierarchical filtering
+      new_pos = { state.best_match_index, 0 }
     -- Only use best_match_index if we haven't moved the cursor manually
     -- and we're not in initial state
-    if opts.preserve_order and state.best_match_index and not state.initial_open and not state.cursor_moved then
+    elseif opts.preserve_order and state.best_match_index and not state.initial_open and not state.cursor_moved then
       new_pos = { state.best_match_index, 0 }
     else
       -- When not preserving order, always start at first item (best match)

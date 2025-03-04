@@ -202,4 +202,14 @@ function M.symbol_kind(kind)
   return symbol_kinds[kind] or "Unknown"
 end
 
+function M.symbol_kind_to_number(kind_str)
+  -- Find the number for a given kind string
+  for k, v in pairs(vim.lsp.protocol.SymbolKind) do
+    if type(v) == "number" and k:lower() == kind_str:lower() then
+      return v
+    end
+  end
+  return 12 -- Function as default
+end
+
 return M
