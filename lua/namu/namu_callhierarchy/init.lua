@@ -1,5 +1,4 @@
 local selecta = require("namu.selecta.selecta")
-local matcher = require("namu.selecta.matcher")
 local navigation = require("namu.namu_callhierarchy.navigation")
 local lsp = require("namu.namu_symbols.lsp")
 local ui = require("namu.namu_symbols.ui")
@@ -22,7 +21,6 @@ M.config = vim.tbl_deep_extend("force", require("namu.namu_symbols").config, {
 local state = symbol_utils.create_state("namu_callhierarchy_preview")
 
 local pending_requests = 0
--- Cache for calls
 local calls_cache = {}
 local processed_call_signatures = {}
 
@@ -341,26 +339,13 @@ local function make_call_hierarchy_request(method, params, callback)
   end, bufnr)
 end
 
----Fetches incoming calls for the given item
----@param item table Call hierarchy item
----@param all_items table Array to append results to
----@param notify_opts table Notification options
----@param callback function Callback when request completes
----@param depth number Current depth
----@param visited table Set of visited items to prevent cycles
----@param parent_signature string|nil Signature of parent item for tree structure
-local function fetch_incoming_calls_recursive(item, all_items, notify_opts, callback, depth, visited, parent_signature)
-  -- Safety check for max depth
-  local max_depth = math.min(M.config.call_hierarchy.max_depth, M.config.call_hierarchy.max_depth_limit)
-  if depth > max_depth then
-    callback()
-    return
-  end
-
-  -- Create call item structure for LSP request
-  local call_item = {
+---Create a properly formatted LSP call hierarchy item from selecta item
+---@param item table The item to convert to LSP format
+---@return table LSP call item format
+local function create_lsp_call_item(item)
+  return {
     name = item.value.name,
-    kind = lsp.symbol_kind_to_number(item.value.kind) or 12,
+    kind = lsp.symbol_kind_to_number(item.value.kind) or 12, -- Default to Function (12)
     uri = item.value.uri,
     range = {
       start = {
@@ -383,106 +368,41 @@ local function fetch_incoming_calls_recursive(item, all_items, notify_opts, call
       },
     },
   }
-  make_call_hierarchy_request("callHierarchy/incomingCalls", { item = call_item }, function(err, call_result)
-    if err then
-      local error_message = type(err) == "string" and err or (type(err) == "table" and err.message) or "Unknown error"
-
-      if depth == 1 then
-        vim.notify("Error fetching incoming calls: " .. error_message, vim.log.levels.ERROR, notify_opts)
-      else
-        logger.log("Error fetching nested incoming calls: " .. error_message)
-      end
-
-      callback()
-      return
-    end
-
-    -- Process results if we got any
-    if call_result and #call_result > 0 then
-      -- Clone the visited set so each branch has its own history
-      local branch_visited = vim.deepcopy(visited or {})
-
-      -- Find parent position to insert children after
-      local insert_pos = nil
-      if parent_signature then
-        insert_pos = find_parent_position(all_items, parent_signature)
-      end
-      -- If we found the parent, insert after it, otherwise add at the end
-      local insertion_point = insert_pos or #all_items
-
-      -- Create hierarchical tree state based on parent
-      -- This is the key part for making the tree guides show hierarchy
-      local parent_tree_state = nil
-      if insert_pos and all_items[insert_pos].tree_state then
-        parent_tree_state = vim.deepcopy(all_items[insert_pos].tree_state)
-      end
-
-      -- Convert to selecta items
-      local items =
-        calls_to_selecta_items(call_result, CallDirection.INCOMING, depth, parent_tree_state, branch_visited)
-
-      -- Process each item to add parent info and correct insertion
-      local items_to_process = {}
-      for i, new_item in ipairs(items) do
-        -- Store the parent signature for hierarchy tracking
-        new_item.value.parent_signature = parent_signature or item.value.signature
-
-        -- Check if this signature has already been processed globally
-        if not processed_call_signatures[new_item.value.signature] then
-          -- Keep track of original position for determining if item is last in group
-          new_item.original_index = i
-          new_item.original_count = #items
-
-          -- Mark as processed
-          processed_call_signatures[new_item.value.signature] = true
-
-          -- Add to list of items to process
-          table.insert(items_to_process, new_item)
-        end
-      end
-
-      -- Insert items at the right positions
-      for i, new_item in ipairs(items_to_process) do
-        -- If this item should expand, schedule it for processing
-        local should_expand = new_item.value.should_expand
-        new_item.value.should_expand = nil -- Clear flag
-
-        -- Insert at the right position and increment for next siblings
-        table.insert(all_items, insertion_point + i, new_item)
-
-        -- If this item needs expansion, do it right after inserting to maintain hierarchy
-        if should_expand then
-          -- Add a pending request
-          pending_requests = pending_requests + 1
-
-          -- Process recursively
-          fetch_incoming_calls_recursive(
-            new_item,
-            all_items,
-            notify_opts,
-            callback,
-            depth + 1,
-            branch_visited,
-            new_item.value.signature
-          )
-        end
-      end
-    end
-
-    -- Complete this level
-    callback()
-  end)
 end
 
----Fetches outgoing calls for the given item
+---Format an LSP error response consistently
+---@param err any Error from LSP
+---@param default_message string|nil Default message if error format is unknown
+---@return string Formatted error message
+local function format_lsp_error(err, default_message)
+  if type(err) == "string" then
+    return err
+  elseif type(err) == "table" and err.message then
+    return err.message
+  else
+    return default_message or "Unknown error"
+  end
+end
+
+---Fetch calls in either direction recursively
 ---@param item table Call hierarchy item
 ---@param all_items table Array to append results to
+---@param direction string "incoming" or "outgoing"
 ---@param notify_opts table Notification options
 ---@param callback function Callback when request completes
 ---@param depth number Current depth
 ---@param visited table Set of visited items to prevent cycles
----@param parent_signature string|nil Signature of parent item for tree structure
-local function fetch_outgoing_calls_recursive(item, all_items, notify_opts, callback, depth, visited, parent_signature)
+---@param parent_signature string|nil Signature of parent item
+local function fetch_calls_recursive(
+  item,
+  all_items,
+  direction,
+  notify_opts,
+  callback,
+  depth,
+  visited,
+  parent_signature
+)
   -- Safety check for max depth
   local max_depth = math.min(M.config.call_hierarchy.max_depth, M.config.call_hierarchy.max_depth_limit)
   if depth > max_depth then
@@ -491,40 +411,17 @@ local function fetch_outgoing_calls_recursive(item, all_items, notify_opts, call
   end
 
   -- Create call item structure for LSP request
-  local call_item = {
-    name = item.value.name,
-    kind = lsp.symbol_kind_to_number(item.value.kind) or 12,
-    uri = item.value.uri,
-    range = {
-      start = {
-        line = item.value.lnum - 1,
-        character = item.value.col - 1,
-      },
-      ["end"] = {
-        line = item.value.end_lnum - 1,
-        character = item.value.end_col - 1,
-      },
-    },
-    selectionRange = {
-      start = {
-        line = item.value.lnum - 1,
-        character = item.value.col - 1,
-      },
-      ["end"] = {
-        line = item.value.end_lnum - 1,
-        character = item.value.end_col - 1,
-      },
-    },
-  }
-  -- Make the request
-  make_call_hierarchy_request("callHierarchy/outgoingCalls", { item = call_item }, function(err, call_result)
+  local call_item = create_lsp_call_item(item)
+  local method = "callHierarchy/" .. direction .. "Calls"
+
+  make_call_hierarchy_request(method, { item = call_item }, function(err, call_result)
     if err then
-      local error_message = type(err) == "string" and err or (type(err) == "table" and err.message) or "Unknown error"
+      local error_message = format_lsp_error(err, "Unknown error")
 
       if depth == 1 then
-        vim.notify("Error fetching outgoing calls: " .. error_message, vim.log.levels.ERROR, notify_opts)
+        vim.notify("Error fetching " .. direction .. " calls: " .. error_message, vim.log.levels.ERROR, notify_opts)
       else
-        logger.log("Error fetching nested outgoing calls: " .. error_message)
+        logger.log("Error fetching nested " .. direction .. " calls: " .. error_message)
       end
 
       callback()
@@ -546,15 +443,13 @@ local function fetch_outgoing_calls_recursive(item, all_items, notify_opts, call
       local insertion_point = insert_pos or #all_items
 
       -- Create hierarchical tree state based on parent
-      -- This is the key part for making the tree guides show hierarchy
       local parent_tree_state = nil
       if insert_pos and all_items[insert_pos].tree_state then
         parent_tree_state = vim.deepcopy(all_items[insert_pos].tree_state)
       end
 
       -- Convert to selecta items
-      local items =
-        calls_to_selecta_items(call_result, CallDirection.OUTGOING, depth, parent_tree_state, branch_visited)
+      local items = calls_to_selecta_items(call_result, direction, depth, parent_tree_state, branch_visited)
 
       -- Process each item to add parent info and correct insertion
       local items_to_process = {}
@@ -591,9 +486,10 @@ local function fetch_outgoing_calls_recursive(item, all_items, notify_opts, call
           pending_requests = pending_requests + 1
 
           -- Process recursively
-          fetch_outgoing_calls_recursive(
+          fetch_calls_recursive(
             new_item,
             all_items,
+            direction,
             notify_opts,
             callback,
             depth + 1,
@@ -604,7 +500,6 @@ local function fetch_outgoing_calls_recursive(item, all_items, notify_opts, call
       end
     end
 
-    -- Complete this level
     callback()
   end)
 end
@@ -620,14 +515,11 @@ local function process_call_hierarchy_item(item, direction, cache_key, notify_op
 
   -- We'll collect results here
   local all_items = {}
-
   -- Global counter for pending requests
   pending_requests = 0
-
   -- Get the current position and file
   local current_pos = vim.api.nvim_win_get_cursor(0)
   local current_file = vim.fn.expand("%:t")
-
   -- Add the current symbol with file info
   local current_item = {
     text = item.name .. " [" .. current_file .. ":" .. current_pos[1] .. "]",
@@ -669,18 +561,198 @@ local function process_call_hierarchy_item(item, direction, cache_key, notify_op
   -- Handle incoming calls if requested
   if direction == CallDirection.INCOMING or direction == CallDirection.BOTH then
     pending_requests = pending_requests + 1
-    fetch_incoming_calls_recursive(current_item, all_items, notify_opts, handle_completion, 1, visited, "root")
+    fetch_calls_recursive(current_item, all_items, "incoming", notify_opts, handle_completion, 1, visited, "root")
   end
 
   -- Handle outgoing calls if requested
   if direction == CallDirection.OUTGOING or direction == CallDirection.BOTH then
     pending_requests = pending_requests + 1
-    fetch_outgoing_calls_recursive(current_item, all_items, notify_opts, handle_completion, 1, visited, "root")
+    fetch_calls_recursive(current_item, all_items, "outgoing", notify_opts, handle_completion, 1, visited, "root")
   end
 
   -- If we didn't initiate any requests, show empty results
   if pending_requests == 0 then
     M.show_call_picker(all_items, notify_opts)
+  end
+end
+
+local function apply_simple_highlights(buf, filtered_items, config)
+  local ns_id = vim.api.nvim_create_namespace("namu_callhierarchy_simple")
+  vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
+
+  for idx, item in ipairs(filtered_items) do
+    local line = idx - 1
+    local lines = vim.api.nvim_buf_get_lines(buf, line, line + 1, false)
+    if #lines == 0 then
+      goto continue
+    end
+
+    local line_text = lines[1]
+
+    -- Get the kind's highlight group
+    local kind = item.kind
+    local kind_hl = config.kinds.highlights[kind] or "Identifier"
+
+    -- Find where the file info starts
+    local file_pattern = "%[.+:%d+%]"
+    local file_start = line_text:find(file_pattern)
+
+    if file_start then
+      -- Highlight from beginning to file info with kind highlight
+      vim.api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
+        end_row = line,
+        end_col = file_start - 1, -- Up to file info
+        hl_group = kind_hl,
+        priority = 110, -- Higher than selecta's default (100)
+      })
+
+      -- Highlight the file info
+      local file_text = line_text:match(file_pattern)
+      vim.api.nvim_buf_set_extmark(buf, ns_id, line, file_start - 1, {
+        end_row = line,
+        end_col = file_start - 1 + #file_text,
+        hl_group = "NamuFileInfo",
+        priority = 100, -- Same as selecta's default
+      })
+
+      -- Check if there's a recursive marker
+      local recursive_text = " %(recursive%)"
+      local recursive_start = line_text:find(recursive_text, file_start + #file_text - 1)
+      if recursive_start then
+        vim.api.nvim_buf_set_extmark(buf, ns_id, line, recursive_start - 1, {
+          end_row = line,
+          end_col = recursive_start - 1 + #recursive_text,
+          hl_group = "WarningMsg",
+          priority = 110, -- Higher than file info
+        })
+      end
+    else
+      -- If no file info, highlight the entire line
+      vim.api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
+        end_row = line,
+        end_col = #line_text,
+        hl_group = kind_hl,
+        priority = 110, -- Higher than selecta's default
+      })
+    end
+
+    ::continue::
+  end
+end
+
+local function apply_unified_highlights(buf, filtered_items, config)
+  local ns_id = vim.api.nvim_create_namespace("namu_callhierarchy_unified")
+  vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
+
+  for idx, item in ipairs(filtered_items) do
+    local line = idx - 1
+    local line_text = vim.api.nvim_buf_get_lines(buf, line, line + 1, false)
+    if #line_text == 0 then
+      goto continue
+    end
+    line_text = line_text[1]
+
+    -- Calculate padding width (same as in formatter)
+    local padding_width = 0
+    if config.current_highlight.enabled and #config.current_highlight.prefix_icon > 0 then
+      padding_width = vim.api.nvim_strwidth(config.current_highlight.prefix_icon)
+    end
+
+    -- Start position after padding
+    local pos = padding_width
+
+    -- Calculate tree guides length if present
+    if item.tree_state then
+      local guide_len = #item.tree_state * 2 -- Each level is 2 chars wide
+
+      -- Highlight tree guides
+      vim.api.nvim_buf_set_extmark(buf, ns_id, line, padding_width, {
+        end_row = line,
+        end_col = padding_width + guide_len,
+        hl_group = "NamuTreeGuides",
+        priority = 200,
+      })
+
+      pos = padding_width + guide_len
+    end
+
+    -- Highlight indicator if present (like "▼ ")
+    if item.value.is_current then
+      local indicator_width = 2 -- "▼ " is 2 chars wide
+      vim.api.nvim_buf_set_extmark(buf, ns_id, line, pos, {
+        end_row = line,
+        end_col = pos + indicator_width,
+        hl_group = "Special",
+        priority = 95,
+      })
+      pos = pos + indicator_width
+    end
+
+    -- Highlight the icon based on kind
+    local kind = item.kind
+    local kind_hl = config.kinds.highlights[kind]
+    local icon_width = 2 -- Most icons are 2 chars wide
+
+    if kind_hl then
+      vim.api.nvim_buf_set_extmark(buf, ns_id, line, pos, {
+        end_row = line,
+        end_col = pos + icon_width,
+        hl_group = kind_hl,
+        priority = 100,
+      })
+    end
+
+    -- Move position past icon and space
+    pos = pos + icon_width + 1
+
+    -- Find and highlight the symbol name
+    local clean_name = item.value.name
+    if clean_name then
+      -- Find symbol name in line after current position
+      local remaining_text = line_text:sub(pos + 1)
+      local name_relative_pos = remaining_text:find(clean_name, 1, true)
+
+      if name_relative_pos then
+        local name_start = pos + name_relative_pos
+        local name_hl = kind_hl or "Identifier"
+
+        vim.api.nvim_buf_set_extmark(buf, ns_id, line, name_start - 1, {
+          end_row = line,
+          end_col = name_start - 1 + #clean_name,
+          hl_group = name_hl,
+          priority = 98,
+        })
+      end
+    end
+
+    -- Find and highlight file information [file:line]
+    local file_pattern = "%[.+:%d+%]"
+    local file_start = line_text:find(file_pattern)
+
+    if file_start then
+      local file_text = line_text:match(file_pattern)
+
+      vim.api.nvim_buf_set_extmark(buf, ns_id, line, file_start - 1, {
+        end_row = line,
+        end_col = file_start - 1 + #file_text,
+        hl_group = "NamuFileInfo",
+        priority = 97,
+      })
+
+      -- Check if there's a recursive marker
+      local recursive_text = " (recursive)"
+      local recursive_start = line_text:find(recursive_text, file_start + #file_text, true)
+      if recursive_start then
+        vim.api.nvim_buf_set_extmark(buf, ns_id, line, recursive_start - 1, {
+          end_row = line,
+          end_col = recursive_start - 1 + #recursive_text,
+          hl_group = "WarningMsg", -- Make recursive calls stand out
+          priority = 101,
+        })
+      end
+    end
+
+    ::continue::
   end
 end
 
@@ -698,21 +770,30 @@ local function apply_tree_guide_highlights(buf, items, config)
 
     local line_text = lines[1]
     local pos = 0
+    -- Apply highlight for parent items
+    if item.is_parent_match then
+      vim.api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
+        end_row = line,
+        end_col = #line_text,
+        hl_group = "ModeMsg", -- Create this highlight group
+        priority = 500, -- Lower priority than other highlights
+      })
+    end
 
     -- Apply tree guide highlighting if available
-    -- if item.tree_state then
-    --   -- Calculate the position of tree guides
-    --   local guide_len = #item.tree_state * 2 -- Each level is 2 chars wide
-    --
-    --   -- Apply highlight to the tree guides using extmark
-    --   vim.api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
-    --     end_row = line,
-    --     end_col = guide_len,
-    --     hl_group = "NamuTreeGuides",
-    --     priority = 100,
-    --   })
-    --   pos = guide_len
-    -- end
+    if item.tree_state then
+      -- Calculate the position of tree guides
+      local guide_len = #item.tree_state * 2 -- Each level is 2 chars wide
+
+      -- Apply highlight to the tree guides using extmark
+      vim.api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
+        end_row = line,
+        end_col = guide_len,
+        hl_group = "NamuTreeGuides",
+        priority = 100,
+      })
+      pos = guide_len
+    end
     -- Highlight the icon with the kind's highlight group
     local kind = item.kind
     local kind_hl = config.kinds.highlights[kind]
@@ -799,7 +880,7 @@ function M.show(direction)
     local params = vim.lsp.util.make_position_params()
     make_call_hierarchy_request("textDocument/prepareCallHierarchy", params, function(err, result)
       if err then
-        local error_message = type(err) == "string" and err or (type(err) == "table" and err.message) or "Unknown error"
+        local error_message = format_lsp_error(err, "Unknown error")
         vim.notify("Error preparing call hierarchy: " .. error_message, vim.log.levels.ERROR, notify_opts)
         return
       end
@@ -882,7 +963,7 @@ function M.show_call_picker(selectaItems, notify_opts)
     -- Visual indicator for parent items that were included but didn't match search
     local style = ""
     if item.is_parent_match then
-      style = "dim" -- We'll use this in highlighting
+      style = "dim"
     end
 
     -- Put it all together: prefix padding + tree guides + icon + content
@@ -929,8 +1010,7 @@ function M.show_call_picker(selectaItems, notify_opts)
     end,
     hooks = {
       on_render = function(buf, filtered_items)
-        ui.apply_kind_highlights(buf, filtered_items, M.config)
-        apply_tree_guide_highlights(buf, filtered_items, M.config) -- Add this line
+        apply_simple_highlights(buf, filtered_items, M.config)
       end,
       on_buffer_clear = function()
         ui.clear_preview_highlight(state.original_win, state.preview_ns)
@@ -987,8 +1067,7 @@ function M.show_call_picker(selectaItems, notify_opts)
     on_move = function(item)
       if M.config.preview.highlight_on_move and M.config.preview.highlight_mode == "always" then
         if item and not item.value.is_header then
-          -- Update the preview with the currently selected item
-          ui.highlight_symbol(item.value, state.original_win, state.preview_ns)
+          ui.highlight_symbol(item.value, state.original_win, state.preview_ns, state.original_buf)
         end
       end
     end,
@@ -1043,27 +1122,21 @@ function M.jump_to_call(item)
     vim.notify("Invalid call item", vim.log.levels.ERROR)
     return
   end
-
   local value = item.value
-
   -- Skip headers and sections
   if value.is_header or value.is_section then
     return
   end
-
   -- Return to the original window if we're in the picker window
   if state.original_win and vim.api.nvim_win_is_valid(state.original_win) then
     vim.api.nvim_set_current_win(state.original_win)
   end
-
   -- Clean up any highlight that might be leftover
   if state.preview_ns then
     ui.clear_preview_highlight(0, state.preview_ns)
   end
-
   -- Record the current position in jumplist
   vim.cmd.normal({ "m`", bang = true })
-
   -- If it's a different file, open it
   if value.uri and value.file_path then
     local current_uri = vim.uri_from_bufnr(vim.api.nvim_get_current_buf())
@@ -1086,8 +1159,8 @@ function M.jump_to_call(item)
           vim.api.nvim_buf_set_option(bufnr, "buflisted", true)
         end
       else
-        -- Open the file
         vim.cmd(cmd)
+
         -- Get the new buffer number
         bufnr = vim.api.nvim_get_current_buf()
 
@@ -1102,7 +1175,7 @@ function M.jump_to_call(item)
     vim.api.nvim_win_set_cursor(0, { value.lnum, value.col - 1 })
 
     -- Center the view on the line
-    vim.cmd("normal! zz")
+    vim.cmd("keepjumps normal! zz")
 
     -- Optionally flash the line to make it more obvious
     if M.config.flash_line_on_jump then

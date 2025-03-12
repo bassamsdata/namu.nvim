@@ -1,5 +1,6 @@
 local M = {}
 local logger = require("namu.utils.logger")
+local format_utils = require("namu.core.format_utils")
 
 -- Factory function to create a state object for a particular module
 function M.create_state(namespace)
@@ -228,6 +229,14 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
     -- current_highlight = vim.tbl_deep_extend("force", config.current_highlight, {}),
     row_position = config.row_position,
     debug = config.debug,
+    -- TODO: make it configurable
+    hierarchical_mode = true,
+    parent_key = function(item)
+      return item.value and item.value.parent_signature
+    end,
+    formatter = function(item)
+      return format_utils.format_item_for_display(item, config)
+    end,
     pre_filter = function(items, query)
       local filter = M.parse_symbol_filter(query, config)
       if filter then
@@ -241,7 +250,7 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
     end,
     hooks = {
       on_render = function(buf, filtered_items)
-        ui.apply_kind_highlights(buf, filtered_items, config)
+        ui.apply_highlights(buf, filtered_items, config)
       end,
       on_buffer_clear = function()
         ui.clear_preview_highlight(state.original_win, state.preview_ns)
@@ -293,20 +302,20 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
     end,
   }
 
-  if config.kinds.prefix_kind_colors then
-    picker_opts.prefix_highlighter = function(buf, line_nr, item, icon_end, ns_id)
-      local kind_hl = config.kinds.highlights[item.kind]
-      if kind_hl then
-        vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, 0, {
-          end_col = icon_end,
-          hl_group = kind_hl,
-          priority = 100,
-          hl_mode = "combine",
-        })
-      end
-    end
-  end
-
+  -- if config.kinds.prefix_kind_colors then
+  --   picker_opts.prefix_highlighter = function(buf, line_nr, item, icon_end, ns_id)
+  --     local kind_hl = config.kinds.highlights[item.kind]
+  --     if kind_hl then
+  --       vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, 0, {
+  --         end_col = icon_end,
+  --         hl_group = kind_hl,
+  --         priority = 100,
+  --         hl_mode = "combine",
+  --       })
+  --     end
+  --   end
+  -- end
+  --
   local picker_win = selecta.pick(selectaItems, picker_opts)
 
   -- Add cleanup autocmd after picker is created

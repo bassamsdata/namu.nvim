@@ -51,6 +51,7 @@ local function symbols_to_selecta_items(raw_symbols)
     else
       tree[result.name] = depth
     end
+
     local clean_name = result.name:match("^([^%s%(]+)") or result.name
     clean_name = state.original_ft == "markdown" and result.name or clean_name
     local style = tonumber(M.config.display.style) or 2

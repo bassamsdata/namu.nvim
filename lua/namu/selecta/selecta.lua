@@ -280,6 +280,7 @@ local function setup_highlights()
   }
 
   -- NOTE: for some wierd reason, this is the only way those 2 highlight groups works
+  -- FIX: I think it needs default = true to make it work. needs testing
   local current_hl_group = M.config.current_highlight.hl_group
   vim.cmd(string.format(
     [[
@@ -745,7 +746,7 @@ end
 local function apply_highlights(buf, line_nr, item, opts, query, line_length, state)
   -- Apply hierarchical highlighting if enabled
   -- if opts.hierarchical_mode then
-  --   apply_hierarchical_highlights(buf, line_nr, item, opts)
+  -- apply_hierarchical_highlights(buf, line_nr, item, opts)
   -- end
   local display_str = opts.formatter(item)
 
@@ -817,6 +818,7 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
     if opts.prefix_highlighter then
       opts.prefix_highlighter(buf, line_nr, item, icon_end, ns_id)
     else
+      -- TODO: this is plays with icons highlights
       -- Highlight prefix/icon
       vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, padding_width, {
         end_col = icon_end,
@@ -964,6 +966,9 @@ local function update_cursor_position(state, opts)
         new_pos = { math.min(cur_pos[1], #state.filtered_items), 0 }
       end
     end
+    -- SAFETY CHECK: Ensure new_pos[1] is valid before setting the cursor
+    new_pos[1] = math.min(new_pos[1], #state.filtered_items)
+    new_pos[1] = math.max(new_pos[1], 1) -- Ensure at least 1
     vim.api.nvim_win_set_cursor(state.win, new_pos)
     update_current_highlight(state, opts, new_pos[1] - 1) -- 0-indexed for extmarks
 

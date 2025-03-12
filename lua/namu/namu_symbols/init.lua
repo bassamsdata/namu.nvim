@@ -40,6 +40,7 @@ local ext = require("namu.namu_symbols.external_plugins")
 local utils = require("namu.namu_symbols.utils")
 local config = require("namu.namu_symbols.config")
 local symbol_utils = require("namu.core.symbol_utils")
+local format_utils = require("namu.core.format_utils")
 local M = {}
 
 -- For backward compatibility
@@ -63,11 +64,21 @@ local function symbols_to_selecta_items(raw_symbols)
   end
 
   local items = {}
+  -- function to generate unique signature for symbols
+  -- main reason is to allow for keep arent symbols showing
+  local function generate_signature(symbol, depth)
+    local range = symbol.range or (symbol.location and symbol.location.range)
+    if not range then
+      return nil
+    end
+
+    return string.format("%s:%d:%d:%d", symbol.name, depth, range.start.line, range.start.character)
+  end
 
   ---[local] Recursively processes each symbol and its children into SelectaItem format with proper indentation
   ---@param result LSPSymbol
   ---@param depth number Current depth level
-  local function process_symbol_result(result, depth)
+  local function process_symbol_result(result, depth, parent_signature)
     if not result or not result.name then
       return
     end
@@ -90,11 +101,13 @@ local function symbols_to_selecta_items(raw_symbols)
       vim.notify("Symbol '" .. result.name .. "' has invalid structure", vim.log.levels.WARN)
       return
     end
+    -- Generate unique signature for this symbol
+    local signature = generate_signature(result, depth)
 
     if not lsp.should_include_symbol(result, M.config, vim.bo.filetype) then
       if result.children then
         for _, child in ipairs(result.children) do
-          process_symbol_result(child, depth)
+          process_symbol_result(child, depth, signature)
         end
       end
       return
@@ -108,7 +121,7 @@ local function symbols_to_selecta_items(raw_symbols)
 
     local kind = lsp.symbol_kind(result.kind)
     local item = {
-      text = display_text,
+      -- text = display_text,
       value = {
         text = clean_name,
         name = clean_name,
@@ -117,6 +130,8 @@ local function symbols_to_selecta_items(raw_symbols)
         col = range.start.character + 1,
         end_lnum = range["end"].line + 1,
         end_col = range["end"].character + 1,
+        signature = signature,
+        parent_signature = parent_signature,
       },
       icon = M.config.kindIcons[kind] or M.config.icon,
       kind = kind,
@@ -127,7 +142,7 @@ local function symbols_to_selecta_items(raw_symbols)
 
     if result.children then
       for _, child in ipairs(result.children) do
-        process_symbol_result(child, depth + 1)
+        process_symbol_result(child, depth + 1, signature)
       end
     end
   end
@@ -136,8 +151,18 @@ local function symbols_to_selecta_items(raw_symbols)
     process_symbol_result(symbol, 0)
   end
 
+  if M.config.display.format == "tree_guides" then
+    items = format_utils.add_tree_state_to_items(items)
+  end
+
+  -- Set display text for all items based on format
+  for _, item in ipairs(items) do
+    item.text = format_utils.format_item_for_display(item, M.config)
+  end
+
   symbol_cache = { key = cache_key, items = items }
   symbol_utils.update_symbol_ranges_cache(items, symbol_range_cache)
+
   return items
 end
 

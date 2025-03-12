@@ -40,8 +40,6 @@ function M.check()
   validate_config()
 
   -- TODO: check lsp capabilities
-
-  -- TODO: check namu options
 end
 
 return M

@@ -5,6 +5,8 @@ local logger = require("namu.utils.logger")
 local state = {
   preview_ns = vim.api.nvim_create_namespace("namu_preview"),
 }
+local MAX_PREVIEW_SIZE = 524288 -- 512KB
+local LINES_AROUND_SYMBOL = 100 -- +/- lines to load
 
 local ns_id = vim.api.nvim_create_namespace("namu_symbols")
 
@@ -118,11 +120,15 @@ function M.find_meaningful_node(node, lnum)
   local current = node
   local target_node = node
   local parent_node = node:parent()
-  -- First pass: Find the deepest node at our position
-  while current and starts_at_line(current) do
+  -- Walk up to find the deepest node starting at lnum, stopping before root
+  while current and starts_at_line(current) and current:parent() do
     target_node = current
     ---@diagnostic disable-next-line: undefined-field
     current = current:parent()
+  end
+  -- If target_node is root, use the initial node instead
+  if not target_node:parent() then
+    target_node = node
   end
   ---@diagnostic disable-next-line: undefined-field
   local type = target_node:type()
@@ -177,6 +183,8 @@ function M.highlight_symbol(symbol, win, ns_id)
 
   local bufnr = vim.api.nvim_win_get_buf(win)
 
+  local saved_eventignore = vim.o.eventignore
+  vim.o.eventignore = "BufEnter,WinEnter,BufWinEnter"
   -- Handle symbols from different files
   if symbol.uri and symbol.uri ~= vim.uri_from_bufnr(bufnr) then
     -- Try to find if the buffer is already loaded
@@ -203,7 +211,7 @@ function M.highlight_symbol(symbol, win, ns_id)
         -- Set filetype for syntax highlighting
         local ft = vim.filetype.match({ filename = filepath })
         if ft then
-          vim.api.nvim_buf_set_option(target_bufnr, "filetype", ft)
+          vim.api.nvim_set_option_value("filetype", ft, { buf = target_bufnr })
         end
       else
         -- If can't load file, create a placeholder
@@ -214,13 +222,20 @@ function M.highlight_symbol(symbol, win, ns_id)
       end
     end
 
+    -- NOTE: nvim_win_set_buf is always adding preview to jumplist
+    -- so this is becomes a hack, not sure if using eventignore could play part
+    -- and might revert to nvim_win_set_buf function later.
     -- Switch to the new buffer temporarily
-    vim.api.nvim_win_set_buf(win, target_bufnr)
+    vim.api.nvim_set_current_win(win)
+    vim.cmd("keepjumps buffer " .. target_bufnr)
+    vim.api.nvim_set_current_win(picker_win)
 
     -- Schedule return to original buffer
     vim.schedule(function()
       if vim.api.nvim_win_is_valid(win) and vim.api.nvim_buf_is_valid(bufnr) then
-        vim.api.nvim_win_set_buf(win, bufnr)
+        vim.api.nvim_set_current_win(win)
+        vim.cmd("keepjumps buffer " .. bufnr)
+        vim.api.nvim_set_current_win(picker_win)
       end
     end)
 
@@ -282,7 +297,9 @@ function M.highlight_symbol(symbol, win, ns_id)
     })
 
     vim.api.nvim_win_set_cursor(win, { srow + 1, scol })
-    vim.cmd("normal! zz")
+    vim.api.nvim_win_call(win, function()
+      vim.cmd("keepjumps normal! zz")
+    end)
   else
     -- Fallback: just highlight the line
     vim.api.nvim_buf_set_extmark(bufnr, ns_id, symbol.lnum - 1, 0, {
@@ -294,58 +311,136 @@ function M.highlight_symbol(symbol, win, ns_id)
 
     -- Set cursor to the symbol position
     vim.api.nvim_win_set_cursor(win, { symbol.lnum, first_char_col })
-    vim.cmd("normal! zz")
+    vim.api.nvim_win_call(win, function()
+      vim.cmd("keepjumps normal! zz")
+    end)
   end
 
   vim.api.nvim_set_current_win(picker_win)
+  vim.o.eventignore = saved_eventignore
 end
 
-function M.apply_kind_highlights(buf, items, config)
-  vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
+-- Apply consistent highlighting to formatted items in the buffer
+---@param buf number Buffer handle
+---@param items table[] List of items to highlight
+---@param config table Configuration with highlight and display settings
+function M.apply_highlights(buf, items, config)
+  local namu_ns_id = vim.api.nvim_create_namespace("namu_formatted_highlights")
+  vim.api.nvim_buf_clear_namespace(buf, namu_ns_id, 0, -1)
+
+  -- Highlight group for tree guides and prefix symbols
+  local guide_hl = "Comment" -- config.highlights and config.highlights.guides or
+  local prefix_symbol_hl = "Comment" -- config.highlights and config.highlights.prefix_symbol or
 
   for idx, item in ipairs(items) do
     local line = idx - 1
+    local lines = vim.api.nvim_buf_get_lines(buf, line, line + 1, false)
+    if #lines == 0 then
+      goto continue
+    end
+
+    local line_text = lines[1]
     local kind = item.kind
-    local hl_group = config.kinds.highlights[kind]
+    local kind_hl = config.kinds.highlights[kind] or "Identifier"
 
-    if hl_group then
-      local line_text = vim.api.nvim_buf_get_lines(buf, line, line + 1, false)[1]
-      if not line_text then
-        goto continue
+    -- 1. Apply base highlight to the whole line (lower priority)
+    vim.api.nvim_buf_set_extmark(buf, namu_ns_id, line, 0, {
+      end_row = line,
+      end_col = #line_text,
+      hl_group = kind_hl,
+      hl_mode = "combine",
+      priority = 200,
+    })
+
+    -- 2. Highlight tree guides with higher priority
+    if config.display.format == "tree_guides" then
+      local guide_style = (config.display.tree_guides and config.display.tree_guides.style) or "unicode"
+      local chars = {
+        ascii = { "|", "`-", "|-" },
+        unicode = { "┆", "└─", "├─" },
+      }
+      local style_chars = chars[guide_style] or chars.unicode
+
+      -- Find and highlight all occurrences of tree guide characters
+      for _, pattern in ipairs(style_chars) do
+        -- Log the pattern and its byte representation
+        local bytes = {}
+        for i = 1, #pattern do
+          table.insert(bytes, string.byte(pattern, i))
+        end
+
+        local start_pos = 0
+
+        -- Find all occurrences of this pattern in the line
+        while true do
+          local pattern_pos = line_text:find(pattern, start_pos + 1, true)
+          if not pattern_pos then
+            break
+          end
+
+          -- Get the exact character at this position in the line
+          local actual_char = line_text:sub(pattern_pos, pattern_pos + #pattern - 1)
+          local actual_bytes = {}
+          for i = 1, #actual_char do
+            table.insert(actual_bytes, string.byte(actual_char, i))
+          end
+          -- Calculate visual width properly
+          local visual_width = vim.api.nvim_strwidth(pattern)
+
+          -- Try highlighting with a slightly expanded range
+          vim.api.nvim_buf_set_extmark(buf, ns_id, line, pattern_pos - 1, {
+            end_row = line,
+            end_col = pattern_pos - 1 + #pattern, -- Use byte length instead of visual width
+            hl_group = guide_hl,
+            priority = 201,
+          })
+
+          -- Move past this occurrence
+          start_pos = pattern_pos
+        end
       end
+    elseif config.display.format == "indent" then
+      -- Handle indent formatting symbols
+      local depth = item.depth or 0
+      if depth > 0 then
+        local style = tonumber(config.display.style) or 2
+        local prefix_symbol = ""
 
-      if item.depth and item.depth > 0 then
-        local prefix = M.get_prefix(item.depth, config.display.style or 2)
-        local prefix_symbol = config.display.style == 2 and ".." or (config.display.style == 3 and "→" or nil)
+        if style == 2 then
+          prefix_symbol = ".."
+        elseif style == 3 then
+          prefix_symbol = "→"
+        end
 
-        if prefix_symbol then
+        if prefix_symbol ~= "" then
           local symbol_pos = line_text:find(prefix_symbol, 1, true)
           if symbol_pos then
-            vim.api.nvim_buf_set_extmark(buf, ns_id, line, symbol_pos - 1, {
+            vim.api.nvim_buf_set_extmark(buf, namu_ns_id, line, symbol_pos - 1, {
               end_row = line,
               end_col = symbol_pos - 1 + #prefix_symbol,
-              hl_group = config.kinds.highlights.PrefixSymbol,
-              priority = 91,
-              strict = false,
+              hl_group = prefix_symbol_hl,
+              priority = 201,
             })
           end
         end
       end
+    end
 
-      local full_name = item.value.name
-      local symbol_pos = line_text:find(full_name, 1, true)
-
-      if symbol_pos then
-        vim.api.nvim_buf_set_extmark(buf, ns_id, line, symbol_pos - 1, {
+    -- 3. Highlight the file info with higher priority (if present)
+    if item.value and item.value.file_info then
+      local file_info = item.value.file_info
+      local file_pos = line_text:find(file_info, 1, true)
+      if file_pos then
+        vim.api.nvim_buf_set_extmark(buf, namu_ns_id, line, file_pos - 1, {
           end_row = line,
-          end_col = symbol_pos - 1 + #full_name,
-          hl_group = hl_group,
-          priority = 90,
-          strict = false,
+          end_col = file_pos - 1 + #file_info,
+          hl_group = "NamuFileInfo",
+          priority = 201,
         })
       end
-      ::continue::
     end
+
+    ::continue::
   end
 end
 
