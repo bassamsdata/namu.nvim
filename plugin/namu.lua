@@ -10,6 +10,7 @@ local command_descriptions = {
   symbols = "Jump to location using namu functionality",
   colorscheme = "Select and apply colorscheme",
   help = "Show help information (use 'help symbols' or 'help analysis' for detailed views)",
+  call = "Show call hierarchy (use 'call in', 'call out', or 'call both')", -- Add this line
 }
 -- Argument validators
 ---@type table<string, fun(args: string[]): boolean, string?>
@@ -48,6 +49,16 @@ local command_validators = {
   end,
   colorscheme = function(args)
     return #args == 0, "sel_colorscheme doesn't accept arguments"
+  end,
+  call = function(args)
+    if #args ~= 1 then
+      return false, "call command requires one argument: 'in', 'out', or 'both'"
+    end
+    local valid_types = { ["in"] = true, out = true, both = true }
+    if not valid_types[args[1]:lower()] then
+      return false, "invalid call type. Valid types: in, out, both"
+    end
+    return true
   end,
   help = function(args)
     if #args > 1 then
@@ -99,6 +110,16 @@ local registry = {
   end,
   colorscheme = function(opts)
     require("namu.colorscheme").show()
+  end,
+  call = function(args)
+    local call_type = args[1]:lower()
+    if call_type == "in" then
+      require("namu.namu_callhierarchy").show_incoming_calls()
+    elseif call_type == "out" then
+      require("namu.namu_callhierarchy").show_outgoing_calls()
+    elseif call_type == "both" then
+      require("namu.namu_callhierarchy").show_both_calls()
+    end
   end,
   help = function(args)
     if #args == 0 then
@@ -187,6 +208,13 @@ local function command_complete(_, line, col)
       return vim.startswith(type, prefix:lower())
     end, symbol_types)
     return candidates
+  end
+  if words[2] == "call" then
+    local call_types = { "in", "out", "both" }
+    local prefix = words[3] or ""
+    return vim.tbl_filter(function(type)
+      return vim.startswith(type, prefix:lower())
+    end, call_types)
   end
   if words[2] == "help" then
     -- BUG: after modulize the plugin request_symbol is not working with those.

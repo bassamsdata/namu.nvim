@@ -7,15 +7,13 @@ M.config = {
   selecta = { enable = true, options = {} },
   colorscheme = { enable = false, options = {} },
   ui_select = { enable = false, options = {} },
+  namu_callhierarchy = { enable = true, options = {} },
 }
 
 M.setup = function(opts)
   opts = opts or {}
   -- Merge the top-level config
   M.config = vim.tbl_deep_extend("force", M.config, opts)
-
-  -- First initialize the shared config module
-  -- require("namu.namu_symbols.config").setup({})
 
   if M.config.namu_symbols.enable then
     require("namu.selecta.selecta").setup(M.config.namu_symbols.options)
@@ -24,6 +22,10 @@ M.setup = function(opts)
 
   if M.config.namu_ctags.enable then
     require("namu.namu_ctags").setup(M.config.namu_ctags.options)
+  end
+
+  if M.config.namu_callhierarchy.enable then
+    require("namu.namu_callhierarchy").setup(M.config.namu_callhierarchy.options)
   end
 
   if M.config.colorscheme.enable then
