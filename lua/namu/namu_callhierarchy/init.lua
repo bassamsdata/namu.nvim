@@ -877,7 +877,7 @@ function M.show(direction)
 
   -- If standard prepare is supported, use it
   if support.prepare then
-    local params = vim.lsp.util.make_position_params()
+    local params = lsp.make_position_params(bufnr)
     make_call_hierarchy_request("textDocument/prepareCallHierarchy", params, function(err, result)
       if err then
         local error_message = format_lsp_error(err, "Unknown error")

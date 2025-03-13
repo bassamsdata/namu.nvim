@@ -84,6 +84,23 @@ local function get_client_with_method(bufnr, method)
   return nil, string.format("No LSP client supports %s", method)
 end
 
+---Creates position params compatible with both Neovim stable and nightly
+---@param bufnr number Buffer number
+---@return table LSP position parameters
+function M.make_position_params(bufnr)
+  -- Get the first client attached to the buffer to use its encoding
+  local get_clients_fn = vim.lsp.get_clients or vim.lsp.get_active_clients
+  local clients = get_clients_fn({ bufnr = bufnr })
+  -- Default to utf-16 if no clients found
+  local position_encoding = "utf-16"
+  -- Get encoding from the first client
+  if clients[1] and clients[1].offset_encoding then
+    position_encoding = clients[1].offset_encoding
+  end
+  -- Make params with explicit position encoding
+  return vim.lsp.util.make_position_params(nil, position_encoding)
+end
+
 ---Make LSP request parameters based on method
 ---@param bufnr number
 ---@param method string
