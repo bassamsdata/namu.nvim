@@ -253,7 +253,7 @@ function M.create_analysis_buffer()
   local ns_id = vim.api.nvim_create_namespace("namu_analysis")
 
   -- Collect and analyze symbols
-  request_symbols(current_buf, function(err, symbols)
+  request_symbols(current_buf, "textDocument/documentSymbol", function(err, symbols, ctx)
     if err then
       vim.notify("Error fetching symbols: " .. vim.inspect(err), vim.log.levels.ERROR)
       return
