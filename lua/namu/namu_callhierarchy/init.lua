@@ -1013,61 +1013,30 @@ function M.show_call_picker(selectaItems, notify_opts)
         apply_simple_highlights(buf, filtered_items, M.config)
       end,
       on_buffer_clear = function()
-        ui.clear_preview_highlight(state.original_win, state.preview_ns)
-        if state.original_win and state.original_pos and vim.api.nvim_win_is_valid(state.original_win) then
-          vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
-        end
-
-        -- Restore original buffer if we switched to another buffer for preview
-        if state.original_win and state.original_buf and vim.api.nvim_win_is_valid(state.original_win) then
-          vim.api.nvim_win_set_buf(state.original_win, state.original_buf)
-        end
+        ui.cleanup_previews(state, true)
       end,
     },
     multiselect = {
       enabled = M.config.multiselect.enabled,
       indicator = M.config.multiselect.indicator,
       on_select = function(selected_items)
-        if M.config.preview.highlight_mode == "select" then
-          ui.clear_preview_highlight(state.original_win, state.preview_ns)
-          if type(selected_items) == "table" and selected_items[1] then
-            ui.highlight_symbol(selected_items[1].value, state.original_win, state.preview_ns)
-          end
-        end
+        ui.cleanup_previews(state, false)
         if type(selected_items) == "table" and selected_items[1] then
           M.jump_to_call(selected_items[1])
         end
       end,
     },
     on_select = function(item)
-      pcall(ui.clear_preview_highlight, state.original_win, state.preview_ns)
-      -- Restore original buffer if we switched to another buffer for preview
-      if
-        state.original_win
-        and state.original_buf
-        and pcall(vim.api.nvim_win_is_valid, state.original_win)
-        and pcall(vim.api.nvim_buf_is_valid, state.original_buf)
-      then
-        pcall(vim.api.nvim_win_set_buf, state.original_win, state.original_buf)
-      end
-
+      ui.cleanup_previews(state, false)
       M.jump_to_call(item)
     end,
     on_cancel = function()
-      -- Restore original buffer if we switched to another buffer for preview
-      if state.original_win and state.original_buf and vim.api.nvim_win_is_valid(state.original_win) then
-        vim.api.nvim_win_set_buf(state.original_win, state.original_buf)
-      end
-      ui.clear_preview_highlight(state.original_win, state.preview_ns)
-
-      if state.original_win and state.original_pos and vim.api.nvim_win_is_valid(state.original_win) then
-        vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
-      end
+      ui.cleanup_previews(state, true)
     end,
     on_move = function(item)
       if M.config.preview.highlight_on_move and M.config.preview.highlight_mode == "always" then
         if item and not item.value.is_header then
-          ui.highlight_symbol(item.value, state.original_win, state.preview_ns, state.original_buf)
+          ui.highlight_symbol(item.value, state.original_win, state.preview_ns, state)
         end
       end
     end,
@@ -1090,24 +1059,13 @@ function M.show_call_picker(selectaItems, notify_opts)
 
   local picker_win = selecta.pick(unique_items, picker_opts)
 
-  -- Add cleanup autocmd after picker is created
   if picker_win then
     local augroup = vim.api.nvim_create_augroup("NamuCallHierarchyCleanup", { clear = true })
     vim.api.nvim_create_autocmd("WinClosed", {
       group = augroup,
       pattern = tostring(picker_win),
       callback = function()
-        ui.clear_preview_highlight(state.original_win, state.preview_ns)
-
-        if
-          state.original_win
-          and state.original_buf
-          and pcall(vim.api.nvim_win_is_valid, state.original_win)
-          and pcall(vim.api.nvim_buf_is_valid, state.original_buf)
-        then
-          pcall(vim.api.nvim_win_set_buf, state.original_win, state.original_buf)
-        end
-
+        ui.cleanup_previews(state, true)
         pcall(vim.api.nvim_del_augroup_by_name, "NamuCallHierarchyCleanup")
       end,
       once = true,
@@ -1122,51 +1080,32 @@ function M.jump_to_call(item)
     vim.notify("Invalid call item", vim.log.levels.ERROR)
     return
   end
+
   local value = item.value
   -- Skip headers and sections
   if value.is_header or value.is_section then
     return
   end
+
+  -- Clean up all preview resources before jumping
+  ui.cleanup_previews(state, false)
+
   -- Return to the original window if we're in the picker window
   if state.original_win and vim.api.nvim_win_is_valid(state.original_win) then
     vim.api.nvim_set_current_win(state.original_win)
   end
-  -- Clean up any highlight that might be leftover
-  if state.preview_ns then
-    ui.clear_preview_highlight(0, state.preview_ns)
-  end
+
   -- Record the current position in jumplist
   vim.cmd.normal({ "m`", bang = true })
-  -- If it's a different file, open it
+
+  -- If it's a different file, open it properly
   if value.uri and value.file_path then
     local current_uri = vim.uri_from_bufnr(vim.api.nvim_get_current_buf())
 
     if value.uri ~= current_uri then
-      -- Use edit command to open the file in the current window
-      local cmd = "edit " .. vim.fn.fnameescape(value.file_path)
-
-      -- If the file is already open in another window, consider using that window
-      local bufnr = vim.fn.bufnr(value.file_path)
-      if bufnr ~= -1 then
-        -- Check if this buffer is visible in any window
-        local win_id = vim.fn.bufwinid(bufnr)
-        if win_id ~= -1 then
-          -- If the buffer is already visible in a window, switch to that window
-          vim.api.nvim_set_current_win(win_id)
-        else
-          -- Buffer exists but not visible, switch to it in current window
-          vim.api.nvim_set_current_buf(bufnr)
-          vim.api.nvim_buf_set_option(bufnr, "buflisted", true)
-        end
-      else
-        vim.cmd(cmd)
-
-        -- Get the new buffer number
-        bufnr = vim.api.nvim_get_current_buf()
-
-        -- Ensure it's listed
-        vim.api.nvim_buf_set_option(bufnr, "buflisted", true)
-      end
+      -- Use edit command to properly open the file in the current window
+      -- This ensures LSP attaches correctly
+      vim.cmd("edit " .. vim.fn.fnameescape(value.file_path))
     end
   end
 
@@ -1175,7 +1114,7 @@ function M.jump_to_call(item)
     vim.api.nvim_win_set_cursor(0, { value.lnum, value.col - 1 })
 
     -- Center the view on the line
-    vim.cmd("keepjumps normal! zz")
+    vim.cmd("normal! zz")
 
     -- Optionally flash the line to make it more obvious
     if M.config.flash_line_on_jump then
@@ -1195,6 +1134,7 @@ function M.jump_to_call(item)
       end, 300)
     end
   end
+
   -- Make sure the current buffer is in the buffer list
   local current_buf = vim.api.nvim_get_current_buf()
   vim.api.nvim_buf_set_option(current_buf, "buflisted", true)

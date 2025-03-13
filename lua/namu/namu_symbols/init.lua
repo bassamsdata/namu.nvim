@@ -64,7 +64,7 @@ local function symbols_to_selecta_items(raw_symbols)
   end
 
   local items = {}
-  -- function to generate unique signature for symbols
+  -- [local] function to generate unique signature for symbols
   -- main reason is to allow for keep arent symbols showing
   local function generate_signature(symbol, depth)
     local range = symbol.range or (symbol.location and symbol.location.range)

@@ -1,12 +1,11 @@
 local M = {}
 local logger = require("namu.utils.logger")
+local uv = vim.uv or vim.loop
 
 -- Internal state for UI operations
 local state = {
   preview_ns = vim.api.nvim_create_namespace("namu_preview"),
 }
-local MAX_PREVIEW_SIZE = 524288 -- 512KB
-local LINES_AROUND_SYMBOL = 100 -- +/- lines to load
 
 local ns_id = vim.api.nvim_create_namespace("namu_symbols")
 
@@ -174,135 +173,224 @@ function M.find_meaningful_node(node, lnum)
   return target_node
 end
 
+function M.cleanup_previews(state, restore_original)
+  if not state then
+    return
+  end
+
+  -- Clear any highlights
+  if state.preview_ns then
+    M.clear_preview_highlight(state.original_win, state.preview_ns)
+  end
+
+  -- Close any preview buffers
+  if state.preview_buffers then
+    for _, bufnr in ipairs(state.preview_buffers) do
+      if vim.api.nvim_buf_is_valid(bufnr) then
+        pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+      end
+    end
+    state.preview_buffers = {}
+  end
+
+  -- Restore original buffer if requested and possible
+  if
+    restore_original
+    and state.original_win
+    and state.original_buf
+    and vim.api.nvim_win_is_valid(state.original_win)
+    and vim.api.nvim_buf_is_valid(state.original_buf)
+  then
+    vim.api.nvim_win_set_buf(state.original_win, state.original_buf)
+    if state.original_pos then
+      vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
+    end
+  end
+
+  -- Reset preview state
+  state.active_preview_buf = nil
+  state.last_previewed_path = nil
+  state.is_previewing = false
+end
+
 ---Handles visual highlighting of selected symbols in preview
 ---@param symbol table LSP symbol item
 ---@param win number Window handle
-function M.highlight_symbol(symbol, win, ns_id)
+---@param ns_id number Namespace ID for highlighting
+function M.highlight_symbol(symbol, win, ns_id, state)
   local picker_win = vim.api.nvim_get_current_win()
   vim.api.nvim_set_current_win(win)
 
   local bufnr = vim.api.nvim_win_get_buf(win)
-
   local saved_eventignore = vim.o.eventignore
-  vim.o.eventignore = "BufEnter,WinEnter,BufWinEnter"
+  vim.o.eventignore = "BufEnter,WinEnter,BufWinEnter,FileType"
+
   -- Handle symbols from different files
   if symbol.uri and symbol.uri ~= vim.uri_from_bufnr(bufnr) then
-    -- Try to find if the buffer is already loaded
-    local target_bufnr
     local filepath = symbol.file_path or vim.uri_to_fname(symbol.uri)
+    local target_bufnr
 
-    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-      if vim.api.nvim_buf_is_loaded(buf) and vim.api.nvim_buf_get_name(buf) == filepath then
-        target_bufnr = buf
-        break
-      end
-    end
-
-    -- If not found, create a new buffer for preview
-    if not target_bufnr then
-      target_bufnr = vim.api.nvim_create_buf(false, true)
-      vim.api.nvim_buf_set_name(target_bufnr, filepath)
-
-      -- Try to load file content
-      local ok, file_content = pcall(vim.fn.readfile, filepath)
-      if ok and file_content then
-        vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, file_content)
-
-        -- Set filetype for syntax highlighting
-        local ft = vim.filetype.match({ filename = filepath })
-        if ft then
-          vim.api.nvim_set_option_value("filetype", ft, { buf = target_bufnr })
+    -- Check file size before attempting to load
+    local MAX_PREVIEW_SIZE = 524288 -- 512KB
+    local stat = uv.fs_stat(filepath)
+    if not stat then
+      -- File not found, create placeholder buffer
+      target_bufnr = M.create_preview_buffer("File not found: " .. filepath)
+      vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, {
+        "-- File not available: " .. filepath,
+        "-- Symbol: " .. (symbol.name or "unknown") .. " at line " .. (symbol.lnum or "?"),
+      })
+    elseif stat.size > MAX_PREVIEW_SIZE then
+      -- File too large, create notice buffer
+      target_bufnr = M.create_preview_buffer("File too large: " .. filepath)
+      vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, {
+        "-- File too large for preview: " .. filepath,
+        "-- Size: " .. string.format("%.2f MB", stat.size / 1024 / 1024),
+        "-- Symbol: " .. (symbol.name or "unknown") .. " at line " .. (symbol.lnum or "?"),
+      })
+    else
+      -- Try to find if the buffer is already created as a preview buffer
+      if state and state.preview_buffers then
+        for _, buf in ipairs(state.preview_buffers) do
+          if
+            vim.api.nvim_buf_is_valid(buf)
+            and vim.api.nvim_buf_get_name(buf):match("preview://" .. vim.pesc(filepath) .. "$")
+          then
+            target_bufnr = buf
+            break
+          end
         end
-      else
-        -- If can't load file, create a placeholder
-        vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, {
-          "-- File not available: " .. filepath,
-          "-- Symbol: " .. (symbol.name or "unknown") .. " at line " .. (symbol.lnum or "?"),
-        })
+      end
+
+      -- If not found, create a new preview buffer
+      if not target_bufnr then
+        target_bufnr = M.create_preview_buffer(filepath)
+
+        -- Try to load file content asynchronously if available
+        local content
+        if uv.fs_open then
+          -- Use async file reading when available
+          local fd = uv.fs_open(filepath, "r", 438)
+          if fd then
+            stat = uv.fs_fstat(fd)
+            if stat then
+              content = uv.fs_read(fd, stat.size, 0)
+              uv.fs_close(fd)
+              if content then
+                content = vim.split(content, "\n")
+              end
+            else
+              uv.fs_close(fd)
+            end
+          end
+        end
+
+        -- Fallback to readfile if async read didn't work
+        if not content then
+          logger.log("Async function was not available, falling back to readfile")
+          local ok, file_content = pcall(vim.fn.readfile, filepath)
+          if ok then
+            content = file_content
+          end
+        end
+
+        -- Set buffer content if available
+        if content then
+          vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, content)
+
+          -- Set filetype for syntax highlighting
+          local ft = vim.filetype.match({ filename = filepath })
+          if ft then
+            vim.api.nvim_set_option_value("filetype", ft, { buf = target_bufnr })
+          end
+        else
+          -- If can't load file, create a placeholder
+          vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, {
+            "-- File could not be loaded: " .. filepath,
+            "-- Symbol: " .. (symbol.name or "unknown") .. " at line " .. (symbol.lnum or "?"),
+          })
+        end
+        pcall(vim.treesitter.start, target_bufnr)
       end
     end
 
-    -- NOTE: nvim_win_set_buf is always adding preview to jumplist
-    -- so this is becomes a hack, not sure if using eventignore could play part
-    -- and might revert to nvim_win_set_buf function later.
-    -- Switch to the new buffer temporarily
+    -- Track this preview buffer in state
+    if state then
+      if not state.preview_buffers then
+        state.preview_buffers = {}
+      end
+      if not vim.tbl_contains(state.preview_buffers, target_bufnr) then
+        table.insert(state.preview_buffers, target_bufnr)
+      end
+      state.active_preview_buf = target_bufnr
+      state.last_previewed_path = filepath
+      state.is_previewing = true
+    end
+
+    -- Switch to the preview buffer without adding to jumplist
     vim.api.nvim_set_current_win(win)
     vim.cmd("keepjumps buffer " .. target_bufnr)
     vim.api.nvim_set_current_win(picker_win)
 
-    -- Schedule return to original buffer
-    vim.schedule(function()
-      if vim.api.nvim_win_is_valid(win) and vim.api.nvim_buf_is_valid(bufnr) then
-        vim.api.nvim_set_current_win(win)
-        vim.cmd("keepjumps buffer " .. bufnr)
-        vim.api.nvim_set_current_win(picker_win)
-      end
-    end)
-
-    -- Update bufnr for highlighting
-    bufnr = target_bufnr
+    -- We don't need to schedule return to original buffer since we'll handle
+    -- that in the cleanup function when needed
   end
 
   -- Clear any existing highlights
-  vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
+  vim.api.nvim_buf_clear_namespace(vim.api.nvim_win_get_buf(win), ns_id, 0, -1)
 
   -- Make sure the buffer and line number are valid
-  if not vim.api.nvim_buf_is_valid(bufnr) or symbol.lnum < 1 then
+  local current_buf = vim.api.nvim_win_get_buf(win)
+  if not vim.api.nvim_buf_is_valid(current_buf) or symbol.lnum < 1 then
     vim.api.nvim_set_current_win(picker_win)
+    vim.o.eventignore = saved_eventignore
     return
   end
 
   -- Make sure the line exists in the buffer
-  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  local line_count = vim.api.nvim_buf_line_count(current_buf)
   if symbol.lnum > line_count then
     vim.api.nvim_set_current_win(picker_win)
+    vim.o.eventignore = saved_eventignore
     return
   end
 
   -- Get the line content safely
-  local line = vim.api.nvim_buf_get_lines(bufnr, symbol.lnum - 1, symbol.lnum, false)[1]
+  local line = vim.api.nvim_buf_get_lines(current_buf, symbol.lnum - 1, symbol.lnum, false)[1]
   if not line then
     vim.api.nvim_set_current_win(picker_win)
+    vim.o.eventignore = saved_eventignore
     return
   end
 
-  local first_char_col = line:find("%S")
-  if not first_char_col then
-    vim.api.nvim_set_current_win(picker_win)
-    return
-  end
-  first_char_col = first_char_col - 1
-
-  -- Try to use treesitter for better highlighting
+  -- use treesitter for better highlighting
   local has_ts, node = pcall(vim.treesitter.get_node, {
-    pos = { symbol.lnum - 1, first_char_col },
-    bufnr = bufnr,
+    pos = { symbol.lnum - 1, (symbol.col or 1) - 1 },
+    bufnr = current_buf,
     ignore_injections = false,
   })
 
   if has_ts and node then
-    logger.log("highlight_symbol() - before finding meaningful node, its type is: " .. node:type())
     node = M.find_meaningful_node(node, symbol.lnum - 1)
-  end
+    if node then
+      local srow, scol, erow, ecol = node:range()
+      vim.api.nvim_buf_set_extmark(current_buf, ns_id, srow, 0, {
+        end_row = erow,
+        end_col = ecol,
+        hl_group = M.config.highlight,
+        hl_eol = true,
+        priority = 1,
+        strict = false,
+      })
 
-  if has_ts and node then
-    local srow, scol, erow, ecol = node:range()
-    vim.api.nvim_buf_set_extmark(bufnr, ns_id, srow, 0, {
-      end_row = erow,
-      end_col = ecol,
-      hl_group = M.config.highlight,
-      hl_eol = true,
-      priority = 1,
-      strict = false,
-    })
-
-    vim.api.nvim_win_set_cursor(win, { srow + 1, scol })
-    vim.api.nvim_win_call(win, function()
-      vim.cmd("keepjumps normal! zz")
-    end)
+      vim.api.nvim_win_set_cursor(win, { srow + 1, scol })
+      vim.api.nvim_win_call(win, function()
+        vim.cmd("keepjumps normal! zz")
+      end)
+    end
   else
     -- Fallback: just highlight the line
-    vim.api.nvim_buf_set_extmark(bufnr, ns_id, symbol.lnum - 1, 0, {
+    vim.api.nvim_buf_set_extmark(current_buf, ns_id, symbol.lnum - 1, 0, {
       end_line = symbol.lnum,
       hl_group = M.config.highlight,
       hl_eol = true,
@@ -310,7 +398,7 @@ function M.highlight_symbol(symbol, win, ns_id)
     })
 
     -- Set cursor to the symbol position
-    vim.api.nvim_win_set_cursor(win, { symbol.lnum, first_char_col })
+    vim.api.nvim_win_set_cursor(win, { symbol.lnum, (symbol.col or 1) - 1 })
     vim.api.nvim_win_call(win, function()
       vim.cmd("keepjumps normal! zz")
     end)
@@ -318,6 +406,25 @@ function M.highlight_symbol(symbol, win, ns_id)
 
   vim.api.nvim_set_current_win(picker_win)
   vim.o.eventignore = saved_eventignore
+end
+
+-- Helper function to create preview buffers
+function M.create_preview_buffer(filepath)
+  -- Create a non-listed, scratch buffer
+  local buf = vim.api.nvim_create_buf(false, true)
+
+  -- Set buffer options to prevent it from being tracked in history
+  vim.bo[buf].bufhidden = "wipe"
+  vim.bo[buf].buflisted = false
+  vim.bo[buf].buftype = "nofile"
+  vim.bo[buf].swapfile = false
+  vim.bo[buf].undolevels = -1
+  vim.bo[buf].filetype = vim.filetype.match({ filename = filepath }) or ""
+
+  -- Set identifying metadata (use prefix to identify preview buffers)
+  vim.api.nvim_buf_set_name(buf, "preview://" .. filepath)
+
+  return buf
 end
 
 -- Apply consistent highlighting to formatted items in the buffer
