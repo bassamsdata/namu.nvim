@@ -97,6 +97,7 @@ M.defaults = {
     Operator = "󰆕",
     TypeParameter = "󰊄",
   },
+  hierarchical_mode = false,
   current_highlight = {
     enabled = false, -- Enable custom selection highlight
     hl_group = "CursorLine", -- Default highlight group (could also create a custom one)

@@ -229,7 +229,7 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
     row_position = config.row_position,
     debug = config.debug,
     -- TODO: make it configurable
-    hierarchical_mode = true,
+    preserve_hierarchy = config.preserve_hierarchy or false,
     parent_key = function(item)
       return item.value and item.value.parent_signature
     end,

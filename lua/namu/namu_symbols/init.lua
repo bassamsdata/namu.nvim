@@ -45,6 +45,7 @@ local logger = require("namu.utils.logger")
 local M = {}
 
 -- For backward compatibility
+---@NamuSymbolsConfig
 M.config = config.values
 
 ---@type NamuState

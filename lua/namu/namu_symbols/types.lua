@@ -64,6 +64,7 @@
 ---@field actions NamuActionConfig Configuration for picker actions
 ---@field max_items number|nil
 ---@field current_highlight CurrentHighlightConfig Configuration for selection highlighting
+---@field preserve_hierarchy? boolean Whether to show parent items when filtering
 
 ---@class CallHierarchyConfig : NamuCoreConfig
 ---@field call_hierarchy table Configuration for call hierarchy

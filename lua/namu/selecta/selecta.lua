@@ -540,7 +540,7 @@ function M.update_filtered_items(state, query, opts)
   -- Only proceed with further filtering if there's an actual query
   if actual_query ~= "" then
     -- Check if hierarchical filtering is enabled
-    local use_hierarchical = opts.hierarchical_mode and type(opts.parent_key) == "function"
+    local use_hierarchical = opts.preserve_hierarchy and type(opts.parent_key) == "function"
 
     if use_hierarchical then
       -- Track special root item if configured
@@ -717,7 +717,7 @@ end
 -- Apply highlights to the parent item with hierarchical
 local function apply_hierarchical_highlights(buf, line_nr, item, opts)
   -- Only apply if hierarchical mode is active
-  if not (opts.hierarchical_mode and item.is_direct_match ~= nil) then
+  if not (opts.preserve_hierarchy and item.is_direct_match ~= nil) then
     return
   end
 
@@ -745,7 +745,7 @@ end
 ---@param query string
 local function apply_highlights(buf, line_nr, item, opts, query, line_length, state)
   -- Apply hierarchical highlighting if enabled
-  -- if opts.hierarchical_mode then
+  -- if opts.preserve_hierarchy then
   -- apply_hierarchical_highlights(buf, line_nr, item, opts)
   -- end
   local display_str = opts.formatter(item)
@@ -936,7 +936,7 @@ local function update_cursor_position(state, opts)
     local has_hierarchical_results = false
     local first_direct_match_index = nil
 
-    if opts.hierarchical_mode then
+    if opts.preserve_hierarchy then
       -- Find the first direct match in the filtered items
       for i, item in ipairs(state.filtered_items) do
         if item.is_direct_match then

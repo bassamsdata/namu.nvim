@@ -12,6 +12,7 @@ local M = {}
 ---@type CallHierarchyConfig
 M.defaul_config = config_defaults.values --[[@as CallHierarchyConfig]]
 M.config = vim.tbl_deep_extend("force", M.defaul_config, {
+  preserve_hierarchy = true,
   current_highlight = {
     enabled = true,
     hl_group = "CursorLine",
@@ -793,7 +794,7 @@ function M.show_call_picker(selectaItems, notify_opts)
     custom_keymaps = M.config.custom_keymaps,
     formatter = formatter, -- Add our custom formatter
     -- Enable hierarchical filtering
-    hierarchical_mode = true,
+    preserve_hierarchy = true,
     -- Define how to find an item's parent
     parent_key = function(item)
       -- Return the parent signature or "root" if this is the top level
