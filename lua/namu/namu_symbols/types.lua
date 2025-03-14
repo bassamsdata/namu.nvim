@@ -40,7 +40,7 @@
 ---@field hl_group string Highlight group for the selection
 ---@field prefix_icon string Icon to show before the selected item
 
----@class NamuConfig
+---@class NamuCoreConfig
 ---@field AllowKinds table<string, string[]> Symbol kinds to include
 ---@field display table<string, string|number> Display configuration
 ---@field kindText table<string, string> Text representation of kinds
@@ -64,6 +64,12 @@
 ---@field actions NamuActionConfig Configuration for picker actions
 ---@field max_items number|nil
 ---@field current_highlight CurrentHighlightConfig Configuration for selection highlighting
+
+---@class CallHierarchyConfig : NamuCoreConfig
+---@field call_hierarchy table Configuration for call hierarchy
+---@field call_hierarchy.max_depth number Maximum depth to search for calls
+---@field call_hierarchy.max_depth_limit number Hard limit to prevent performance issues
+---@field call_hierarchy.show_cycles boolean Whether to show recursive calls
 
 ---@class NamuState
 ---@field original_win number|nil Original window

@@ -1,6 +1,6 @@
 local M = {}
 
----@type NamuConfig
+---@class NamuCoreConfig
 M.defaults = {
   AllowKinds = {
     default = {

@@ -6,10 +6,17 @@ local ext = require("namu.namu_symbols.external_plugins")
 local utils = require("namu.namu_symbols.utils")
 local symbol_utils = require("namu.core.symbol_utils")
 local logger = require("namu.utils.logger")
+local config_defaults = require("namu.namu_symbols.config")
 local M = {}
 
----@type NamuConfig
-M.config = vim.tbl_deep_extend("force", require("namu.namu_symbols").config, {
+---@type CallHierarchyConfig
+M.defaul_config = config_defaults.values --[[@as CallHierarchyConfig]]
+M.config = vim.tbl_deep_extend("force", M.defaul_config, {
+  current_highlight = {
+    enabled = true,
+    hl_group = "CursorLine",
+    prefix_icon = " ",
+  },
   call_hierarchy = {
     max_depth = 2, -- Default max depth
     max_depth_limit = 4, -- Hard limit to prevent performance issues
@@ -18,7 +25,12 @@ M.config = vim.tbl_deep_extend("force", require("namu.namu_symbols").config, {
 })
 
 ---@type NamuState
-local state = symbol_utils.create_state("namu_callhierarchy_preview")
+local state = vim.tbl_deep_extend("force", symbol_utils.create_state("namu_callhierarchy_preview"), {
+  preview_buffers = {}, -- Track all created preview buffers
+  active_preview_buf = nil, -- Current preview buffer
+  last_previewed_path = nil, -- Last file previewed
+  is_previewing = false, -- Flag to indicate preview mode
+})
 
 local pending_requests = 0
 local calls_cache = {}
@@ -300,11 +312,9 @@ end
 -- Direct LSP request helper function to replace generic request_symbols
 local function make_call_hierarchy_request(method, params, callback)
   local bufnr = vim.api.nvim_get_current_buf()
-
   -- Check if the current language server supports call hierarchy
   local clients = vim.lsp.get_clients({ bufnr = bufnr })
   local client
-
   for _, c in ipairs(clients) do
     -- Check for the specific capability based on method
     local has_capability = false
@@ -313,28 +323,21 @@ local function make_call_hierarchy_request(method, params, callback)
     elseif method:find("callHierarchy/") == 1 then
       has_capability = c.server_capabilities.callHierarchyProvider
     end
-
     if has_capability then
       client = c
       break
     end
   end
-
   if not client then
     logger.log("No client supporting " .. method .. " found")
     callback("No LSP client supports call hierarchy", nil)
     return
   end
-
   -- Make the request directly
   logger.log("Making direct request: " .. method)
-  logger.log("Params: " .. vim.inspect(params))
-
   client.request(method, params, function(err, result, ctx)
     logger.log("Response received for: " .. method)
     logger.log("Error: " .. vim.inspect(err))
-    logger.log("Result: " .. vim.inspect(result))
-
     callback(err, result, ctx)
   end, bufnr)
 end
@@ -770,7 +773,6 @@ function M.show_call_picker(selectaItems, notify_opts)
       style = "dim"
     end
 
-    -- Put it all together: prefix padding + tree guides + icon + content
     return prefix_padding .. guides .. indicator .. icon .. " " .. name_and_info
   end
   -- Sort items by nesting depth before showing the picker
@@ -785,9 +787,10 @@ function M.show_call_picker(selectaItems, notify_opts)
     auto_select = M.config.auto_select,
     initially_hidden = M.config.initially_hidden,
     movement = vim.tbl_deep_extend("force", M.config.movement, {}),
-    current_highlight = vim.tbl_deep_extend("force", M.config.current_highlight, {}),
+    current_highlight = M.config.current_highlight,
     row_position = M.config.row_position,
     debug = M.config.debug,
+    custom_keymaps = M.config.custom_keymaps,
     formatter = formatter, -- Add our custom formatter
     -- Enable hierarchical filtering
     hierarchical_mode = true,
@@ -965,17 +968,12 @@ end
 ---Initialize the module with user configuration
 ---@param opts table|nil User config options
 function M.setup(opts)
-  -- Make sure we import lsp here to avoid circular dependencies
-
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
-  M.config.call_hierarchy = vim.tbl_deep_extend("force", {
-    max_depth = 2,
-    max_depth_limit = 4,
-    show_cycles = false,
-  }, M.config.call_hierarchy or {})
+  logger.log("call hierarchy config: " .. vim.inspect(M.config))
 
+  local call_state = state
   if M.config.custom_keymaps then
-    local handlers = symbol_utils.create_keymaps_handlers(M.config, state, ui, selecta, ext, utils)
+    local handlers = symbol_utils.create_keymaps_handlers(M.config, call_state, ui, selecta, ext, utils)
     M.config.custom_keymaps.yank.handler = handlers.yank
     M.config.custom_keymaps.delete.handler = handlers.delete
     M.config.custom_keymaps.vertical_split.handler = handlers.vertical_split
@@ -984,17 +982,13 @@ function M.setup(opts)
     M.config.custom_keymaps.avante.handler = handlers.avante
   end
 
-  -- Add special handler for call items
-  if M.config.on_select == nil then
-    M.config.on_select = M.jump_to_call
-  end
   -- Add tree guide highlight
   vim.api.nvim_set_hl(0, "NamuTreeGuides", {
-    link = "Comment", -- Link to Comment by default
+    link = "Comment",
     default = true,
   })
   vim.api.nvim_set_hl(0, "NamuFileInfo", {
-    link = "Comment", -- More visible color for file paths
+    link = "Comment",
     default = true,
   })
 end
