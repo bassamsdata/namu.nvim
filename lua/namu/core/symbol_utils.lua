@@ -11,10 +11,6 @@ function M.create_state(namespace)
     original_ft = nil,
     preview_ns = vim.api.nvim_create_namespace(namespace or "namu_preview"),
     current_request = nil,
-    preview_buffers = {}, -- Track all created preview buffers
-    active_preview_buf = nil, -- Current preview buffer
-    last_previewed_path = nil, -- Last file previewed
-    is_previewing = false, -- Flag to indicate preview mode
   }
 end
 
@@ -230,7 +226,6 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
     initially_hidden = config.initially_hidden,
     movement = vim.tbl_deep_extend("force", config.movement, {}),
     current_highlight = vim.tbl_deep_extend("force", config.current_highlight, {}),
-    -- current_highlight = vim.tbl_deep_extend("force", config.current_highlight, {}),
     row_position = config.row_position,
     debug = config.debug,
     -- TODO: make it configurable

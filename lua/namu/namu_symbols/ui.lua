@@ -213,6 +213,212 @@ function M.cleanup_previews(state, restore_original)
   state.is_previewing = false
 end
 
+-- Cache system implementation
+local function setup_file_cache()
+  -- Initialize cache with weak keys for GC
+  local cache = setmetatable({}, { __mode = "k" })
+
+  -- Constants
+  local LINES_AROUND = 100 -- Load 100 lines before and after target line
+
+  -- Get file content from cache or load it
+  -- Returns either all lines or a slice around target_line
+  local function get_cached_content(filepath, target_line, partial)
+    if not filepath then
+      return nil
+    end
+
+    local stat = uv.fs_stat(filepath)
+    if not stat then
+      return nil
+    end
+
+    local mtime = stat.mtime.sec
+    local size = stat.size
+    local key = filepath
+
+    -- Check if we have valid cached content
+    if cache[key] and cache[key].mtime == mtime then
+      if not partial then
+        -- Return full content
+        return cache[key].lines
+      else
+        -- Return partial content around target line
+        local start = math.max(1, target_line - LINES_AROUND)
+        local finish = math.min(#cache[key].lines, target_line + LINES_AROUND)
+        return {
+          lines = vim.list_slice(cache[key].lines, start, finish),
+          start_line = start,
+          is_partial = true,
+        }
+      end
+    end
+
+    -- File not in cache or modified, load it
+    local content
+    local success = false
+
+    -- Try async file reading first
+    if uv.fs_open then
+      local fd = uv.fs_open(filepath, "r", 438)
+      if fd then
+        local content_str = uv.fs_read(fd, size, 0)
+        uv.fs_close(fd)
+        if content_str then
+          content = vim.split(content_str, "\n")
+          success = true
+        end
+      end
+    end
+
+    -- Fall back to readfile if needed
+    if not success then
+      logger.log("Async function was not available, falling back to readfile")
+      local ok, file_content = pcall(vim.fn.readfile, filepath)
+      if ok then
+        content = file_content
+        success = true
+      end
+    end
+
+    -- Store in cache if load successful
+    if success then
+      cache[key] = {
+        lines = content,
+        mtime = mtime,
+      }
+
+      -- Return partial content if requested
+      if partial then
+        local start = math.max(1, target_line - LINES_AROUND)
+        local finish = math.min(#content, target_line + LINES_AROUND)
+        return {
+          lines = vim.list_slice(content, start, finish),
+          start_line = start,
+          is_partial = true,
+        }
+      end
+
+      return content
+    end
+
+    return nil
+  end
+
+  return {
+    get_file_content = get_cached_content,
+  }
+end
+
+-- Initialize the file cache
+local file_cache = setup_file_cache()
+
+-- Debug helper function
+local function debug_log(prefix, ...)
+  if M.config and M.config.debug then
+    local args = { ... }
+    local msg = prefix .. ": "
+    for i, arg in ipairs(args) do
+      if type(arg) == "table" then
+        msg = msg .. vim.inspect(arg) .. " "
+      else
+        msg = msg .. tostring(arg) .. " "
+      end
+    end
+    logger.log(msg)
+  end
+end
+
+-- Check Neovim version
+-- why: cause neovim 0.11 nightly is doing async for all treesitter and this
+-- introduces many issues to my way of previewing files.
+local is_neovim_nightly = vim.fn.has("nvim-0.11.0") == 1
+
+-- Enhanced highlighting function using LanguageTree callbacks
+local function apply_enhanced_highlighting(bufnr, symbol, win, ns_id, picked_win)
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return ""
+  end
+  -- Make sure the buffer and line number are valid
+  if symbol.lnum < 1 then
+    return
+  end
+  -- Make sure the line exists in the buffer
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  if symbol.lnum > line_count then
+    return
+  end
+  -- Get the line content safely
+  local line = vim.api.nvim_buf_get_lines(bufnr, symbol.lnum - 1, symbol.lnum, false)[1]
+  if not line then
+    return
+  end
+  -- Use treesitter for node-based highlighting if possible
+  local has_ts, node
+  if is_neovim_nightly then
+    -- Neovim 0.11+ approach
+    debug_log("apply_enhanced", "Using Neovim 0.11+ approach for treesitter")
+    has_ts, node = pcall(function()
+      return vim.treesitter.get_node({
+        pos = { symbol.lnum - 1, (symbol.col or 1) - 1 },
+        bufnr = bufnr,
+        ignore_injections = false,
+      })
+    end)
+  else
+    -- Neovim stable approach
+    has_ts, node = pcall(vim.treesitter.get_node, {
+      pos = { symbol.lnum - 1, (symbol.col or 1) - 1 },
+      bufnr = bufnr,
+      ignore_injections = false,
+    })
+  end
+  debug_log("apply_enhanced", "Treesitter node found:", has_ts, node ~= nil)
+  if has_ts and node then
+    local current_win = vim.api.nvim_get_current_win()
+    -- Switch to the target window for operations
+    vim.api.nvim_set_current_win(win)
+    local meaningful_node = M.find_meaningful_node(node, symbol.lnum - 1)
+    if meaningful_node then
+      -- local node_type = pcall(function()
+      --   return meaningful_node:type()
+      -- end) and meaningful_node:type() or "unknown"
+      -- debug_log("apply_enhanced", "Meaningful node type:", node_type)
+
+      -- Get node range safely
+      local success, srow, scol, erow, ecol = pcall(function()
+        return meaningful_node:range()
+      end)
+      if success then
+        -- Create the extmark for highlighting
+        vim.api.nvim_buf_set_extmark(bufnr, ns_id, srow, 0, {
+          end_row = erow,
+          end_col = ecol,
+          hl_group = M.config.highlight,
+          hl_eol = true,
+          priority = 1,
+          strict = false,
+        })
+
+        -- Set cursor position and center view
+        vim.api.nvim_win_set_cursor(win, { srow + 1, scol })
+        vim.api.nvim_win_call(win, function()
+          vim.cmd("keepjumps normal! zz")
+        end)
+
+        -- Return to original window
+        vim.api.nvim_set_current_win(current_win)
+        debug_log("apply_enhanced", "Applied node-based highlighting successfully")
+        return true
+      end
+    end
+    -- Return to original window if we got here
+    vim.api.nvim_set_current_win(current_win)
+  end
+  debug_log("apply_enhanced", "Could not apply enhanced highlighting")
+  return false
+end
+
 ---Handles visual highlighting of selected symbols in preview
 ---@param symbol table LSP symbol item
 ---@param win number Window handle
@@ -230,25 +436,26 @@ function M.highlight_symbol(symbol, win, ns_id, state)
     local filepath = symbol.file_path or vim.uri_to_fname(symbol.uri)
     local target_bufnr
 
+    -- ** IMPORTANT ** Make a copy of the symbol to avoid modifying the original
+    local symbol_copy = vim.deepcopy(symbol)
+    local target_lnum = symbol_copy.lnum or 1
+
     -- Check file size before attempting to load
     local MAX_PREVIEW_SIZE = 524288 -- 512KB
     local stat = uv.fs_stat(filepath)
     if not stat then
       -- File not found, create placeholder buffer
+      debug_log("highlight_symbol", "File not found:", filepath)
       target_bufnr = M.create_preview_buffer("File not found: " .. filepath)
       vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, {
         "-- File not available: " .. filepath,
-        "-- Symbol: " .. (symbol.name or "unknown") .. " at line " .. (symbol.lnum or "?"),
+        "-- Symbol: " .. (symbol_copy.name or "unknown") .. " at line " .. (target_lnum or "?"),
       })
     elseif stat.size > MAX_PREVIEW_SIZE then
-      -- File too large, create notice buffer
-      target_bufnr = M.create_preview_buffer("File too large: " .. filepath)
-      vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, {
-        "-- File too large for preview: " .. filepath,
-        "-- Size: " .. string.format("%.2f MB", stat.size / 1024 / 1024),
-        "-- Symbol: " .. (symbol.name or "unknown") .. " at line " .. (symbol.lnum or "?"),
-      })
-    else
+      -- For large files, load only a portion around the symbol
+      debug_log("highlight_symbol", "Large file detected, size:", stat.size)
+      local need_reload = true
+
       -- Try to find if the buffer is already created as a preview buffer
       if state and state.preview_buffers then
         for _, buf in ipairs(state.preview_buffers) do
@@ -257,6 +464,112 @@ function M.highlight_symbol(symbol, win, ns_id, state)
             and vim.api.nvim_buf_get_name(buf):match("preview://" .. vim.pesc(filepath) .. "$")
           then
             target_bufnr = buf
+            -- Check if we already have loaded the portion containing this symbol
+            if vim.b[buf] and vim.b[buf].partial_view then
+              local view_data = vim.b[buf].partial_view
+              local start_line = view_data.start_line or 1
+              local end_line = view_data.end_line or start_line + 200
+              -- If the symbol is within the current view, don't reload
+              if target_lnum >= start_line and target_lnum <= end_line then
+                need_reload = false
+                -- Calculate adjusted line number for this view
+                symbol_copy.lnum = target_lnum - start_line + 1
+                if view_data.has_header then
+                  symbol_copy.lnum = symbol_copy.lnum + 1 -- Account for header line
+                end
+              else
+              end
+            else
+            end
+            break
+          end
+        end
+      end
+
+      -- If not found or needs reloading, create/update a preview buffer
+      if not target_bufnr then
+        debug_log("highlight_symbol", "Creating new preview buffer")
+        target_bufnr = M.create_preview_buffer(filepath)
+      end
+
+      if need_reload then
+        debug_log("highlight_symbol", "Loading partial content around line", target_lnum)
+        -- Get partial content around the symbol line
+        local content_result = file_cache.get_file_content(filepath, target_lnum, true)
+
+        if content_result and content_result.lines then
+          local has_header = false
+          debug_log(
+            "highlight_symbol",
+            "Got partial content, start_line:",
+            content_result.start_line,
+            "lines:",
+            #content_result.lines
+          )
+
+          -- Add indicator lines if this is a partial view
+          if content_result.is_partial and content_result.start_line > 1 then
+            table.insert(content_result.lines, 1, "-- [Lines 1-" .. (content_result.start_line - 1) .. " omitted] --")
+            has_header = true
+            debug_log("highlight_symbol", "Added header line")
+          end
+
+          -- Add indicator at end if needed
+          if content_result.is_partial and (content_result.start_line + #content_result.lines - 1) < stat.size then
+            table.insert(content_result.lines, "-- [More lines omitted] --")
+            debug_log("highlight_symbol", "Added footer line")
+          end
+
+          -- Set the buffer content
+          vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, content_result.lines)
+
+          -- Store view metadata in buffer-local variable
+          vim.b[target_bufnr].partial_view = {
+            start_line = content_result.start_line,
+            end_line = content_result.start_line + #content_result.lines - 1,
+            has_header = has_header,
+          }
+
+          debug_log("highlight_symbol", "Stored partial view data:", vim.b[target_bufnr].partial_view)
+
+          -- Adjust symbol line number for the partial content
+          symbol_copy.lnum = target_lnum - content_result.start_line + 1
+          if has_header then
+            symbol_copy.lnum = symbol_copy.lnum + 1 -- Account for header line
+          end
+
+          debug_log("highlight_symbol", "Adjusted symbol line:", symbol_copy.lnum)
+
+          -- Set filetype for syntax highlighting
+          local ft = vim.filetype.match({ filename = filepath })
+          if ft then
+            vim.api.nvim_set_option_value("filetype", ft, { buf = target_bufnr })
+            -- Set basic syntax highlighting while waiting for treesitter
+            vim.bo[target_bufnr].syntax = ft
+          end
+        else
+          -- Failed to load content, show a notice
+          debug_log("highlight_symbol", "Failed to load partial content")
+          vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, {
+            "-- File too large for preview: " .. filepath,
+            "-- Size: " .. string.format("%.2f MB", stat.size / 1024 / 1024),
+            "-- Symbol: " .. (symbol_copy.name or "unknown") .. " at line " .. (target_lnum or "?"),
+          })
+        end
+      end
+    else
+      -- Regular sized file, use normal loading with cache
+      debug_log("highlight_symbol", "Regular sized file, using full cache")
+
+      -- Try to find if the buffer is already created as a preview buffer
+      if state and state.preview_buffers then
+        for _, buf in ipairs(state.preview_buffers) do
+          if
+            vim.api.nvim_buf_is_valid(buf)
+            and vim.api.nvim_buf_get_name(buf):match("preview://" .. vim.pesc(filepath) .. "$")
+          then
+            target_bufnr = buf
+            debug_log("highlight_symbol", "Found existing preview buffer:", buf)
             break
           end
         end
@@ -264,53 +577,33 @@ function M.highlight_symbol(symbol, win, ns_id, state)
 
       -- If not found, create a new preview buffer
       if not target_bufnr then
+        debug_log("highlight_symbol", "Creating new preview buffer")
         target_bufnr = M.create_preview_buffer(filepath)
+      end
 
-        -- Try to load file content asynchronously if available
-        local content
-        if uv.fs_open then
-          -- Use async file reading when available
-          local fd = uv.fs_open(filepath, "r", 438)
-          if fd then
-            stat = uv.fs_fstat(fd)
-            if stat then
-              content = uv.fs_read(fd, stat.size, 0)
-              uv.fs_close(fd)
-              if content then
-                content = vim.split(content, "\n")
-              end
-            else
-              uv.fs_close(fd)
-            end
-          end
+      -- Get the content from cache or load it
+      local content = file_cache.get_file_content(filepath, nil, false)
+
+      if content then
+        debug_log("highlight_symbol", "Loading full file content, lines:", #content)
+        vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, content)
+        -- Clear partial view metadata since this is a full file view
+        vim.b[target_bufnr].partial_view = nil
+
+        -- Set filetype for syntax highlighting
+        local ft = vim.filetype.match({ filename = filepath })
+        if ft then
+          vim.api.nvim_set_option_value("filetype", ft, { buf = target_bufnr })
+          -- Set basic syntax highlighting while waiting for treesitter
+          vim.bo[target_bufnr].syntax = ft
         end
-
-        -- Fallback to readfile if async read didn't work
-        if not content then
-          logger.log("Async function was not available, falling back to readfile")
-          local ok, file_content = pcall(vim.fn.readfile, filepath)
-          if ok then
-            content = file_content
-          end
-        end
-
-        -- Set buffer content if available
-        if content then
-          vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, content)
-
-          -- Set filetype for syntax highlighting
-          local ft = vim.filetype.match({ filename = filepath })
-          if ft then
-            vim.api.nvim_set_option_value("filetype", ft, { buf = target_bufnr })
-          end
-        else
-          -- If can't load file, create a placeholder
-          vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, {
-            "-- File could not be loaded: " .. filepath,
-            "-- Symbol: " .. (symbol.name or "unknown") .. " at line " .. (symbol.lnum or "?"),
-          })
-        end
-        pcall(vim.treesitter.start, target_bufnr)
+      else
+        -- If can't load file, create a placeholder
+        debug_log("highlight_symbol", "Failed to load file content")
+        vim.api.nvim_buf_set_lines(target_bufnr, 0, -1, false, {
+          "-- File could not be loaded: " .. filepath,
+          "-- Symbol: " .. (symbol_copy.name or "unknown") .. " at line " .. (target_lnum or "?"),
+        })
       end
     end
 
@@ -321,6 +614,7 @@ function M.highlight_symbol(symbol, win, ns_id, state)
       end
       if not vim.tbl_contains(state.preview_buffers, target_bufnr) then
         table.insert(state.preview_buffers, target_bufnr)
+        debug_log("highlight_symbol", "Added buffer to preview_buffers")
       end
       state.active_preview_buf = target_bufnr
       state.last_previewed_path = filepath
@@ -332,16 +626,30 @@ function M.highlight_symbol(symbol, win, ns_id, state)
     vim.cmd("keepjumps buffer " .. target_bufnr)
     vim.api.nvim_set_current_win(picker_win)
 
-    -- We don't need to schedule return to original buffer since we'll handle
-    -- that in the cleanup function when needed
+    -- Use the adjusted symbol copy for highlighting
+    symbol = symbol_copy
   end
 
   -- Clear any existing highlights
-  vim.api.nvim_buf_clear_namespace(vim.api.nvim_win_get_buf(win), ns_id, 0, -1)
+  local current_buf = vim.api.nvim_win_get_buf(win)
+  vim.api.nvim_buf_clear_namespace(current_buf, ns_id, 0, -1)
+
+  -- Store information for async highlighting enhancement
+  vim.b[current_buf].namu_highlight_info = {
+    symbol = vim.deepcopy(symbol), -- Make a clean copy with no metatable references
+    win = win,
+    ns_id = ns_id,
+    picker_win = picker_win,
+    pending_enhancement = true,
+    needs_basic_syntax = true,
+  }
+
+  -- Initial line-based highlighting for immediate feedback
+  debug_log("highlight_symbol", "Applying immediate line highlighting")
 
   -- Make sure the buffer and line number are valid
-  local current_buf = vim.api.nvim_win_get_buf(win)
   if not vim.api.nvim_buf_is_valid(current_buf) or symbol.lnum < 1 then
+    debug_log("highlight_symbol", "Invalid buffer or line number")
     vim.api.nvim_set_current_win(picker_win)
     vim.o.eventignore = saved_eventignore
     return
@@ -350,58 +658,100 @@ function M.highlight_symbol(symbol, win, ns_id, state)
   -- Make sure the line exists in the buffer
   local line_count = vim.api.nvim_buf_line_count(current_buf)
   if symbol.lnum > line_count then
+    debug_log("highlight_symbol", "Line number out of range:", symbol.lnum, "max:", line_count)
     vim.api.nvim_set_current_win(picker_win)
     vim.o.eventignore = saved_eventignore
     return
   end
 
-  -- Get the line content safely
-  local line = vim.api.nvim_buf_get_lines(current_buf, symbol.lnum - 1, symbol.lnum, false)[1]
-  if not line then
-    vim.api.nvim_set_current_win(picker_win)
-    vim.o.eventignore = saved_eventignore
-    return
-  end
-
-  -- use treesitter for better highlighting
-  local has_ts, node = pcall(vim.treesitter.get_node, {
-    pos = { symbol.lnum - 1, (symbol.col or 1) - 1 },
-    bufnr = current_buf,
-    ignore_injections = false,
+  -- Fallback: just highlight the line for immediate feedback
+  vim.api.nvim_buf_set_extmark(current_buf, ns_id, symbol.lnum - 1, 0, {
+    end_line = symbol.lnum,
+    hl_group = M.config.highlight,
+    hl_eol = true,
+    priority = 1,
   })
 
-  if has_ts and node then
-    node = M.find_meaningful_node(node, symbol.lnum - 1)
-    if node then
-      local srow, scol, erow, ecol = node:range()
-      vim.api.nvim_buf_set_extmark(current_buf, ns_id, srow, 0, {
-        end_row = erow,
-        end_col = ecol,
-        hl_group = M.config.highlight,
-        hl_eol = true,
-        priority = 1,
-        strict = false,
-      })
+  -- Set cursor to the symbol position
+  vim.api.nvim_win_set_cursor(win, { symbol.lnum, (symbol.col or 1) - 1 })
+  vim.api.nvim_win_call(win, function()
+    vim.cmd("keepjumps normal! zz")
+  end)
 
-      vim.api.nvim_win_set_cursor(win, { srow + 1, scol })
-      vim.api.nvim_win_call(win, function()
-        vim.cmd("keepjumps normal! zz")
+  -- Ensure basic syntax highlighting is enabled while waiting for treesitter
+  local ft = vim.bo[current_buf].filetype
+  if ft and ft ~= "" and vim.b[current_buf].needs_basic_syntax then
+    vim.bo[current_buf].syntax = ft
+    vim.b[current_buf].needs_basic_syntax = false
+  end
+
+  -- Start treesitter parsing with async callback for enhancement
+  if is_neovim_nightly then
+    debug_log("highlight_symbol", "Starting async treesitter parsing")
+
+    -- Start treesitter parsing
+    pcall(vim.treesitter.start, current_buf)
+
+    -- Try to get language tree
+    local success, language_tree = pcall(function()
+      return vim.treesitter.get_parser(current_buf)
+    end)
+
+    if success and language_tree then
+      debug_log("highlight_symbol", "Got language tree, setting up parse callback")
+
+      -- Set up a timeout to cancel waiting for parser after a reasonable time
+      local timeout_id
+      timeout_id = vim.defer_fn(function()
+        if
+          vim.api.nvim_buf_is_valid(current_buf)
+          and vim.b[current_buf].namu_highlight_info
+          and vim.b[current_buf].namu_highlight_info.pending_enhancement
+        then
+          debug_log("highlight_symbol", "Parser timeout reached, keeping basic highlighting")
+          vim.b[current_buf].namu_highlight_info.pending_enhancement = false
+        end
+      end, 1000) -- 1 second timeout
+
+      -- Request parsing with callback for when it's done
+      language_tree:parse(true, function(err, trees)
+        if err or not trees or #trees == 0 then
+          debug_log("highlight_symbol", "Parser error or no trees")
+          return
+        end
+
+        -- Check if buffer is still valid and waiting for enhancement
+        if not vim.api.nvim_buf_is_valid(current_buf) then
+          debug_log("highlight_symbol", "Buffer no longer valid")
+          return
+        end
+
+        local highlight_info = vim.b[current_buf].namu_highlight_info
+        if not highlight_info then
+          debug_log("highlight_symbol", "No longer waiting for enhancement")
+          return
+        end
+
+        -- Apply enhanced highlighting now that parsing is complete
+        apply_enhanced_highlighting(
+          current_buf,
+          highlight_info.symbol,
+          highlight_info.win,
+          highlight_info.ns_id,
+          highlight_info.picker_win
+        )
+
+        -- Mark as enhanced so we don't try again
+        highlight_info.pending_enhancement = false
       end)
+    else
+      debug_log("highlight_symbol", "Could not get language tree")
     end
   else
-    -- Fallback: just highlight the line
-    vim.api.nvim_buf_set_extmark(current_buf, ns_id, symbol.lnum - 1, 0, {
-      end_line = symbol.lnum,
-      hl_group = M.config.highlight,
-      hl_eol = true,
-      priority = 1,
-    })
-
-    -- Set cursor to the symbol position
-    vim.api.nvim_win_set_cursor(win, { symbol.lnum, (symbol.col or 1) - 1 })
-    vim.api.nvim_win_call(win, function()
-      vim.cmd("keepjumps normal! zz")
-    end)
+    -- For stable Neovim, try enhanced highlighting immediately
+    debug_log("highlight_symbol", "Using immediate treesitter parsing (stable Neovim)")
+    pcall(vim.treesitter.start, current_buf)
+    apply_enhanced_highlighting(current_buf, symbol, win, ns_id, picker_win)
   end
 
   vim.api.nvim_set_current_win(picker_win)
