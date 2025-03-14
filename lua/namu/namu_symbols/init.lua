@@ -41,6 +41,7 @@ local utils = require("namu.namu_symbols.utils")
 local config = require("namu.namu_symbols.config")
 local symbol_utils = require("namu.core.symbol_utils")
 local format_utils = require("namu.core.format_utils")
+local logger = require("namu.utils.logger")
 local M = {}
 
 -- For backward compatibility
@@ -235,6 +236,7 @@ function M.setup(opts)
   -- config.setup(opts or {})
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
   ui.setup(M.config)
+  logger.log("namu_symbols.setup called with config: " .. vim.inspect(M.config))
 
   if M.config.custom_keymaps then
     local handlers = symbol_utils.create_keymaps_handlers(M.config, state, ui, selecta, ext, utils)

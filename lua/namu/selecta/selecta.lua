@@ -751,8 +751,8 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
   local display_str = opts.formatter(item)
 
   local padding_width = 0
-  if M.config.current_highlight.enabled and #M.config.current_highlight.prefix_icon > 0 then
-    padding_width = vim.api.nvim_strwidth(M.config.current_highlight.prefix_icon)
+  if opts.current_highlight.enabled and #opts.current_highlight.prefix_icon > 0 then
+    padding_width = vim.api.nvim_strwidth(opts.current_highlight.prefix_icon)
   end
   -- First, check if this is a symbol filter query
   -- local filter = query:match("^%%%w%w(.*)$")
@@ -917,9 +917,9 @@ local function update_current_highlight(state, opts, line_nr)
   })
 
   -- Add the prefix icon if enabled
-  if M.config.current_highlight.enabled and #M.config.current_highlight.prefix_icon > 0 then
+  if opts.current_highlight.enabled and #opts.current_highlight.prefix_icon > 0 then
     vim.api.nvim_buf_set_extmark(state.buf, current_selection_ns, line_nr, 0, {
-      virt_text = { { M.config.current_highlight.prefix_icon, "NamuCurrentLine" } },
+      virt_text = { { opts.current_highlight.prefix_icon, "NamuCurrentLine" } },
       virt_text_pos = "overlay",
       priority = 100, -- Higher priority than the line highlight
     })
@@ -1793,7 +1793,7 @@ function M.pick(items, opts)
     offnet = 0,
     custom_keymaps = vim.tbl_deep_extend("force", M.config.custom_keymaps, {}),
     movement = vim.tbl_deep_extend("force", M.config.movement, {}),
-    current_highlight = vim.tbl_deep_extend("force", M.config.current_highlight, {}),
+    current_highlight = opts.current_highlight,
     auto_select = M.config.auto_select,
     window = vim.tbl_deep_extend("force", M.config.window, {}),
     pre_filter = nil,
@@ -1809,8 +1809,8 @@ function M.pick(items, opts)
   opts.formatter = opts.formatter
     or function(item)
       local prefix_padding = ""
-      if M.config.current_highlight.enabled and #M.config.current_highlight.prefix_icon > 0 then
-        prefix_padding = string.rep(" ", vim.api.nvim_strwidth(M.config.current_highlight.prefix_icon))
+      if opts.current_highlight.enabled and #opts.current_highlight.prefix_icon > 0 then
+        prefix_padding = string.rep(" ", vim.api.nvim_strwidth(opts.current_highlight.prefix_icon))
       end
       if opts.display.mode == "raw" then
         return prefix_padding .. item.text
