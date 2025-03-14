@@ -227,6 +227,7 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
     movement = vim.tbl_deep_extend("force", config.movement, {}),
     current_highlight = vim.tbl_deep_extend("force", config.current_highlight, {}),
     row_position = config.row_position,
+    custom_keymaps = config.custom_keymaps,
     debug = config.debug,
     -- TODO: make it configurable
     preserve_hierarchy = config.preserve_hierarchy or false,
@@ -258,7 +259,6 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
         end
       end,
     },
-    custom_keymaps = config.custom_keymaps,
     multiselect = {
       enabled = config.multiselect.enabled,
       indicator = config.multiselect.indicator,
@@ -354,13 +354,13 @@ function M.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
     end
   end
 
-  handlers.vertical_split = function(item, selecta_state)
+  handlers.vertical_split = function(item)
     if not state.original_buf then
       vim.notify("No original buffer available", vim.log.levels.ERROR)
       return
     end
 
-    local new_win = selecta.open_in_split(selecta_state, item, "vertical", state)
+    local new_win = selecta.open_in_split(item, "vertical", state)
     if new_win then
       local symbol = item.value
       if symbol and symbol.lnum and symbol.col then
@@ -373,12 +373,12 @@ function M.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
     end
   end
 
-  handlers.horizontal_split = function(item, selecta_state)
+  handlers.horizontal_split = function(item)
     if not state.original_buf then
       vim.notify("No original buffer available", vim.log.levels.ERROR)
       return
     end
-    local new_win = selecta.open_in_split(selecta_state, item, "horizontal", state)
+    local new_win = selecta.open_in_split(item, "horizontal", state)
     if new_win then
       local symbol = item.value
       if symbol and symbol.lnum and symbol.col then

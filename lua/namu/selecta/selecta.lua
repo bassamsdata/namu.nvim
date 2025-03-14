@@ -1933,7 +1933,7 @@ end
 ---@param split_type? "vertical"|"horizontal" The type of split to create (defaults to horizontal)
 ---@param module_state NamuState The state from the calling module
 ---@return number|nil window_id The new window ID if successful
-function M.open_in_split(state, item, split_type, module_state)
+function M.open_in_split(item, split_type, module_state)
   if not item then
     return nil
   end
@@ -1941,26 +1941,47 @@ function M.open_in_split(state, item, split_type, module_state)
   -- Use module_state for original window and position if available
   local original_win = module_state.original_win and module_state.original_win or vim.api.nvim_get_current_win()
   local original_pos = module_state.original_pos and module_state.original_pos or vim.api.nvim_win_get_cursor(0)
-  local current_buf = module_state.original_buf and module_state.original_buf or vim.api.nvim_get_current_buf()
+  local original_buf = module_state.original_buf
 
   -- Close the picker
   M.close_picker(state)
 
-  -- First focus the original window and restore cursor position
-  if original_win and vim.api.nvim_win_is_valid(original_win) then
-    vim.api.nvim_set_current_win(original_win)
-    pcall(vim.api.nvim_win_set_cursor, original_win, original_pos)
+  -- Ensure original window is valid
+  if not original_win or not vim.api.nvim_win_is_valid(original_win) then
+    vim.notify("Original window is no longer valid", vim.log.levels.ERROR)
+    return nil
   end
 
-  -- Create the split
+  -- First focus the original window
+  vim.api.nvim_set_current_win(original_win)
+
+  -- Create the split (this will create a new window but keep original window unchanged)
   local split_cmd = split_type == "vertical" and "vsplit" or "split"
   vim.cmd(split_cmd)
 
-  -- Get the new window ID
+  -- Get the new window ID (which is now the current window)
   local new_win = vim.api.nvim_get_current_win()
 
-  -- Set up the new window
-  vim.api.nvim_win_set_buf(new_win, current_buf)
+  -- For call hierarchy item, open the target file in the new window
+  if item.value and item.value.uri and item.value.file_path then
+    -- Open the file in the new window
+    vim.cmd("edit " .. vim.fn.fnameescape(item.value.file_path))
+
+    -- Jump to position
+    if item.value.lnum and item.value.col then
+      vim.api.nvim_win_set_cursor(new_win, { item.value.lnum, item.value.col - 1 })
+      vim.cmd("normal! zz")
+    end
+  end
+
+  -- IMPORTANT: Now go back to original window and restore position
+  vim.api.nvim_set_current_win(original_win)
+  if original_pos then
+    pcall(vim.api.nvim_win_set_cursor, original_win, original_pos)
+  end
+
+  -- Return focus to the split window for user convenience
+  vim.api.nvim_set_current_win(new_win)
 
   return new_win
 end

@@ -239,11 +239,14 @@ function M.setup(opts)
   ui.setup(M.config)
   logger.log("namu_symbols.setup called with config: " .. vim.inspect(M.config))
 
+  -- vim.inspect("buffer_symbols_state: " .. vim.inspect(buffer_symbols_state))
   if M.config.custom_keymaps then
     local handlers = symbol_utils.create_keymaps_handlers(M.config, state, ui, selecta, ext, utils)
     M.config.custom_keymaps.yank.handler = handlers.yank
     M.config.custom_keymaps.delete.handler = handlers.delete
-    M.config.custom_keymaps.vertical_split.handler = handlers.vertical_split
+    M.config.custom_keymaps.vertical_split.handler = function(item)
+      return handlers.vertical_split(item)
+    end
     M.config.custom_keymaps.horizontal_split.handler = handlers.horizontal_split
     M.config.custom_keymaps.codecompanion.handler = handlers.codecompanion
     M.config.custom_keymaps.avante.handler = handlers.avante
