@@ -15,7 +15,7 @@ local fn = vim.fn
 local fs = vim.fs
 local uv = vim.uv or vim.loop
 
----@type SelectaColorschemeConfig
+---@type NamuCoreConfig
 M.config = {
   persist = true,
   write_shada = false,
@@ -25,6 +25,11 @@ M.config = {
     previous = "<C-p>",
     alternative_next = "<DOWN>",
     alternative_previous = "<UP>",
+  },
+  current_highlight = {
+    enabled = true,
+    hl_group = "CursorLine",
+    prefix_icon = " ",
   },
 }
 
@@ -164,6 +169,7 @@ function M.show(opts)
       min_width = 20,
     },
     movement = vim.tbl_deep_extend("force", M.config.movement, {}),
+    current_highlight = M.config.current_highlight,
     on_select = function(item)
       if item then
         pcall(vim.cmd.colorscheme, item.value)
@@ -183,7 +189,7 @@ function M.show(opts)
         vim.wait(2, function()
           local ok, _ = pcall(vim.cmd.colorscheme, item.value)
           if not ok then
-            vim.notify(('Cannot load colorscheme %s'):format(item.value), vim.log.levels.ERROR)
+            vim.notify(("Cannot load colorscheme %s"):format(item.value), vim.log.levels.ERROR)
           end
         end)
       end

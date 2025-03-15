@@ -23,6 +23,11 @@ M.config = {
     height_ratio = 0.6,
   },
   display = { mode = "raw" },
+  current_highlight = {
+    enabled = true,
+    hl_group = "CursorLine",
+    prefix_icon = " ",
+  },
   movement = {
     next = "<C-n>",
     previous = "<C-p>",
@@ -54,6 +59,7 @@ function M.select(items, opts, on_choice)
     window = M.config.window,
     display = M.config.display,
     movement = vim.tbl_deep_extend("force", M.config.movement, {}),
+    current_highlight = M.config.current_highlight,
     on_select = function(selected)
       if selected then
         vim.schedule(function()
