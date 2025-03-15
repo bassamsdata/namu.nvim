@@ -225,9 +225,9 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
     auto_select = config.auto_select,
     initially_hidden = config.initially_hidden,
     movement = vim.tbl_deep_extend("force", config.movement, {}),
-    current_highlight = vim.tbl_deep_extend("force", config.current_highlight, {}),
+    current_highlight = config.current_highlight,
     row_position = config.row_position,
-    custom_keymaps = config.custom_keymaps,
+    custom_keymaps = vim.tbl_deep_extend("force", config.custom_keymaps, {}),
     debug = config.debug,
     -- TODO: make it configurable
     preserve_hierarchy = config.preserve_hierarchy or false,
@@ -266,7 +266,7 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
         if config.preview.highlight_mode == "select" then
           ui.clear_preview_highlight(state.original_win, state.preview_ns)
           if type(selected_items) == "table" and selected_items[1] then
-            ui.highlight_symbol(selected_items[1].value, state.original_win, state.preview_ns)
+            ui.highlight_symbol(selected_items[1].value, state.original_win, state.preview_ns, state)
           end
         end
         if type(selected_items) == "table" and selected_items[1] then
@@ -293,9 +293,10 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
       end
     end,
     on_move = function(item)
+      logger.log("on_move()" .. vim.inspect(state))
       if config.preview.highlight_on_move and config.preview.highlight_mode == "always" then
         if item then
-          ui.highlight_symbol(item.value, state.original_win, state.preview_ns)
+          ui.highlight_symbol(item.value, state.original_win, state.preview_ns, state)
         end
       end
     end,
@@ -355,12 +356,13 @@ function M.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
   end
 
   handlers.vertical_split = function(item)
+    vim.notify("handlers state: " .. vim.inspect(state))
     if not state.original_buf then
       vim.notify("No original buffer available", vim.log.levels.ERROR)
       return
     end
 
-    local new_win = selecta.open_in_split(item, "vertical", state)
+    local new_win = selecta.open_in_split(item, "vertical", state, ui)
     if new_win then
       local symbol = item.value
       if symbol and symbol.lnum and symbol.col then
@@ -378,7 +380,7 @@ function M.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
       vim.notify("No original buffer available", vim.log.levels.ERROR)
       return
     end
-    local new_win = selecta.open_in_split(item, "horizontal", state)
+    local new_win = selecta.open_in_split(item, "horizontal", state, ui)
     if new_win then
       local symbol = item.value
       if symbol and symbol.lnum and symbol.col then

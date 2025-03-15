@@ -51,7 +51,7 @@ M.defaults = {
   },
   display = {
     mode = "icon", -- "icon" or "raw"
-    padding = 0,
+    padding = 2,
     style = 2,
     format = "indent", -- Options = "indent"|"tree_guides"
     indent_size = 2,
