@@ -329,7 +329,6 @@ function M.add_tree_state_to_items(items)
 
       -- Process this child's children
       if child.value and child.value.signature then
-        logger.log("Processing children of " .. child.value.signature)
         process_children(child.value.signature, child_tree_state)
       end
     end
@@ -339,41 +338,11 @@ function M.add_tree_state_to_items(items)
   -- but for symbols, we may have multiple top-level items with no parent.
   -- Let's ensure even top-level items get proper tree guides.
 
-  -- First, collect all true root items (no parent) and orphaned items (parent doesn't exist)
+  -- First, collect all true root items (no parent)
   local root_items = {}
-  local orphaned_items = {}
   for i, item in ipairs(items) do
-    if item.value and item.value.signature then
-      if not item.value.parent_signature then
-        table.insert(root_items, item)
-      elseif not signature_to_index[item.value.parent_signature] then
-        table.insert(orphaned_items, item)
-        logger.log("Orphaned item found: " .. item.value.signature)
-      end
-    end
-  end
-
-  -- If we have orphaned items, make them children of the root or add as additional roots
-  if #orphaned_items > 0 then
-    logger.log("Orphaned items found: " .. #orphaned_items)
-
-    if #root_items == 1 then
-      -- If there's a single root item, make orphaned items children of that root
-      local root_item = root_items[1]
-      logger.log("Making orphaned items children of the single root: " .. root_item.value.signature)
-      for _, item in ipairs(orphaned_items) do
-        item.value.true_parent = item.value.parent_signature
-        item.value.parent_signature = root_item.value.signature
-        if not children_by_parent[root_item.value.signature] then
-          children_by_parent[root_item.value.signature] = {}
-        end
-        table.insert(children_by_parent[root_item.value.signature], item)
-      end
-    else
-      -- Otherwise, treat orphaned items as root items
-      for _, item in ipairs(orphaned_items) do
-        table.insert(root_items, item)
-      end
+    if item.value and item.value.signature and not item.value.parent_signature then
+      table.insert(root_items, item)
     end
   end
 

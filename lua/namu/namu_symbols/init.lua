@@ -88,7 +88,7 @@ local function symbols_to_selecta_items(raw_symbols)
   ---[local] Recursively processes each symbol and its children into SelectaItem format with proper indentation
   ---@param result LSPSymbol
   ---@param depth number Current depth level
-  local function process_symbol_result(result, depth, parent_signature)
+  local function process_symbol_result(result, depth, parent_stack)
     if not result or not result.name then
       return
     end
@@ -111,18 +111,22 @@ local function symbols_to_selecta_items(raw_symbols)
       vim.notify("Symbol '" .. result.name .. "' has invalid structure", vim.log.levels.WARN)
       return
     end
-    -- Generate unique signature for this symbol
+
+    -- Generate signature for current item
     local signature = generate_signature(result, depth)
 
     if not lsp.should_include_symbol(result, M.config, vim.bo.filetype) then
       if result.children then
         for _, child in ipairs(result.children) do
-          process_symbol_result(child, depth, signature)
+          process_symbol_result(child, depth, parent_stack)
         end
       end
       return
     end
+    -- Get parent signature from the stack based on depth
+    local parent_signature = depth > 0 and parent_stack[depth] or nil
 
+    -- Create the item
     local clean_name = result.name:match("^([^%s%(]+)") or result.name
     clean_name = state.original_ft == "markdown" and result.name or clean_name
     local style = tonumber(M.config.display.style) or 2
@@ -131,7 +135,6 @@ local function symbols_to_selecta_items(raw_symbols)
 
     local kind = lsp.symbol_kind(result.kind)
     local item = {
-      -- text = display_text,
       value = {
         text = clean_name,
         name = clean_name,
@@ -150,15 +153,21 @@ local function symbols_to_selecta_items(raw_symbols)
 
     table.insert(items, item)
 
+    -- Store current signature as parent for next depth level
+    parent_stack[depth + 1] = signature
+
     if result.children then
       for _, child in ipairs(result.children) do
-        process_symbol_result(child, depth + 1, signature)
+        process_symbol_result(child, depth + 1, parent_stack)
       end
     end
+
+    -- Clean up the stack when leaving this depth
+    parent_stack[depth + 1] = nil
   end
 
   for _, symbol in ipairs(raw_symbols) do
-    process_symbol_result(symbol, 0)
+    process_symbol_result(symbol, 0, {})
   end
 
   if M.config.display.format == "tree_guides" then
