@@ -563,6 +563,16 @@ function M.update_filtered_items(state, query, opts)
       for i, item in ipairs(items_to_filter) do
         local match = matcher.get_match_positions(item.text, actual_query)
         if match then
+          -- print(
+          --   string.format(
+          --     "Item: %-30s Score: %d Type: %-8s Gaps: %d Positions: %s",
+          --     item.text,
+          --     match.score,
+          --     match.type,
+          --     match.gaps,
+          --     vim.inspect(match.positions)
+          --   )
+          -- )
           matched_indices[i] = true
           match_scores[i] = match.score
 
@@ -1791,7 +1801,7 @@ function M.pick(items, opts)
     end,
     fuzzy = false,
     offnet = 0,
-    custom_keymaps = vim.tbl_deep_extend("force", M.config.custom_keymaps, {}),
+    custom_keymaps = opts.custom_keymaps,
     movement = vim.tbl_deep_extend("force", M.config.movement, {}),
     current_highlight = opts.current_highlight,
     auto_select = M.config.auto_select,
@@ -1937,12 +1947,10 @@ function M.open_in_split(item, split_type, module_state)
   if not item then
     return nil
   end
-
+  -- vim.notify("state in split: " .. vim.inspect(module_state), vim.log.levels.DEBUG)
   -- Use module_state for original window and position if available
   local original_win = module_state.original_win and module_state.original_win or vim.api.nvim_get_current_win()
   local original_pos = module_state.original_pos and module_state.original_pos or vim.api.nvim_win_get_cursor(0)
-  local original_buf = module_state.original_buf
-
   -- Close the picker
   M.close_picker(state)
 
@@ -1951,17 +1959,13 @@ function M.open_in_split(item, split_type, module_state)
     vim.notify("Original window is no longer valid", vim.log.levels.ERROR)
     return nil
   end
-
   -- First focus the original window
   vim.api.nvim_set_current_win(original_win)
-
   -- Create the split (this will create a new window but keep original window unchanged)
   local split_cmd = split_type == "vertical" and "vsplit" or "split"
   vim.cmd(split_cmd)
-
   -- Get the new window ID (which is now the current window)
   local new_win = vim.api.nvim_get_current_win()
-
   -- For call hierarchy item, open the target file in the new window
   if item.value and item.value.uri and item.value.file_path then
     -- Open the file in the new window
@@ -1973,13 +1977,11 @@ function M.open_in_split(item, split_type, module_state)
       vim.cmd("normal! zz")
     end
   end
-
   -- IMPORTANT: Now go back to original window and restore position
   vim.api.nvim_set_current_win(original_win)
   if original_pos then
     pcall(vim.api.nvim_win_set_cursor, original_win, original_pos)
   end
-
   -- Return focus to the split window for user convenience
   vim.api.nvim_set_current_win(new_win)
 

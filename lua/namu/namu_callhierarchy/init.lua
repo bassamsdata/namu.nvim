@@ -2,12 +2,20 @@ local selecta = require("namu.selecta.selecta")
 local navigation = require("namu.namu_callhierarchy.navigation")
 local lsp = require("namu.namu_symbols.lsp")
 local ui = require("namu.namu_symbols.ui")
-local ext = require("namu.namu_symbols.external_plugins")
-local utils = require("namu.namu_symbols.utils")
 local symbol_utils = require("namu.core.symbol_utils")
 local logger = require("namu.utils.logger")
 local config_defaults = require("namu.namu_symbols.config")
 local M = {}
+
+---@type NamuState
+local state = symbol_utils.create_state("namu_callhierarchy_preview")
+local state_call = vim.tbl_deep_extend("force", state, {
+  preview_buffers = {}, -- Track all created preview buffers
+  active_preview_buf = nil, -- Current preview buffer
+  last_previewed_path = nil, -- Last file previewed
+  is_previewing = false, -- Flag to indicate preview mode
+})
+-- opulence
 
 ---@type CallHierarchyConfig
 M.defaul_config = config_defaults.values --[[@as CallHierarchyConfig]]
@@ -24,14 +32,17 @@ M.config = vim.tbl_deep_extend("force", M.defaul_config, {
     show_cycles = false, -- Whether to show recursive calls
   },
 })
-
----@type NamuState
-local state = vim.tbl_deep_extend("force", symbol_utils.create_state("namu_callhierarchy_preview"), {
-  preview_buffers = {}, -- Track all created preview buffers
-  active_preview_buf = nil, -- Current preview buffer
-  last_previewed_path = nil, -- Last file previewed
-  is_previewing = false, -- Flag to indicate preview mode
-})
+-- if M.config.custom_keymaps then
+--   M.call_keymaps = M.config.custom_keymaps
+--   local handlers = symbol_utils.create_keymaps_handlers(M.config, state_call, ui, selecta, ext, utils)
+--   -- Set handlers on your module-specific keymaps
+--   M.call_keymaps.yank.handler = handlers.yank
+--   M.call_keymaps.delete.handler = handlers.delete
+--   M.call_keymaps.vertical_split.handler = handlers.vertical_split
+--   M.call_keymaps.horizontal_split.handler = handlers.horizontal_split
+--   M.call_keymaps.codecompanion.handler = handlers.codecompanion
+--   M.call_keymaps.avante.handler = handlers.avante
+-- end
 
 local pending_requests = 0
 local calls_cache = {}
@@ -515,7 +526,7 @@ end
 ---@param notify_opts table Notification options
 local function process_call_hierarchy_item(item, direction, cache_key, notify_opts)
   -- Store symbol name for display
-  state.current_symbol_name = item.name
+  state_call.current_symbol_name = item.name
 
   -- We'll collect results here
   local all_items = {}
@@ -651,14 +662,14 @@ function M.show(direction)
   processed_call_signatures = {}
 
   -- Store current position and buffer
-  state.original_win = vim.api.nvim_get_current_win()
-  state.original_buf = vim.api.nvim_get_current_buf()
-  state.original_ft = vim.bo.filetype
-  state.original_pos = vim.api.nvim_win_get_cursor(state.original_win)
+  state_call.original_win = vim.api.nvim_get_current_win()
+  state_call.original_buf = vim.api.nvim_get_current_buf()
+  state_call.original_ft = vim.bo.filetype
+  state_call.original_pos = vim.api.nvim_win_get_cursor(state_call.original_win)
 
   -- Get the symbol name at cursor for better display
   local cword = vim.fn.expand("<cword>")
-  state.current_symbol_name = cword
+  state_call.current_symbol_name = cword
 
   -- Set highlight
   vim.api.nvim_set_hl(0, M.config.highlight, {
@@ -821,30 +832,30 @@ function M.show_call_picker(selectaItems, notify_opts)
         apply_simple_highlights(buf, filtered_items, M.config)
       end,
       on_buffer_clear = function()
-        ui.cleanup_previews(state, true)
+        ui.cleanup_previews(state_call, true)
       end,
     },
     multiselect = {
       enabled = M.config.multiselect.enabled,
       indicator = M.config.multiselect.indicator,
       on_select = function(selected_items)
-        ui.cleanup_previews(state, false)
+        ui.cleanup_previews(state_call, false)
         if type(selected_items) == "table" and selected_items[1] then
           M.jump_to_call(selected_items[1])
         end
       end,
     },
     on_select = function(item)
-      ui.cleanup_previews(state, false)
+      ui.cleanup_previews(state_call, false)
       M.jump_to_call(item)
     end,
     on_cancel = function()
-      ui.cleanup_previews(state, true)
+      ui.cleanup_previews(state_call, true)
     end,
     on_move = function(item)
       if M.config.preview.highlight_on_move and M.config.preview.highlight_mode == "always" then
         if item and not item.value.is_header then
-          ui.highlight_symbol(item.value, state.original_win, state.preview_ns, state)
+          ui.highlight_symbol(item.value, state_call.original_win, state_call.preview_ns, state_call)
         end
       end
     end,
@@ -873,7 +884,7 @@ function M.show_call_picker(selectaItems, notify_opts)
       group = augroup,
       pattern = tostring(picker_win),
       callback = function()
-        ui.cleanup_previews(state, true)
+        ui.cleanup_previews(state_call, true)
         pcall(vim.api.nvim_del_augroup_by_name, "NamuCallHierarchyCleanup")
       end,
       once = true,
@@ -896,11 +907,11 @@ function M.jump_to_call(item)
   end
 
   -- Clean up all preview resources before jumping
-  ui.cleanup_previews(state, false)
+  ui.cleanup_previews(state_call, false)
 
   -- Return to the original window if we're in the picker window
-  if state.original_win and vim.api.nvim_win_is_valid(state.original_win) then
-    vim.api.nvim_set_current_win(state.original_win)
+  if state_call.original_win and vim.api.nvim_win_is_valid(state_call.original_win) then
+    vim.api.nvim_set_current_win(state_call.original_win)
   end
 
   -- Record the current position in jumplist
@@ -970,21 +981,6 @@ end
 ---@param opts table|nil User config options
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
-  logger.log("call hierarchy config: " .. vim.inspect(M.config))
-
-  if M.config.custom_keymaps then
-    M.call_keymaps = vim.deepcopy(M.config.custom_keymaps)
-    local handlers = symbol_utils.create_keymaps_handlers(M.config, state, ui, selecta, ext, utils)
-
-    -- Set handlers on your module-specific keymaps
-    M.call_keymaps.yank.handler = handlers.yank
-    M.call_keymaps.delete.handler = handlers.delete
-    M.call_keymaps.vertical_split.handler = handlers.vertical_split
-    M.call_keymaps.horizontal_split.handler = handlers.horizontal_split
-    M.call_keymaps.codecompanion.handler = handlers.codecompanion
-    M.call_keymaps.avante.handler = handlers.avante
-  end
-
   -- Add tree guide highlight
   vim.api.nvim_set_hl(0, "NamuTreeGuides", {
     link = "Comment",

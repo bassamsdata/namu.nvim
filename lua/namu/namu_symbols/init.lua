@@ -51,6 +51,14 @@ M.config = config.values
 ---@type NamuState
 local state = symbol_utils.create_state("namu_symbols_preview")
 
+local handlers = symbol_utils.create_keymaps_handlers(M.config, state, ui, selecta, ext, utils)
+M.config.custom_keymaps.yank.handler = handlers.yank
+M.config.custom_keymaps.delete.handler = handlers.delete
+M.config.custom_keymaps.vertical_split.handler = handlers.vertical_split
+M.config.custom_keymaps.horizontal_split.handler = handlers.horizontal_split
+M.config.custom_keymaps.codecompanion.handler = handlers.codecompanion
+M.config.custom_keymaps.avante.handler = handlers.avante
+
 local symbol_cache = nil
 local symbol_range_cache = {}
 
@@ -230,6 +238,7 @@ function M.show(opts)
 
     symbol_utils.show_picker(selectaItems, state, M.config, ui, selecta, "LSP Symbols", notify_opts)
   end)
+  vim.notify("Namu state: " .. vim.inspect(state), vim.log.levels.INFO)
 end
 
 ---Initializes the module with user configuration
@@ -237,20 +246,7 @@ function M.setup(opts)
   -- config.setup(opts or {})
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
   ui.setup(M.config)
-  logger.log("namu_symbols.setup called with config: " .. vim.inspect(M.config))
-
   -- vim.inspect("buffer_symbols_state: " .. vim.inspect(buffer_symbols_state))
-  if M.config.custom_keymaps then
-    local handlers = symbol_utils.create_keymaps_handlers(M.config, state, ui, selecta, ext, utils)
-    M.config.custom_keymaps.yank.handler = handlers.yank
-    M.config.custom_keymaps.delete.handler = handlers.delete
-    M.config.custom_keymaps.vertical_split.handler = function(item)
-      return handlers.vertical_split(item)
-    end
-    M.config.custom_keymaps.horizontal_split.handler = handlers.horizontal_split
-    M.config.custom_keymaps.codecompanion.handler = handlers.codecompanion
-    M.config.custom_keymaps.avante.handler = handlers.avante
-  end
 
   if M.config.kinds and M.config.kinds.enable_highlights then
     vim.schedule(function()

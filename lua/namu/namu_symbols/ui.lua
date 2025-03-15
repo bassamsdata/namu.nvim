@@ -353,6 +353,11 @@ local function apply_enhanced_highlighting(bufnr, symbol, win, ns_id, picked_win
   if not line then
     return
   end
+  local first_char_col = line:find("%S")
+  if not first_char_col then
+    return
+  end
+  first_char_col = first_char_col - 1
   -- Use treesitter for node-based highlighting if possible
   local has_ts, node
   if is_neovim_nightly then
@@ -360,7 +365,7 @@ local function apply_enhanced_highlighting(bufnr, symbol, win, ns_id, picked_win
     debug_log("apply_enhanced", "Using Neovim 0.11+ approach for treesitter")
     has_ts, node = pcall(function()
       return vim.treesitter.get_node({
-        pos = { symbol.lnum - 1, (symbol.col or 1) - 1 },
+        pos = { symbol.lnum - 1, first_char_col },
         bufnr = bufnr,
         ignore_injections = false,
       })
@@ -368,7 +373,7 @@ local function apply_enhanced_highlighting(bufnr, symbol, win, ns_id, picked_win
   else
     -- Neovim stable approach
     has_ts, node = pcall(vim.treesitter.get_node, {
-      pos = { symbol.lnum - 1, (symbol.col or 1) - 1 },
+      pos = { symbol.lnum - 1, first_char_col },
       bufnr = bufnr,
       ignore_injections = false,
     })

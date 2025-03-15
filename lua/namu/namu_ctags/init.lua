@@ -8,11 +8,22 @@ local utils = require("namu.namu_symbols.utils")
 local symbol_utils = require("namu.core.symbol_utils")
 local M = {}
 
----@type NamuConfig
-M.config = require("namu.namu_symbols").config
+---@type NamuCoreConfig
+M.config = require("namu.namu_symbols.config").values
 
 ---@type NamuState
-local state = symbol_utils.create_state("namu_ctags_preview")
+local state_ctags = symbol_utils.create_state("namu_ctags_preview")
+if M.config.custom_keymaps then
+  local handlers = symbol_utils.create_keymaps_handlers(M.config, state_ctags, ui, selecta, ext, utils)
+  M.config.custom_keymaps.yank.handler = handlers.yank
+  M.config.custom_keymaps.delete.handler = handlers.delete
+  M.config.custom_keymaps.vertical_split.handler = function(item)
+    return handlers.vertical_split(item)
+  end
+  M.config.custom_keymaps.horizontal_split.handler = handlers.horizontal_split
+  M.config.custom_keymaps.codecompanion.handler = handlers.codecompanion
+  M.config.custom_keymaps.avante.handler = handlers.avante
+end
 
 -- Symbol cache
 local symbol_cache = nil
@@ -53,7 +64,7 @@ local function symbols_to_selecta_items(raw_symbols)
     end
 
     local clean_name = result.name:match("^([^%s%(]+)") or result.name
-    clean_name = state.original_ft == "markdown" and result.name or clean_name
+    clean_name = state_ctags.original_ft == "markdown" and result.name or clean_name
     local style = tonumber(M.config.display.style) or 2
     local prefix = ui.get_prefix(depth, style)
     local display_text = prefix .. clean_name
@@ -95,10 +106,10 @@ end
 ---@param callback fun(err: any, result: any, ctx: any)
 local function request_symbols(bufnr, callback)
   -- Cancel any existing request
-  if state.current_request then
-    local client = state.current_request.client
+  if state_ctags.current_request then
+    local client = state_ctags.current_request.client
     client.kill(9)
-    state.current_request = nil
+    state_ctags.current_request = nil
   end
 
   local path = vim.api.nvim_buf_get_name(bufnr)
@@ -135,7 +146,7 @@ local function request_symbols(bufnr, callback)
   end
   if not closed and request.pid then
     -- Store the client and request_id
-    state.current_request = {
+    state_ctags.current_request = {
       client = request,
     }
   else
@@ -143,17 +154,17 @@ local function request_symbols(bufnr, callback)
     callback("Request failed or request_id was nil", nil, nil)
   end
 
-  return state.current_request
+  return state_ctags.current_request
 end
 
 ---Main entry point for symbol jumping functionality
 function M.show(opts)
   opts = opts or {}
   -- Store current window and position
-  state.original_win = vim.api.nvim_get_current_win()
-  state.original_buf = vim.api.nvim_get_current_buf()
-  state.original_ft = vim.bo.filetype
-  state.original_pos = vim.api.nvim_win_get_cursor(state.original_win)
+  state_ctags.original_win = vim.api.nvim_get_current_win()
+  state_ctags.original_buf = vim.api.nvim_get_current_buf()
+  state_ctags.original_ft = vim.bo.filetype
+  state_ctags.original_pos = vim.api.nvim_win_get_cursor(state_ctags.original_win)
 
   -- TODO: Move this to the setup highlights
   vim.api.nvim_set_hl(0, M.config.highlight, {
@@ -163,7 +174,7 @@ function M.show(opts)
   local notify_opts = { title = "Namu", icon = M.config.icon }
 
   -- Use cached symbols if available
-  local bufnr = vim.api.nvim_get_current_buf()
+  local bufnr = state_ctags.original_buf
   local cache_key = string.format("%d_%d", bufnr, vim.b[bufnr].changedtick or 0)
 
   if symbol_cache and symbol_cache.key == cache_key then
@@ -174,13 +185,13 @@ function M.show(opts)
         return item.kind == opts.filter_kind
       end, items)
     end
-    symbol_utils.show_picker(items, state, M.config, ui, selecta, "Ctags", notify_opts, true)
+    symbol_utils.show_picker(items, state_ctags, M.config, ui, selecta, "Ctags", notify_opts, true)
     return
   end
 
   -- Log initial state
   logger.log("CTags show() - Symbol range cache entries: " .. #symbol_range_cache)
-  request_symbols(state.original_buf, function(err, result, _)
+  request_symbols(state_ctags.original_buf, function(err, result, _)
     if err ~= nil then
       local error_message = err
       if type(err) == "table" then
@@ -213,24 +224,12 @@ function M.show(opts)
       end, selectaItems)
     end
 
-    symbol_utils.show_picker(selectaItems, state, M.config, ui, selecta, "Ctags", notify_opts, true)
+    symbol_utils.show_picker(selectaItems, state_ctags, M.config, ui, selecta, "Ctags", notify_opts, true)
   end)
 end
 
----Initializes the module with user configuration
 function M.setup(opts)
-  -- config.setup(opts or {})
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
-  -- Initialize all the handlers properly
-  if M.config.custom_keymaps then
-    local handlers = symbol_utils.create_keymaps_handlers(M.config, state, ui, selecta, ext, utils)
-    M.config.custom_keymaps.yank.handler = handlers.yank
-    M.config.custom_keymaps.delete.handler = handlers.delete
-    M.config.custom_keymaps.vertical_split.handler = handlers.vertical_split
-    M.config.custom_keymaps.horizontal_split.handler = handlers.horizontal_split
-    M.config.custom_keymaps.codecompanion.handler = handlers.codecompanion
-    M.config.custom_keymaps.avante.handler = handlers.avante
-  end
 end
 
 return M
