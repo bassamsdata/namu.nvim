@@ -26,6 +26,7 @@ M.config = vim.tbl_deep_extend("force", M.defaul_config, {
     hl_group = "CursorLine",
     prefix_icon = " ",
   },
+  sort_by_nesting_depth = true,
   call_hierarchy = {
     max_depth = 2, -- Default max depth
     max_depth_limit = 4, -- Hard limit to prevent performance issues
@@ -747,7 +748,7 @@ function M.show_call_picker(selectaItems, notify_opts)
     end
   end
 
-  if navigation and navigation.sort_by_nesting_depth then
+  if M.config.sort_by_nesting_depth and navigation.sort_by_nesting_depth then
     unique_items = navigation.sort_by_nesting_depth(unique_items)
   else
     -- Only update tree guides manually if we didn't sort
