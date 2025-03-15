@@ -356,7 +356,6 @@ function M.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
   end
 
   handlers.vertical_split = function(item)
-    vim.notify("handlers state: " .. vim.inspect(state))
     if not state.original_buf then
       vim.notify("No original buffer available", vim.log.levels.ERROR)
       return

@@ -238,7 +238,6 @@ function M.show(opts)
 
     symbol_utils.show_picker(selectaItems, state, M.config, ui, selecta, "LSP Symbols", notify_opts)
   end)
-  vim.notify("Namu state: " .. vim.inspect(state), vim.log.levels.INFO)
 end
 
 ---Initializes the module with user configuration
