@@ -49,15 +49,35 @@ local M = {}
 M.config = config.values
 
 ---@type NamuState
-local state = symbol_utils.create_state("namu_symbols_preview")
+local state = nil
 
-local handlers = symbol_utils.create_keymaps_handlers(M.config, state, ui, selecta, ext, utils)
-M.config.custom_keymaps.yank.handler = handlers.yank
-M.config.custom_keymaps.delete.handler = handlers.delete
-M.config.custom_keymaps.vertical_split.handler = handlers.vertical_split
-M.config.custom_keymaps.horizontal_split.handler = handlers.horizontal_split
-M.config.custom_keymaps.codecompanion.handler = handlers.codecompanion
-M.config.custom_keymaps.avante.handler = handlers.avante
+local handlers = nil
+local function initialize_state()
+  -- Clear any existing highlights if state exists
+  if state and state.original_win and state.preview_ns then
+    ui.clear_preview_highlight(state.original_win, state.preview_ns)
+  end
+
+  -- Create new state
+  state = symbol_utils.create_state("namu_ctags_preview")
+  state.original_win = vim.api.nvim_get_current_win()
+  state.original_buf = vim.api.nvim_get_current_buf()
+  state.original_ft = vim.bo.filetype
+  state.original_pos = vim.api.nvim_win_get_cursor(state.original_win)
+
+  -- Recreate handlers with new state
+  handlers = symbol_utils.create_keymaps_handlers(M.config, state, ui, selecta, ext, utils)
+
+  -- Update keymap handlers
+  if M.config.custom_keymaps then
+    M.config.custom_keymaps.yank.handler = handlers.yank
+    M.config.custom_keymaps.delete.handler = handlers.delete
+    M.config.custom_keymaps.vertical_split.handler = handlers.vertical_split
+    M.config.custom_keymaps.horizontal_split.handler = handlers.horizontal_split
+    M.config.custom_keymaps.codecompanion.handler = handlers.codecompanion
+    M.config.custom_keymaps.avante.handler = handlers.avante
+  end
+end
 
 local symbol_cache = nil
 local symbol_range_cache = {}
@@ -189,11 +209,7 @@ end
 ---@param opts? {filter_kind?: string} Optional settings to filter specific kinds
 function M.show(opts)
   opts = opts or {}
-  -- Store current window and position
-  state.original_win = vim.api.nvim_get_current_win()
-  state.original_buf = vim.api.nvim_get_current_buf()
-  state.original_ft = vim.bo.filetype
-  state.original_pos = vim.api.nvim_win_get_cursor(state.original_win)
+  initialize_state()
 
   -- TODO: Move this to the setup highlights
   vim.api.nvim_set_hl(0, M.config.highlight, {
