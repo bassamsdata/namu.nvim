@@ -435,7 +435,15 @@ local function fetch_calls_recursive(
       local error_message = format_lsp_error(err, "Unknown error")
 
       if depth == 1 then
-        vim.notify("Error fetching " .. direction .. " calls: " .. error_message, vim.log.levels.ERROR, notify_opts)
+        vim.notify(
+          "Error fetching "
+            .. direction
+            .. " calls: "
+            .. error_message
+            .. ". Ensure the cursor is over a proper symbol.",
+          vim.log.levels.ERROR,
+          notify_opts
+        )
       else
         logger.log("Error fetching nested " .. direction .. " calls: " .. error_message)
       end
@@ -706,7 +714,12 @@ function M.show(direction)
       end
 
       if not result or #result == 0 then
-        vim.notify("No call hierarchy items found at cursor position.", vim.log.levels.WARN, notify_opts)
+        vim.notify(
+          "No call hierarchy items found at cursor position.\n Ensure the cursor is over a proper symbol.",
+          vim.log.levels.WARN,
+          notify_opts
+        )
+
         return
       end
 
