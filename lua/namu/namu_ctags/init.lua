@@ -54,20 +54,16 @@ local function symbols_to_selecta_items(raw_symbols)
     if not symbol or not symbol.line then
       return nil
     end
-    -- Include full scope path in signature to maintain hierarchy
-    local scope_part = symbol.scope and ("." .. symbol.scope) or ""
-    return string.format("%s%s:%d:%d:1", symbol.name, scope_part, depth, symbol.line)
-  end
 
-  -- Calculate symbol depth based on scope
-  local function get_symbol_depth(symbol)
-    if not symbol.scope then
-      return 0
+    local name = symbol.name
+    if state_ctags.original_ft == "lua" then
+      -- For Lua, use the full name in the signature
+      if symbol.scope then
+        name = symbol.scope .. "." .. symbol.name
+      end
     end
 
-    -- Count the number of dots in scope to determine depth
-    local dots = symbol.scope:gsub("[^%.]+", "")
-    return #dots + 1
+    return string.format("%s:%d:%d:1", name, depth, symbol.line)
   end
 
   local function process_symbol_result(result)
@@ -75,64 +71,61 @@ local function symbols_to_selecta_items(raw_symbols)
       return
     end
 
-    logger.log("Processing symbol: " .. vim.inspect({
-      name = result.name,
-      kind = result.kind,
-      scope = result.scope,
-      scopeKind = result.scopeKind,
-    }))
+    logger.log("Processing symbol: " .. vim.inspect(result))
 
-    -- Calculate depth based on scope nesting
-    local depth = get_symbol_depth(result)
-    logger.log("ctags_symbols depth: " .. vim.inspect({ depth }))
+    local depth = 0
+    local full_name = result.name
+    local display_name = result.name
 
-    -- Track class depths for nested classes
-    if result.kind == "class" then
-      class_depth_map[result.name] = depth
+    -- Special handling for Lua files
+    if state_ctags.original_ft == "lua" then
       if result.scope then
-        class_depth_map[result.scope .. "." .. result.name] = depth
+        -- Handle explicit scopes (like methods in classes)
+        if result.scopeKind == "class" then
+          depth = 1
+        else
+          -- Don't treat dot notation as nesting for functions
+          depth = 0
+        end
+
+        -- Construct full name for Lua modules/functions
+        full_name = result.scope .. "." .. result.name
+      else
+        -- Check if the name itself contains dots (module pattern)
+        local dots = result.name:gsub("[^%.]+", "")
+        if #dots > 0 then
+          -- Extract the last part as display name
+          display_name = result.name:match("([^%.]+)$") or result.name
+          depth = 0 -- Don't indent based on dots
+        end
+      end
+    else
+      -- For other languages, use the regular scope-based depth
+      if result.scope then
+        depth = (result.scope:match("%.") or ""):len() + 1
       end
     end
 
-    -- Determine parent signature based on scope
-    local parent_signature = nil
-    if result.scope then
-      parent_signature = scope_to_signature[result.scope]
-    end
-
-    -- Generate signature for current symbol
-    local signature = generate_signature(result, depth)
-    if signature then
-      scope_to_signature[result.name] = signature
-      if result.scope then
-        scope_to_signature[result.scope .. "." .. result.name] = signature
-      end
-    end
-
-    local clean_name = result.name:match("^([^%s%(]+)") or result.name
-    clean_name = state_ctags.original_ft == "markdown" and result.name or clean_name
-
-    -- Get symbol kind with proper mapping
-    local kind = lsp.symbol_kind(symbolKindMap[result.kind] or vim.lsp.protocol.SymbolKind.Function)
+    local kind = lsp.symbol_kind(symbolKindMap[result.kind])
 
     local item = {
       value = {
-        text = clean_name,
-        name = clean_name,
+        text = display_name,
+        name = full_name, -- Keep the full name for reference
         kind = kind,
         lnum = result.line,
         col = 1,
         end_lnum = (result["end"] or result.line) + 1,
         end_col = 100,
-        signature = signature,
-        parent_signature = parent_signature,
-        scope = result.scope, -- Store scope for debugging
+        signature = generate_signature(result, depth),
+        parent_signature = result.scope and generate_signature({ name = result.scope, line = 0 }, depth - 1) or nil,
       },
       icon = M.config.kindIcons[kind] or M.config.icon,
       kind = kind,
       depth = depth,
     }
 
+    logger.log("ctags_symbols depth: " .. vim.inspect({ depth }))
     table.insert(items, item)
   end
 

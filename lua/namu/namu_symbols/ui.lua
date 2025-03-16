@@ -136,6 +136,15 @@ function M.find_meaningful_node(node, lnum)
   -- "decorated_definition".
   if filetype == "python" and type == "decorator" then
     return parent_node
+  elseif vim.bo.filetype == "c" then
+    current = node
+    while current do
+      if current:type() == "function_definition" then
+        node = current
+        break
+      end
+      current = current:parent()
+    end
   end
   if type == "function_definition" then
     return node
