@@ -6,6 +6,7 @@ local ui = require("namu.namu_symbols.ui")
 local ext = require("namu.namu_symbols.external_plugins")
 local utils = require("namu.namu_symbols.utils")
 local symbol_utils = require("namu.core.symbol_utils")
+local format_utils = require("namu.core.format_utils")
 local M = {}
 
 ---@type NamuCoreConfig
@@ -44,35 +45,77 @@ local function symbols_to_selecta_items(raw_symbols)
   end
 
   local items = {}
-  local tree = {}
+  local parent_stack = {}
+  local scope_to_signature = {}
+  local class_depth_map = {} -- Track class depths
 
-  ---[local] Recursively processes each symbol and its children into SelectaItem format with proper indentation
-  ---@param result TagEntry
+  -- Generate a unique signature for a symbol
+  local function generate_signature(symbol, depth)
+    if not symbol or not symbol.line then
+      return nil
+    end
+    -- Include full scope path in signature to maintain hierarchy
+    local scope_part = symbol.scope and ("." .. symbol.scope) or ""
+    return string.format("%s%s:%d:%d:1", symbol.name, scope_part, depth, symbol.line)
+  end
+
+  -- Calculate symbol depth based on scope
+  local function get_symbol_depth(symbol)
+    if not symbol.scope then
+      return 0
+    end
+
+    -- Count the number of dots in scope to determine depth
+    local dots = symbol.scope:gsub("[^%.]+", "")
+    return #dots + 1
+  end
+
   local function process_symbol_result(result)
     if not result or not result.name then
       return
     end
 
-    local depth = 0
+    logger.log("Processing symbol: " .. vim.inspect({
+      name = result.name,
+      kind = result.kind,
+      scope = result.scope,
+      scopeKind = result.scopeKind,
+    }))
 
+    -- Calculate depth based on scope nesting
+    local depth = get_symbol_depth(result)
+    logger.log("ctags_symbols depth: " .. vim.inspect({ depth }))
+
+    -- Track class depths for nested classes
+    if result.kind == "class" then
+      class_depth_map[result.name] = depth
+      if result.scope then
+        class_depth_map[result.scope .. "." .. result.name] = depth
+      end
+    end
+
+    -- Determine parent signature based on scope
+    local parent_signature = nil
     if result.scope then
-      depth = tree[result.scope] or -1
-      depth = depth + 1
-      tree[result.name] = depth
-    else
-      tree[result.name] = depth
+      parent_signature = scope_to_signature[result.scope]
+    end
+
+    -- Generate signature for current symbol
+    local signature = generate_signature(result, depth)
+    if signature then
+      scope_to_signature[result.name] = signature
+      if result.scope then
+        scope_to_signature[result.scope .. "." .. result.name] = signature
+      end
     end
 
     local clean_name = result.name:match("^([^%s%(]+)") or result.name
     clean_name = state_ctags.original_ft == "markdown" and result.name or clean_name
-    local style = tonumber(M.config.display.style) or 2
-    local prefix = ui.get_prefix(depth, style)
-    local display_text = prefix .. clean_name
 
-    local kind = lsp.symbol_kind(symbolKindMap[result.kind])
+    -- Get symbol kind with proper mapping
+    local kind = lsp.symbol_kind(symbolKindMap[result.kind] or vim.lsp.protocol.SymbolKind.Function)
 
     local item = {
-      text = display_text,
       value = {
         text = clean_name,
         name = clean_name,
@@ -81,6 +124,9 @@ local function symbols_to_selecta_items(raw_symbols)
         col = 1,
         end_lnum = (result["end"] or result.line) + 1,
         end_col = 100,
+        signature = signature,
+        parent_signature = parent_signature,
+        scope = result.scope, -- Store scope for debugging
       },
       icon = M.config.kindIcons[kind] or M.config.icon,
       kind = kind,
@@ -90,14 +136,32 @@ local function symbols_to_selecta_items(raw_symbols)
     table.insert(items, item)
   end
 
+  -- First pass: process all symbols
   for _, symbol in ipairs(raw_symbols) do
     process_symbol_result(symbol)
+  end
+
+  -- Sort items by line number to maintain proper order
+  table.sort(items, function(a, b)
+    return a.value.lnum < b.value.lnum
+  end)
+
+  -- Add tree guides if configured
+  if M.config.display.format == "tree_guides" then
+    logger.log("ctags_symbols before tree: " .. vim.inspect(items))
+    items = format_utils.add_tree_state_to_items(items)
+  end
+
+  -- Set display text for all items based on format
+  for _, item in ipairs(items) do
+    item.text = format_utils.format_item_for_display(item, M.config)
   end
 
   symbol_cache = { key = cache_key, items = items }
   logger.log("symbols_to_selecta_items() - Created " .. #items .. " items")
   logger.log("symbols_to_selecta_items() - Symbol range cache size before: " .. #symbol_range_cache)
   symbol_utils.update_symbol_ranges_cache(items, symbol_range_cache)
+
   return items
 end
 

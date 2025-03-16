@@ -23,35 +23,15 @@ function M.get_item_prefix(item, config)
 
   local format = config.display.format or "indent"
 
-  -- Special case: if we're using indent format with icon mode,
-  -- we'll handle this in format_item_for_display instead
-  if format == "indent" and config.display.mode == "icon" then
-    return prefix_padding
-  end
-
   if format == "indent" then
-    -- Use the original indentation style
-    local depth = item.depth or 0
-    local indent_size = config.display.indent_size or 2
-    local indent = string.rep(" ", depth * indent_size)
-
-    -- Add symbol based on display style setting
-    local style = tonumber(config.display.style) or 2
-    local prefix_symbol = ""
-
-    if style == 2 and depth > 0 then
-      prefix_symbol = ".."
-    elseif style == 3 and depth > 0 then
-      prefix_symbol = "→"
-    end
-
-    return prefix_padding .. indent .. (prefix_symbol and prefix_symbol .. "" or "")
+    -- For indent format, we'll only return the padding
+    -- The actual indentation will be handled in format_item_for_display
+    return prefix_padding
   elseif format == "tree_guides" then
-    -- For tree_guides format, consistent handling
     return prefix_padding
   end
 
-  return prefix_padding -- Default fallback with just padding
+  return prefix_padding
 end
 
 -- Generate tree guides based on tree state
@@ -131,18 +111,11 @@ function M.format_item_for_display(item, config)
     -- Add tree guides after prefix
     prefix = prefix .. tree_guides
   end
-
+  -- tenable
   -- Special case for indent format with icon mode
   if config.display.mode == "icon" and config.display.format == "indent" then
-    -- Calculate prefix symbol based on depth
     local depth = item.depth or 0
     local style = tonumber(config.display.style) or 2
-    local prefix_symbol = ""
-    if style == 2 and depth > 0 then
-      prefix_symbol = ".."
-    elseif style == 3 and depth > 0 then
-      prefix_symbol = "→"
-    end
 
     -- Icon and other elements
     local icon = item.icon or "  "
@@ -155,32 +128,29 @@ function M.format_item_for_display(item, config)
       indicator = "▼ "
     end
 
-    -- Optional file info (used in call hierarchy)
+    -- Create depth indicator with padding before the symbol
+    local depth_indicator = ""
+    if depth > 0 then
+      if style == 2 then
+        depth_indicator = string.rep(" ", (depth - 1) * 2) .. ".."
+      elseif style == 3 then
+        depth_indicator = string.rep(" ", (depth - 1) * 2) .. "→"
+      end
+    end
+
+    -- Optional file info
     local file_info = ""
     if item.value and item.value.file_info then
       file_info = " " .. item.value.file_info
     end
 
-    -- Check if icon should be after prefix symbol (new option)
+    -- Check if icon should be after prefix symbol
     local icon_after_prefix = config.display.icon_after_prefix_symbol or false
 
-    -- Order components based on the configuration option
     if icon_after_prefix then
-      return prefix
-        .. indicator
-        .. (prefix_symbol ~= "" and prefix_symbol .. "" or "")
-        .. icon
-        .. padding
-        .. text
-        .. file_info
+      return prefix .. indicator .. depth_indicator .. icon .. padding .. text .. file_info
     else
-      return prefix
-        .. indicator
-        .. icon
-        .. padding
-        .. (prefix_symbol ~= "" and prefix_symbol .. "" or "")
-        .. text
-        .. file_info
+      return prefix .. indicator .. icon .. padding .. depth_indicator .. text .. file_info
     end
   else
     -- Handle different display modes
