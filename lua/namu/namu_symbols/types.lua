@@ -42,7 +42,7 @@
 
 ---@class NamuCoreConfig
 ---@field AllowKinds table<string, string[]> Symbol kinds to include
----@field display table<string, string|number> Display configuration
+---@field display table<string, string|number|table> Display configuration
 ---@field kindText table<string, string> Text representation of kinds
 ---@field kindIcons table<string, string> Icons for kinds
 ---@field BlockList table<string, string[]> Patterns to exclude

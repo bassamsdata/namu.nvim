@@ -52,7 +52,7 @@ M.defaults = {
   display = {
     mode = "icon", -- "icon" or "raw"
     padding = 2,
-    style = 2,
+    style = 2, -- 1 or 2
     format = "indent", -- Options = "indent"|"tree_guides"
     indent_size = 2,
     tree_guides = { style = "unicode" }, -- Options = "ascii"|"unicode"

@@ -41,7 +41,6 @@ end
 function M.make_tree_guides(tree_state, style)
   -- Debug logging
   logger = require("namu.utils.logger")
-  logger.log("make_tree_guides called with tree_state: " .. vim.inspect(tree_state))
 
   if not tree_state or #tree_state == 0 then
     logger.log("make_tree_guides: empty tree_state, returning empty string")
@@ -68,11 +67,9 @@ function M.make_tree_guides(tree_state, style)
     if tree_state[idx] then
       -- This branch is the last item at its level, no continuation needed
       result = result .. "  "
-      logger.log("Level " .. idx .. " is last, adding spaces")
     else
       -- This branch has siblings below, need vertical line
       result = result .. style_chars.continue
-      logger.log("Level " .. idx .. " has siblings, adding " .. style_chars.continue)
     end
   end
 
@@ -80,14 +77,11 @@ function M.make_tree_guides(tree_state, style)
   if #tree_state > 0 then
     if tree_state[#tree_state] then
       result = result .. style_chars.last
-      logger.log("Last level is last, adding " .. style_chars.last)
     else
       result = result .. style_chars.item
-      logger.log("Last level has siblings, adding " .. style_chars.item)
     end
   end
 
-  logger.log("Final tree guide result: '" .. result .. "'")
   return result
 end
 

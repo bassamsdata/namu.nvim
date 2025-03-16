@@ -13,25 +13,40 @@ local M = {}
 M.config = require("namu.namu_symbols.config").values
 
 ---@type NamuState
-local state_ctags = symbol_utils.create_state("namu_ctags_preview")
-if M.config.custom_keymaps then
-  local handlers = symbol_utils.create_keymaps_handlers(M.config, state_ctags, ui, selecta, ext, utils)
-  M.config.custom_keymaps.yank.handler = handlers.yank
-  M.config.custom_keymaps.delete.handler = handlers.delete
-  M.config.custom_keymaps.vertical_split.handler = function(item)
-    return handlers.vertical_split(item)
+local state = nil
+local handlers = nil
+
+local function initialize_state()
+  -- Clear any existing highlights if state exists
+  if state and state.original_win and state.preview_ns then
+    ui.clear_preview_highlight(state.original_win, state.preview_ns)
   end
-  M.config.custom_keymaps.horizontal_split.handler = handlers.horizontal_split
-  M.config.custom_keymaps.codecompanion.handler = handlers.codecompanion
-  M.config.custom_keymaps.avante.handler = handlers.avante
+
+  -- Create new state
+  state = symbol_utils.create_state("namu_ctags_preview")
+  state.original_win = vim.api.nvim_get_current_win()
+  state.original_buf = vim.api.nvim_get_current_buf()
+  state.original_ft = vim.bo.filetype
+  state.original_pos = vim.api.nvim_win_get_cursor(state.original_win)
+
+  -- FIX: I need to find better way of doing this
+  -- If i moved this to setup then it's an issue and intervene with other modules
+  -- Recreate handlers with new state
+  handlers = symbol_utils.create_keymaps_handlers(M.config, state, ui, selecta, ext, utils)
+  -- Update keymap handlers
+  if M.config.custom_keymaps then
+    M.config.custom_keymaps.yank.handler = handlers.yank
+    M.config.custom_keymaps.delete.handler = handlers.delete
+    M.config.custom_keymaps.vertical_split.handler = handlers.vertical_split
+    M.config.custom_keymaps.horizontal_split.handler = handlers.horizontal_split
+    M.config.custom_keymaps.codecompanion.handler = handlers.codecompanion
+    M.config.custom_keymaps.avante.handler = handlers.avante
+  end
 end
 
 -- Symbol cache
 local symbol_cache = nil
 local symbol_range_cache = {}
-
--- Cache for symbol kinds
-local symbol_kinds = nil
 
 ---Converts LSP symbols to selecta-compatible items with proper formatting
 ---@param raw_symbols TagEntry[]
@@ -45,114 +60,111 @@ local function symbols_to_selecta_items(raw_symbols)
   end
 
   local items = {}
-  local parent_stack = {}
-  local scope_to_signature = {}
-  local class_depth_map = {} -- Track class depths
+  local scope_signatures = {}
 
-  -- Generate a unique signature for a symbol
+  -- Calculate depth based on scope
+  local function get_scope_depth(scope)
+    if not scope then
+      return 0
+    end
+    -- Special handling for Lua
+    if state.original_ft == "lua" then
+      -- For Lua, we don't count dots as nesting for module patterns
+      ---@diagnostic disable-next-line: undefined-global
+      if scope and scopeKind == "unknown" then
+        return 0 -- Module pattern, don't create artificial nesting
+      end
+      -- Only count actual nesting (like methods in classes)
+      ---@diagnostic disable-next-line: undefined-global
+      return scopeKind == "class" and 1 or 0
+    end
+    -- For other languages, count dots for nesting depth
+    return select(2, scope:gsub("%.", "")) + 1
+  end
+
+  local function get_display_name(symbol)
+    if state.original_ft == "lua" then
+      -- For Lua, show full name for module patterns
+      if symbol.scope and symbol.scopeKind == "unknown" then
+        return symbol.scope .. "." .. symbol.name
+      end
+    end
+    return symbol.name
+  end
+
   local function generate_signature(symbol, depth)
     if not symbol or not symbol.line then
       return nil
     end
-
+    -- For Lua, include full scope in signature for module patterns
     local name = symbol.name
-    if state_ctags.original_ft == "lua" then
-      -- For Lua, use the full name in the signature
-      if symbol.scope then
-        name = symbol.scope .. "." .. symbol.name
-      end
+    if state.original_ft == "lua" and symbol.scope and symbol.scopeKind == "unknown" then
+      name = symbol.scope .. "." .. symbol.name
     end
+    return string.format("%s:%d:%d:1", symbol.name, depth, symbol.line)
+  end
 
-    return string.format("%s:%d:%d:1", name, depth, symbol.line)
+  -- First pass: generate signatures for all scopes
+  for _, symbol in ipairs(raw_symbols) do
+    if symbol.kind == "class" then
+      local depth = get_scope_depth(symbol.scope)
+      local signature = generate_signature(symbol, depth)
+      -- Store with full scope path if it exists
+      local full_scope = symbol.scope and (symbol.scope .. "." .. symbol.name) or symbol.name
+      scope_signatures[full_scope] = signature
+    end
   end
 
   local function process_symbol_result(result)
     if not result or not result.name then
       return
     end
-
     logger.log("Processing symbol: " .. vim.inspect(result))
-
-    local depth = 0
-    local full_name = result.name
-    local display_name = result.name
-
-    -- Special handling for Lua files
-    if state_ctags.original_ft == "lua" then
-      if result.scope then
-        -- Handle explicit scopes (like methods in classes)
-        if result.scopeKind == "class" then
-          depth = 1
-        else
-          -- Don't treat dot notation as nesting for functions
-          depth = 0
-        end
-
-        -- Construct full name for Lua modules/functions
-        full_name = result.scope .. "." .. result.name
-      else
-        -- Check if the name itself contains dots (module pattern)
-        local dots = result.name:gsub("[^%.]+", "")
-        if #dots > 0 then
-          -- Extract the last part as display name
-          display_name = result.name:match("([^%.]+)$") or result.name
-          depth = 0 -- Don't indent based on dots
-        end
-      end
-    else
-      -- For other languages, use the regular scope-based depth
-      if result.scope then
-        depth = (result.scope:match("%.") or ""):len() + 1
-      end
+    local depth = get_scope_depth(result.scope)
+    local parent_signature = nil
+    -- Get parent signature based on scope
+    if result.scope then
+      parent_signature = scope_signatures[result.scope]
     end
-
     local kind = lsp.symbol_kind(symbolKindMap[result.kind])
+    local signature = generate_signature(result, depth)
+    local display_name = get_display_name(result)
+    -- If this is a class, store its signature with full scope path
+    if result.kind == "class" then
+      local full_scope = result.scope and (result.scope .. "." .. result.name) or result.name
+      scope_signatures[full_scope] = signature
+    end
 
     local item = {
       value = {
         text = display_name,
-        name = full_name, -- Keep the full name for reference
+        name = display_name,
         kind = kind,
         lnum = result.line,
         col = 1,
         end_lnum = (result["end"] or result.line) + 1,
         end_col = 100,
-        signature = generate_signature(result, depth),
-        parent_signature = result.scope and generate_signature({ name = result.scope, line = 0 }, depth - 1) or nil,
+        signature = signature,
+        parent_signature = parent_signature,
       },
       icon = M.config.kindIcons[kind] or M.config.icon,
       kind = kind,
       depth = depth,
     }
 
-    logger.log("ctags_symbols depth: " .. vim.inspect({ depth }))
+    logger.log("ctags_symbols parent: " .. vim.inspect({ item }))
     table.insert(items, item)
   end
-
-  -- First pass: process all symbols
   for _, symbol in ipairs(raw_symbols) do
     process_symbol_result(symbol)
   end
-
-  -- Sort items by line number to maintain proper order
-  table.sort(items, function(a, b)
-    return a.value.lnum < b.value.lnum
-  end)
-
-  -- Add tree guides if configured
   if M.config.display.format == "tree_guides" then
-    logger.log("ctags_symbols before tree: " .. vim.inspect(items))
     items = format_utils.add_tree_state_to_items(items)
   end
-
-  -- Set display text for all items based on format
   for _, item in ipairs(items) do
     item.text = format_utils.format_item_for_display(item, M.config)
   end
-
   symbol_cache = { key = cache_key, items = items }
-  logger.log("symbols_to_selecta_items() - Created " .. #items .. " items")
-  logger.log("symbols_to_selecta_items() - Symbol range cache size before: " .. #symbol_range_cache)
   symbol_utils.update_symbol_ranges_cache(items, symbol_range_cache)
 
   return items
@@ -163,10 +175,10 @@ end
 ---@param callback fun(err: any, result: any, ctx: any)
 local function request_symbols(bufnr, callback)
   -- Cancel any existing request
-  if state_ctags.current_request then
-    local client = state_ctags.current_request.client
+  if state.current_request then
+    local client = state.current_request.client
     client.kill(9)
-    state_ctags.current_request = nil
+    state.current_request = nil
   end
 
   local path = vim.api.nvim_buf_get_name(bufnr)
@@ -203,7 +215,7 @@ local function request_symbols(bufnr, callback)
   end
   if not closed and request.pid then
     -- Store the client and request_id
-    state_ctags.current_request = {
+    state.current_request = {
       client = request,
     }
   else
@@ -211,18 +223,13 @@ local function request_symbols(bufnr, callback)
     callback("Request failed or request_id was nil", nil, nil)
   end
 
-  return state_ctags.current_request
+  return state.current_request
 end
 
 ---Main entry point for symbol jumping functionality
 function M.show(opts)
   opts = opts or {}
-  -- Store current window and position
-  state_ctags.original_win = vim.api.nvim_get_current_win()
-  state_ctags.original_buf = vim.api.nvim_get_current_buf()
-  state_ctags.original_ft = vim.bo.filetype
-  state_ctags.original_pos = vim.api.nvim_win_get_cursor(state_ctags.original_win)
-
+  initialize_state()
   -- TODO: Move this to the setup highlights
   vim.api.nvim_set_hl(0, M.config.highlight, {
     link = "Visual",
@@ -231,7 +238,7 @@ function M.show(opts)
   local notify_opts = { title = "Namu", icon = M.config.icon }
 
   -- Use cached symbols if available
-  local bufnr = state_ctags.original_buf
+  local bufnr = state.original_buf
   local cache_key = string.format("%d_%d", bufnr, vim.b[bufnr].changedtick or 0)
 
   if symbol_cache and symbol_cache.key == cache_key then
@@ -242,13 +249,13 @@ function M.show(opts)
         return item.kind == opts.filter_kind
       end, items)
     end
-    symbol_utils.show_picker(items, state_ctags, M.config, ui, selecta, "Ctags", notify_opts, true)
+    symbol_utils.show_picker(items, state, M.config, ui, selecta, "Ctags", notify_opts, true)
     return
   end
 
   -- Log initial state
   logger.log("CTags show() - Symbol range cache entries: " .. #symbol_range_cache)
-  request_symbols(state_ctags.original_buf, function(err, result, _)
+  request_symbols(state.original_buf, function(err, result, _)
     if err ~= nil then
       local error_message = err
       if type(err) == "table" then
@@ -281,12 +288,17 @@ function M.show(opts)
       end, selectaItems)
     end
 
-    symbol_utils.show_picker(selectaItems, state_ctags, M.config, ui, selecta, "Ctags", notify_opts, true)
+    symbol_utils.show_picker(selectaItems, state, M.config, ui, selecta, "Ctags", notify_opts, true)
   end)
 end
 
+M._test = {
+  symbols_to_selecta_items = symbols_to_selecta_items,
+}
+
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+  logger.log("CTags setup() - Config: " .. vim.inspect(M.config))
 end
 
 return M

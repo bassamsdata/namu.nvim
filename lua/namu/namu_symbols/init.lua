@@ -50,8 +50,8 @@ M.config = config.values
 
 ---@type NamuState
 local state = nil
-
 local handlers = nil
+
 local function initialize_state()
   -- Clear any existing highlights if state exists
   if state and state.original_win and state.preview_ns then
@@ -65,10 +65,24 @@ local function initialize_state()
   state.original_ft = vim.bo.filetype
   state.original_pos = vim.api.nvim_win_get_cursor(state.original_win)
 
+  -- FIX: I need to find better way of doing this
+  -- If i moved this to setup then it's an issue and intervene with other modules
   -- Recreate handlers with new state
   handlers = symbol_utils.create_keymaps_handlers(M.config, state, ui, selecta, ext, utils)
-
   -- Update keymap handlers
+  if M.config.custom_keymaps then
+    M.config.custom_keymaps.yank.handler = handlers.yank
+    M.config.custom_keymaps.delete.handler = handlers.delete
+    M.config.custom_keymaps.vertical_split.handler = handlers.vertical_split
+    M.config.custom_keymaps.horizontal_split.handler = handlers.horizontal_split
+    M.config.custom_keymaps.codecompanion.handler = handlers.codecompanion
+    M.config.custom_keymaps.avante.handler = handlers.avante
+  end
+end
+
+local function initialize_handlers()
+  handlers = symbol_utils.create_keymaps_handlers(M.config, state, ui, selecta, ext, utils)
+
   if M.config.custom_keymaps then
     M.config.custom_keymaps.yank.handler = handlers.yank
     M.config.custom_keymaps.delete.handler = handlers.delete
@@ -171,6 +185,7 @@ local function symbols_to_selecta_items(raw_symbols)
       depth = depth,
     }
 
+    logger.log("namu_symbols parent: " .. vim.inspect({ item }))
     table.insert(items, item)
 
     -- Store current signature as parent for next depth level
@@ -265,12 +280,16 @@ function M.show(opts)
   end)
 end
 
+M._test = {
+  symbols_to_selecta_items = symbols_to_selecta_items,
+}
+
 ---Initializes the module with user configuration
 function M.setup(opts)
   -- config.setup(opts or {})
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+  logger.log("buffer_symbols_config: " .. vim.inspect(M.config))
   ui.setup(M.config)
-  -- vim.inspect("buffer_symbols_state: " .. vim.inspect(buffer_symbols_state))
 
   if M.config.kinds and M.config.kinds.enable_highlights then
     vim.schedule(function()
