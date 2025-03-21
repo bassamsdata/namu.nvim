@@ -10,18 +10,24 @@ local state = {
 local ns_id = vim.api.nvim_create_namespace("namu_symbols")
 
 function M.setup_highlights()
+  -- Helper function to add default = true to highlight attributes
+  local function hl(attrs)
+    attrs.default = true
+    return attrs
+  end
+
   local highlights = {
-    NamuPrefixSymbol = { link = "@Comment" },
-    NamuSymbolFunction = { link = "@function" },
-    NamuSymbolMethod = { link = "@function.method" },
-    NamuSymbolClass = { link = "@lsp.type.class" },
-    NamuSymbolInterface = { link = "@lsp.type.interface" },
-    NamuSymbolVariable = { link = "@lsp.type.variable" },
-    NamuSymbolConstant = { link = "@lsp.type.constant" },
-    NamuSymbolProperty = { link = "@lsp.type.property" },
-    NamuSymbolField = { link = "@lsp.type.field" },
-    NamuSymbolEnum = { link = "@lsp.type.enum" },
-    NamuSymbolModule = { link = "@lsp.type.module" },
+    NamuPrefixSymbol = hl({ link = "@Comment" }),
+    NamuSymbolFunction = hl({ link = "@function" }),
+    NamuSymbolMethod = hl({ link = "@function.method" }),
+    NamuSymbolClass = hl({ link = "@lsp.type.class" }),
+    NamuSymbolInterface = hl({ link = "@lsp.type.interface" }),
+    NamuSymbolVariable = hl({ link = "@lsp.type.variable" }),
+    NamuSymbolConstant = hl({ link = "@lsp.type.constant" }),
+    NamuSymbolProperty = hl({ link = "@lsp.type.property" }),
+    NamuSymbolField = hl({ link = "@lsp.type.field" }),
+    NamuSymbolEnum = hl({ link = "@lsp.type.enum" }),
+    NamuSymbolModule = hl({ link = "@lsp.type.module" }),
   }
 
   for name, attrs in pairs(highlights) do

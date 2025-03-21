@@ -268,27 +268,22 @@ end
 ---Set up the highlight groups
 ---@return nil
 local function setup_highlights()
-  local highlights = {
-    SelectaPrefix = { link = "Special" },
-    SelectaMatch = { link = "Identifier" }, -- or maybe DiagnosticFloatingOk
-    -- SelectaFilter = { link = "Type" },
-    SelectaCursor = { blend = 100, nocombine = true },
-    SelectaPrompt = { link = "FloatTitle" },
-    SelectaSelected = { link = "Statement" },
-    SelectaFooter = { link = "Comment" },
-    -- NamuCurrentLine = { link = M.config.current_highlight.hl_group },
-  }
+  -- Helper function to add default = true to highlight attributes
+  local function hl(attrs)
+    attrs.default = true
+    return attrs
+  end
 
-  -- NOTE: for some wierd reason, this is the only way those 2 highlight groups works
-  -- FIX: I think it needs default = true to make it work. needs testing
-  local current_hl_group = M.config.current_highlight.hl_group
-  vim.cmd(string.format(
-    [[
-    highlight default link SelectaFilter Type
-    highlight default link NamuCurrentLine %s
-  ]],
-    current_hl_group
-  ))
+  local highlights = {
+    SelectaPrefix = hl({ link = "Special" }),
+    SelectaMatch = hl({ link = "Identifier" }),
+    SelectaFilter = hl({ link = "Type" }),
+    SelectaCursor = hl({ blend = 100, nocombine = true }),
+    SelectaPrompt = hl({ link = "FloatTitle" }),
+    SelectaSelected = hl({ link = "Statement" }),
+    SelectaFooter = hl({ link = "Comment" }),
+    NamuCurrentLine = hl({ link = M.config.current_highlight.hl_group }),
+  }
 
   M.log("Setting up highlights...")
   for name, attrs in pairs(highlights) do
@@ -1920,9 +1915,7 @@ function M.setup(opts)
   -- Set up initial highlights
   logger.setup(opts)
   M.log("Calling setup_highlights from M.setup")
-  vim.schedule(function()
-    setup_highlights()
-  end)
+  setup_highlights()
 
   -- Create autocmd for ColorScheme event
   M.log("Creating ColorScheme autocmd")

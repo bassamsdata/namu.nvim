@@ -292,9 +292,7 @@ function M.setup(opts)
   ui.setup(M.config)
 
   if M.config.kinds and M.config.kinds.enable_highlights then
-    vim.schedule(function()
-      ui.setup_highlights()
-    end)
+    ui.setup_highlights()
   end
 
   vim.api.nvim_create_autocmd("ColorScheme", {
