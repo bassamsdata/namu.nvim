@@ -226,9 +226,6 @@ function M.add_tree_state_to_items(items)
     end
   end
 
-  logger.log("Items with signature: " .. items_with_signature)
-  logger.log("Items with parent: " .. items_with_parent)
-  logger.log("Root items (no parent): " .. root_item_count)
 
   -- Debug parent-child relationships
   for parent_sig, children in pairs(children_by_parent) do
@@ -304,21 +301,16 @@ function M.add_tree_state_to_items(items)
 
   -- First, collect all true root items (no parent)
   local root_items = {}
-  for i, item in ipairs(items) do
+  for _, item in ipairs(items) do
     if item.value and item.value.signature and not item.value.parent_signature then
       table.insert(root_items, item)
     end
   end
 
-  logger.log("Root items collected: " .. #root_items)
-
   -- If we have multiple root items, they should indicate they're part of a sequence
   for i, root_item in ipairs(root_items) do
     local is_last = (i == #root_items)
     root_item.tree_state = { is_last }
-    logger.log(
-      "Root item " .. i .. " with signature " .. root_item.value.signature .. " set is_last=" .. tostring(is_last)
-    )
 
     -- Process children of this root
     process_children(root_item.value.signature, root_item.tree_state)

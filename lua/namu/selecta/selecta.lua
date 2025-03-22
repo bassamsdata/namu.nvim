@@ -240,11 +240,11 @@ local current_selection_ns = vim.api.nvim_create_namespace("selecta_current_sele
 ---Hide the cursor by setting guicursor and caching the original value
 ---@return nil
 local function hide_cursor()
-  if vim.o.guicursor == "a:Selectacursor" then
+  if vim.o.guicursor == "a:NamuCursor" then
     return
   end
   cursor_cache.guicursor = vim.o.guicursor
-  vim.o.guicursor = "a:SelectaCursor"
+  vim.o.guicursor = "a:NamuCursor"
 end
 
 ---Restore the cursor to its original state
@@ -957,8 +957,8 @@ local function update_cursor_position(state, opts)
     if has_hierarchical_results and state.best_match_index and not state.cursor_moved then
       -- Use the best match index we calculated during hierarchical filtering
       new_pos = { state.best_match_index, 0 }
-    -- Only use best_match_index if we haven't moved the cursor manually
-    -- and we're not in initial state
+      -- Only use best_match_index if we haven't moved the cursor manually
+      -- and we're not in initial state
     elseif opts.preserve_order and state.best_match_index and not state.initial_open and not state.cursor_moved then
       new_pos = { state.best_match_index, 0 }
     else
@@ -1325,10 +1325,6 @@ local function create_picker(items, opts)
     height = height,
     style = "minimal",
     border = get_border_with_footer(opts),
-    -- title = { -- this for one window module
-    --   { opts.window.title_prefix or M.config.window.title_prefix, "SelectaPrompt" },
-    -- },
-    -- title_pos = "center",
   }, opts.window.override or {})
 
   if opts.window.show_footer then

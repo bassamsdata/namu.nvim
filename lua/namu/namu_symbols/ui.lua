@@ -1,13 +1,5 @@
 local M = {}
 local logger = require("namu.utils.logger")
-local uv = vim.uv or vim.loop
-
--- Internal state for UI operations
-local state = {
-  preview_ns = vim.api.nvim_create_namespace("namu_preview"),
-}
-
-local ns_id = vim.api.nvim_create_namespace("namu_symbols")
 
 function M.setup_highlights()
   -- Helper function to add default = true to highlight attributes
@@ -305,7 +297,7 @@ function M.apply_highlights(buf, items, config)
           local visual_width = vim.api.nvim_strwidth(pattern)
 
           -- Try highlighting with a slightly expanded range
-          vim.api.nvim_buf_set_extmark(buf, ns_id, line, pattern_pos - 1, {
+          vim.api.nvim_buf_set_extmark(buf, namu_ns_id, line, pattern_pos - 1, {
             end_row = line,
             end_col = pattern_pos - 1 + #pattern, -- Use byte length instead of visual width
             hl_group = guide_hl,

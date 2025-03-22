@@ -41,7 +41,6 @@ local utils = require("namu.namu_symbols.utils")
 local config = require("namu.namu_symbols.config")
 local symbol_utils = require("namu.core.symbol_utils")
 local format_utils = require("namu.core.format_utils")
-local logger = require("namu.utils.logger")
 local M = {}
 
 -- For backward compatibility
@@ -59,7 +58,7 @@ local function initialize_state()
   end
 
   -- Create new state
-  state = symbol_utils.create_state("namu_ctags_preview")
+  state = symbol_utils.create_state("namu_symbols_preview")
   state.original_win = vim.api.nvim_get_current_win()
   state.original_buf = vim.api.nvim_get_current_buf()
   state.original_ft = vim.bo.filetype
@@ -185,7 +184,6 @@ local function symbols_to_selecta_items(raw_symbols)
       depth = depth,
     }
 
-    logger.log("namu_symbols parent: " .. vim.inspect({ item }))
     table.insert(items, item)
 
     -- Store current signature as parent for next depth level
@@ -225,14 +223,7 @@ end
 function M.show(opts)
   opts = opts or {}
   initialize_state()
-
-  -- TODO: Move this to the setup highlights
-  vim.api.nvim_set_hl(0, M.config.highlight, {
-    link = "Visual",
-  })
-
   local notify_opts = { title = "Namu", icon = M.config.icon }
-
   -- Use cached symbols if available
   local bufnr = vim.api.nvim_get_current_buf()
   local cache_key = string.format("%d_%d", bufnr, vim.b[bufnr].changedtick or 0)
