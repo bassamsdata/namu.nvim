@@ -240,7 +240,7 @@ local current_selection_ns = vim.api.nvim_create_namespace("selecta_current_sele
 ---Hide the cursor by setting guicursor and caching the original value
 ---@return nil
 local function hide_cursor()
-  if vim.o.guicursor == "a:MiniPickCursor" then
+  if vim.o.guicursor == "a:Selectacursor" then
     return
   end
   cursor_cache.guicursor = vim.o.guicursor
@@ -260,6 +260,7 @@ local function restore_cursor()
 
   -- Restore original guicursor
   if cursor_cache.guicursor then
+    logger.log("Restoring cursor: " .. cursor_cache.guicursor)
     vim.o.guicursor = cursor_cache.guicursor
     cursor_cache.guicursor = nil
   end
@@ -275,13 +276,13 @@ local function setup_highlights()
   end
 
   local highlights = {
-    SelectaPrefix = hl({ link = "Special" }),
-    SelectaMatch = hl({ link = "Identifier" }),
-    SelectaFilter = hl({ link = "Type" }),
-    SelectaCursor = hl({ blend = 100, nocombine = true }),
-    SelectaPrompt = hl({ link = "FloatTitle" }),
-    SelectaSelected = hl({ link = "Statement" }),
-    SelectaFooter = hl({ link = "Comment" }),
+    NamuPrefix = hl({ link = "Special" }),
+    NamuMatch = hl({ link = "Identifier" }),
+    NamuFilter = hl({ link = "Type" }),
+    NamuCursor = hl({ blend = 100, nocombine = true }),
+    NamuPrompt = hl({ link = "FloatTitle" }),
+    NamuSelected = hl({ link = "Statement" }),
+    NamuFooter = hl({ link = "Comment" }),
     NamuCurrentLine = hl({ link = M.config.current_highlight.hl_group }),
   }
 
@@ -306,7 +307,7 @@ local function get_prefix_info(item, max_prefix_width)
     width = max_prefix_width + 1, -- Add padding
     raw_width = raw_width,
     padding = max_prefix_width - raw_width + 1,
-    hl_group = item.hl_group or "SelectaPrefix", -- Use item's highlight group or default
+    hl_group = item.hl_group or "NamuPrefix", -- Use item's highlight group or default
   }
 end
 
@@ -505,10 +506,10 @@ local function update_prompt(state, opts)
   if vim.api.nvim_win_is_valid(state.win) then
     if state.prompt_win and vim.api.nvim_win_is_valid(state.prompt_win) then
       vim.api.nvim_buf_set_lines(state.prompt_buf, 0, -1, false, { raw_prmpt })
-      -- vim.api.nvim_buf_add_highlight(state.prompt_buf, -1, "SelectaPrompt", 0, 0, -1)
+      -- vim.api.nvim_buf_add_highlight(state.prompt_buf, -1, "NamuPrompt", 0, 0, -1)
       -- else
       --   pcall(vim.api.nvim_win_set_config, state.win, {
-      --     title = { { raw_prmpt, "SelectaPrompt" } },
+      --     title = { { raw_prmpt, "NamuPrompt" } },
       --     title_pos = opts.window.title_pos or M.config.window.title_pos,
       --   })
     end
@@ -709,7 +710,7 @@ local function create_prompt_window(state, opts)
   }
 
   state.prompt_win = vim.api.nvim_open_win(state.prompt_buf, false, prompt_config)
-  -- vim.api.nvim_win_set_option(state.prompt_win, "winhl", "Normal:SelectaPrompt")
+  -- vim.api.nvim_win_set_option(state.prompt_win, "winhl", "Normal:NamuPrompt")
 end
 
 ---Generate a unique ID for an item
@@ -772,7 +773,7 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
     if prefix then
       vim.api.nvim_buf_set_extmark(state.prompt_buf, ns_id, 0, 0, {
         end_col = #prefix,
-        hl_group = "SelectaFilter",
+        hl_group = "NamuFilter",
         priority = 200,
       })
     end
@@ -781,7 +782,7 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
       local prefix_len = #(opts.window.title_prefix or "")
       vim.api.nvim_buf_set_extmark(state.prompt_buf, ns_id, 0, prefix_len, {
         end_col = prefix_len + 3, -- Length of %xx is 3
-        hl_group = "SelectaFilter",
+        hl_group = "NamuFilter",
         priority = 200,
       })
     end
@@ -803,7 +804,7 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
           if end_col > start_col then
             vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, start_col, {
               end_col = end_col,
-              hl_group = "SelectaMatch",
+              hl_group = "NamuMatch",
               priority = 200,
               hl_mode = "combine",
             })
@@ -870,7 +871,7 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
 
             vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, start_col, {
               end_col = end_col,
-              hl_group = "SelectaMatch",
+              hl_group = "NamuMatch",
               priority = 200,
               hl_mode = "combine",
             })
@@ -886,9 +887,9 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
     local item_id = get_item_id(item)
     if state.selected[item_id] then
       vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, 0, {
-        virt_text = { { indicator, "SelectaSelected" } },
-        virt_text_pos = "inline",
-        priority = 300,
+        virt_text = { { indicator, "NamuSelected" } },
+        virt_text_pos = "overlay",
+        priority = 200,
       })
     end
   end
@@ -926,7 +927,7 @@ local function update_current_highlight(state, opts, line_nr)
     vim.api.nvim_buf_set_extmark(state.buf, current_selection_ns, line_nr, 0, {
       virt_text = { { opts.current_highlight.prefix_icon, "NamuCurrentLine" } },
       virt_text_pos = "overlay",
-      priority = 100, -- Higher priority than the line highlight
+      priority = 201, -- Higher priority than the line highlight
     })
   end
 end
@@ -1063,7 +1064,7 @@ local function update_footer(state, win, opts)
   -- Now we update the footer separately using win_set_config with footer option
   pcall(vim.api.nvim_win_set_config, win, {
     footer = {
-      { footer_text, "SelectaFooter" },
+      { footer_text, "NamuFooter" },
     },
     footer_pos = footer_pos,
   })
@@ -1332,13 +1333,11 @@ local function create_picker(items, opts)
 
   if opts.window.show_footer then
     win_config.footer = {
-      { string.format(" %d/%d ", #items, #items), "SelectaFooter" },
+      { string.format(" %d/%d ", #items, #items), "NamuFooter" },
     }
     win_config.footer_pos = opts.window.footer_pos or "right"
   end
 
-  -- Hide cursor before creating window
-  hide_cursor()
   -- Create windows and setup
   state.win = vim.api.nvim_open_win(state.buf, true, win_config)
 
@@ -1787,6 +1786,7 @@ end
 ---@param opts? SelectaOptions
 ---@return SelectaItem|nil
 function M.pick(items, opts)
+  logger.log("Picking item - first thing")
   -- Merge options with defaults
   opts = vim.tbl_deep_extend("force", {
     title = "Select",
@@ -1832,6 +1832,7 @@ function M.pick(items, opts)
   local state = create_picker(items, opts)
   update_display(state, opts)
   vim.cmd("redraw")
+  hide_cursor()
 
   -- Handle initial cursor position
   if opts.initial_index and opts.initial_index <= #items then
@@ -1923,15 +1924,12 @@ function M.setup(opts)
     group = vim.api.nvim_create_augroup("SelectaHighlights", { clear = true }),
     callback = function()
       M.log("ColorScheme autocmd triggered")
-      vim.schedule(function()
-        setup_highlights()
-      end)
+      setup_highlights()
     end,
   })
 end
 
 ---Open current buffer in a split and jump to the selected symbol's location
----@param state SelectaState The current picker state
 ---@param item SelectaItem The LSP symbol item to jump to
 ---@param split_type? "vertical"|"horizontal" The type of split to create (defaults to horizontal)
 ---@param module_state NamuState The state from the calling module
@@ -1940,44 +1938,47 @@ function M.open_in_split(item, split_type, module_state)
   if not item then
     return nil
   end
-  -- vim.notify("state in split: " .. vim.inspect(module_state), vim.log.levels.DEBUG)
+
   -- Use module_state for original window and position if available
   local original_win = module_state.original_win and module_state.original_win or vim.api.nvim_get_current_win()
   local original_pos = module_state.original_pos and module_state.original_pos or vim.api.nvim_win_get_cursor(0)
-  -- Close the picker
   M.close_picker(state)
-
-  -- Ensure original window is valid
   if not original_win or not vim.api.nvim_win_is_valid(original_win) then
     vim.notify("Original window is no longer valid", vim.log.levels.ERROR)
     return nil
   end
-  -- First focus the original window
-  vim.api.nvim_set_current_win(original_win)
-  -- Create the split (this will create a new window but keep original window unchanged)
-  local split_cmd = split_type == "vertical" and "vsplit" or "split"
-  vim.cmd(split_cmd)
-  -- Get the new window ID (which is now the current window)
-  local new_win = vim.api.nvim_get_current_win()
-  -- For call hierarchy item, open the target file in the new window
-  if item.value and item.value.uri and item.value.file_path then
-    -- Open the file in the new window
-    vim.cmd("edit " .. vim.fn.fnameescape(item.value.file_path))
-
-    -- Jump to position
-    if item.value.lnum and item.value.col then
-      vim.api.nvim_win_set_cursor(new_win, { item.value.lnum, item.value.col - 1 })
-      vim.cmd("normal! zz")
+  local new_win
+  -- Execute window operations in the context of the original window
+  vim.api.nvim_win_call(original_win, function()
+    local split_cmd = split_type == "vertical" and "vsplit" or "split"
+    vim.cmd(split_cmd)
+    new_win = vim.api.nvim_get_current_win()
+  end)
+  -- Configure the new window
+  if new_win then
+    vim.api.nvim_win_call(new_win, function()
+      -- For call hierarchy item, open the target file in the new window
+      if item.value and item.value.uri and item.value.file_path then
+        vim.cmd("edit " .. vim.fn.fnameescape(item.value.file_path))
+      end
+      -- Jump to position
+      if item.value and item.value.lnum and item.value.col then
+        vim.api.nvim_win_set_cursor(0, { item.value.lnum, item.value.col - 1 })
+        vim.cmd("normal! zz")
+      end
+    end)
+  end
+  -- Restore original window's cursor position
+  vim.api.nvim_win_call(original_win, function()
+    if original_pos then
+      pcall(vim.api.nvim_win_set_cursor, 0, original_pos)
     end
+  end)
+  -- Finally, focus the new window for the user
+  -- This is intentional and desired behavior, not a side effect
+  if new_win and vim.api.nvim_win_is_valid(new_win) then
+    vim.api.nvim_set_current_win(new_win)
   end
-  -- IMPORTANT: Now go back to original window and restore position
-  vim.api.nvim_set_current_win(original_win)
-  if original_pos then
-    pcall(vim.api.nvim_win_set_cursor, original_win, original_pos)
-  end
-  -- Return focus to the split window for user convenience
-  vim.api.nvim_set_current_win(new_win)
-
   return new_win
 end
 

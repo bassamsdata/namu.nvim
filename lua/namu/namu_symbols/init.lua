@@ -286,9 +286,7 @@ M._test = {
 
 ---Initializes the module with user configuration
 function M.setup(opts)
-  -- config.setup(opts or {})
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
-  logger.log("buffer_symbols_config: " .. vim.inspect(M.config))
   ui.setup(M.config)
 
   if M.config.kinds and M.config.kinds.enable_highlights then
