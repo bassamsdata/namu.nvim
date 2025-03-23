@@ -233,10 +233,10 @@ T["Selecta.highlights"] = new_set({})
 -- test 11
 T["Selecta.highlights"]["sets up highlight groups"] = function()
   selecta._test.setup_highlights()
-  local match_hl = vim.api.nvim_get_hl(0, { name = "SelectaMatch" })
-  local prefix_hl = vim.api.nvim_get_hl(0, { name = "SelectaPrefix" })
-  local cursor_hl = vim.api.nvim_get_hl(0, { name = "SelectaCursor" })
-  local filter_hl = vim.api.nvim_get_hl(0, { name = "SelectaFilter" })
+  local match_hl = vim.api.nvim_get_hl(0, { name = "NamuMatch" })
+  local prefix_hl = vim.api.nvim_get_hl(0, { name = "NamuPrefix" })
+  local cursor_hl = vim.api.nvim_get_hl(0, { name = "NamuCursor" })
+  local filter_hl = vim.api.nvim_get_hl(0, { name = "NamuFilter" })
 
   -- Verify highlight attributes
   h.eq(type(match_hl), "table")
