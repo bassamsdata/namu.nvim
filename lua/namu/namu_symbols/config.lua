@@ -153,7 +153,7 @@ M.defaults = {
     height_ratio = 0.6,
     title_prefix = "󱠦 ",
   },
-  debug = true,
+  debug = false,
   focus_current_symbol = true,
   auto_select = false,
   initially_hidden = false,

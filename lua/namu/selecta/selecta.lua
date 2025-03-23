@@ -754,6 +754,15 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
   -- if opts.preserve_hierarchy then
   -- apply_hierarchical_highlights(buf, line_nr, item, opts)
   -- end
+
+  -- Skip if line is not visible (extra safety check)
+  local win_info = vim.fn.getwininfo(state.win)[1]
+  local topline = win_info.topline - 1
+  local botline = win_info.botline - 1
+
+  if line_nr < topline or line_nr > botline then
+    return
+  end
   local display_str = opts.formatter(item)
 
   local padding_width = 0
@@ -1348,9 +1357,11 @@ local function create_picker(items, opts)
   vim.wo[state.win].cursorlineopt = "both"
   vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = state.buf })
   vim.api.nvim_set_option_value("buftype", "nofile", { buf = state.buf })
+  logger.benchmark_end("window_setup")
 
+  logger.benchmark_start("initial_display")
   -- First update the display
-  update_display(state, opts)
+  -- update_display(state, opts)
 
   -- Handle initial cursor position if specified
   if opts.initial_index and opts.initial_index <= #items then

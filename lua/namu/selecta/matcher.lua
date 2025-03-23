@@ -51,9 +51,9 @@ function M.find_fuzzy_match(text, query, has_uppercase)
     logger.log("Fuzzy match error: " .. error_msg)
     return nil, 0, 0
   end
-  if #query > 4 then -- Only log for longer queries to reduce noise
-    logger.log(string.format("Fuzzy: '%s' → '%s'", text, query))
-  end
+  -- if #query > 4 then -- Only log for longer queries to reduce noise
+  --   logger.log(string.format("Fuzzy: '%s' → '%s'", text, query))
+  -- end
 
   -- Initialize variables
   local positions = {}

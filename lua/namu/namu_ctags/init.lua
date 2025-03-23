@@ -228,12 +228,9 @@ end
 
 ---Main entry point for symbol jumping functionality
 function M.show(opts)
+  logger.benchmark_start("ctags_show_total")
   opts = opts or {}
   initialize_state()
-  -- TODO: Move this to the setup highlights
-  vim.api.nvim_set_hl(0, M.config.highlight, {
-    link = "Visual",
-  })
 
   local notify_opts = { title = "Namu", icon = M.config.icon }
 

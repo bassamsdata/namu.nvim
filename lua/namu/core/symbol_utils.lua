@@ -296,7 +296,7 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
       logger.log("on_move()" .. vim.inspect(state))
       if config.preview.highlight_on_move and config.preview.highlight_mode == "always" then
         if item then
-          ui.highlight_symbol(item.value, state.original_win, state.preview_ns, state)
+          ui.highlight_symbol(item.value, state.original_win, state.preview_ns)
         end
       end
     end,

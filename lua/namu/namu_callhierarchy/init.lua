@@ -8,13 +8,231 @@ local config_defaults = require("namu.namu_symbols.config")
 local M = {}
 
 ---@type NamuState
-local state = symbol_utils.create_state("namu_callhierarchy_preview")
-local state_call = vim.tbl_deep_extend("force", state, {
-  preview_buffers = {}, -- Track all created preview buffers
-  active_preview_buf = nil, -- Current preview buffer
-  last_previewed_path = nil, -- Last file previewed
-  is_previewing = false, -- Flag to indicate preview mode
-})
+---@type NamuState
+local state = nil
+local handlers = nil
+local uv = vim.uv or vim.loop
+
+-- Not so Async wrapper for vim.fn.readfile using a coroutine.
+-- I tested a lot of methods for reading files, and this method came on top interms
+-- of performance, I might change it to io.read though since both are almost the same
+-- speed
+local function readfile_async(path, callback)
+  local co = coroutine.create(function()
+    -- Wrap the blocking readfile in a protected call.
+    local ok, lines = pcall(vim.fn.readfile, path)
+    -- Pass the result to the provided callback.
+    callback(ok, lines)
+  end)
+  -- Start the coroutine.
+  coroutine.resume(co)
+end
+
+local function create_preview_state()
+  logger.log("Creating new preview state")
+  return {
+    original_bufnr = nil,
+    original_cursor = nil,
+    original_view = nil,
+    preview_ns = vim.api.nvim_create_namespace("namu_preview_" .. vim.fn.rand()),
+    scratch_buf = nil,
+  }
+end
+
+local function initialize_state()
+  logger.log("Initializing preview state")
+  local current_state = {
+    -- Window tracking
+    original_win = vim.api.nvim_get_current_win(),
+    original_buf = vim.api.nvim_get_current_buf(),
+    original_pos = vim.api.nvim_win_get_cursor(0),
+    -- Add preview state locally
+    preview = create_preview_state(),
+  }
+
+  logger.log(
+    "Preview state initialized with original_win="
+      .. current_state.original_win
+      .. ", original_buf="
+      .. current_state.original_buf
+  )
+  logger.log("initialize_state: " .. vim.inspect(current_state))
+
+  return current_state
+end
+
+local function edit_file(path, win_id)
+  logger.log(string.format("Editing file: %s in window: %s", path, win_id))
+  if type(path) ~= "string" then
+    logger.log("Invalid path type")
+    return
+  end
+
+  local b = vim.api.nvim_win_get_buf(win_id or 0)
+  local try_mimic_buf_reuse = (vim.fn.bufname(b) == "" and vim.bo[b].buftype ~= "quickfix" and not vim.bo[b].modified)
+    and (#vim.fn.win_findbuf(b) == 1 and vim.deep_equal(vim.fn.getbufline(b, 1, "$"), { "" }))
+
+  if try_mimic_buf_reuse then
+    logger.log("Will try to reuse empty buffer")
+  end
+
+  local buf_id = vim.fn.bufadd(vim.fn.fnamemodify(path, ":."))
+  logger.log("Created/got buffer: " .. buf_id)
+
+  -- Set buffer in window (also loads it)
+  local ok, err = pcall(vim.api.nvim_win_set_buf, win_id or 0, buf_id)
+  if not ok then
+    logger.log("Failed to set buffer: " .. err)
+    return
+  end
+
+  vim.bo[buf_id].buflisted = true
+
+  if try_mimic_buf_reuse then
+    pcall(vim.api.nvim_buf_delete, b, { unload = false })
+    logger.log("Deleted old empty buffer")
+  end
+
+  return buf_id
+end
+local function create_scratch_buffer()
+  logger.log("Creating scratch buffer for preview")
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].bufhidden = "wipe"
+  vim.bo[buf].buftype = "nofile"
+  vim.bo[buf].swapfile = false
+  vim.bo[buf].matchpairs = ""
+  return buf
+end
+
+local function save_window_state(win_id, preview_state)
+  logger.log("Saving window state for win_id: " .. win_id)
+  preview_state.original_bufnr = vim.api.nvim_win_get_buf(win_id)
+  preview_state.original_cursor = vim.api.nvim_win_get_cursor(win_id)
+  preview_state.original_view = vim.api.nvim_win_call(win_id, function()
+    return vim.fn.winsaveview()
+  end)
+end
+
+local function restore_window_state(win_id, preview_state)
+  logger.log("Restoring window state for win_id: " .. win_id)
+  if not preview_state.original_bufnr then
+    return
+  end
+
+  local cache_eventignore = vim.o.eventignore
+  vim.o.eventignore = "all"
+
+  pcall(function()
+    if vim.api.nvim_buf_is_valid(preview_state.original_bufnr) then
+      vim.api.nvim_win_set_buf(win_id, preview_state.original_bufnr)
+    end
+
+    if preview_state.original_cursor then
+      vim.api.nvim_win_set_cursor(win_id, preview_state.original_cursor)
+    end
+    if preview_state.original_view then
+      vim.api.nvim_win_call(win_id, function()
+        vim.fn.winrestview(preview_state.original_view)
+      end)
+    end
+  end)
+
+  vim.o.eventignore = cache_eventignore
+end
+
+local function preview_symbol(item, win_id, preview_state)
+  logger.benchmark_start("preview_symbol_vim_async")
+
+  if not item or not item.value then
+    logger.log("Invalid item for preview")
+    logger.benchmark_end("preview_symbol_vim_async")
+    return
+  end
+
+  local file_path = item.value.file_path
+  if not file_path then
+    logger.log("No file path in item")
+    logger.benchmark_end("preview_symbol_vim_async")
+    return
+  end
+
+  logger.log(string.format("Previewing symbol: %s at line %d in %s", item.value.name, item.value.lnum, file_path))
+
+  logger.benchmark_start("buffer_creation")
+  if not preview_state.scratch_buf or not vim.api.nvim_buf_is_valid(preview_state.scratch_buf) then
+    preview_state.scratch_buf = create_scratch_buffer()
+  end
+  logger.benchmark_end("buffer_creation")
+
+  local cache_eventignore = vim.o.eventignore
+  vim.o.eventignore = "BufEnter"
+
+
+local function preview_symbol(item, win_id, preview_state)
+  if not item or not item.value then
+    logger.log("Invalid item for preview")
+    return
+  end
+
+  local file_path = item.value.file_path
+  if not file_path then
+    logger.log("No file path in item")
+    return
+  end
+
+  logger.log(string.format("Previewing symbol: %s at line %d in %s", item.value.name, item.value.lnum, file_path))
+
+  if not preview_state.scratch_buf or not vim.api.nvim_buf_is_valid(preview_state.scratch_buf) then
+    preview_state.scratch_buf = create_scratch_buffer()
+  end
+
+  local cache_eventignore = vim.o.eventignore
+  vim.o.eventignore = "BufEnter"
+
+  -- Read file content asynchronously using our coroutine wrapper.
+  readfile_async(file_path, function(ok, lines)
+    if not ok or not lines then
+      logger.log("Failed to read file: " .. file_path)
+      vim.o.eventignore = cache_eventignore
+      return
+    end
+
+    -- Set buffer content and options
+    vim.api.nvim_buf_set_lines(preview_state.scratch_buf, 0, -1, false, lines)
+
+    -- Set filetype for syntax highlighting
+    local ft = vim.filetype.match({ filename = file_path })
+    if ft then
+      vim.bo[preview_state.scratch_buf].filetype = ft
+
+      -- Try using treesitter if available
+      if preview_state.scratch_buf and vim.api.nvim_buf_is_valid(preview_state.scratch_buf) then
+        local has_parser, parser = pcall(vim.treesitter.get_parser, preview_state.scratch_buf, ft)
+        if has_parser and parser then
+          parser:parse()
+        end
+      end
+    end
+
+    -- Set scratch buffer in window
+    vim.api.nvim_win_set_buf(win_id, preview_state.scratch_buf)
+
+    -- Set cursor to symbol line and center
+    local lnum = item.value.lnum or 1
+    vim.api.nvim_win_set_cursor(win_id, { lnum, 0 })
+    vim.api.nvim_win_call(win_id, function()
+      vim.cmd("normal! zz")
+    end)
+
+    -- Clear previous highlights and set new one
+    vim.api.nvim_buf_clear_namespace(preview_state.scratch_buf, preview_state.preview_ns, 0, -1)
+    vim.api.nvim_buf_add_highlight(preview_state.scratch_buf, preview_state.preview_ns, "Visual", lnum - 1, 0, -1)
+
+    vim.o.eventignore = cache_eventignore
+  end)
+end
+
 -- opulence
 
 ---@type CallHierarchyConfig
@@ -56,7 +274,9 @@ local CallDirection = {
   BOTH = "both",
 }
 
--- Utility function to generate tree guide lines ┆
+-- Basically this fucntion is borrowed from https://github.com/jmacadie/telescope-hierarchy.nvim
+-- thanks to @jmacadie for this fucntion and his aswesome plugin
+-- Utility function to generate tree guide lines
 local function make_tree_guides(tree_state)
   local tree = ""
   for idx, level_last in ipairs(tree_state) do
@@ -347,10 +567,7 @@ local function make_call_hierarchy_request(method, params, callback)
     return
   end
   -- Make the request directly
-  logger.log("Making direct request: " .. method)
   client.request(method, params, function(err, result, ctx)
-    logger.log("Response received for: " .. method)
-    logger.log("Error: " .. vim.inspect(err))
     callback(err, result, ctx)
   end, bufnr)
 end
@@ -535,7 +752,7 @@ end
 ---@param notify_opts table Notification options
 local function process_call_hierarchy_item(item, direction, cache_key, notify_opts)
   -- Store symbol name for display
-  state_call.current_symbol_name = item.name
+  state.current_symbol_name = item.name
 
   -- We'll collect results here
   local all_items = {}
@@ -670,15 +887,12 @@ function M.show(direction)
   direction = direction or CallDirection.BOTH
   processed_call_signatures = {}
 
-  -- Store current position and buffer
-  state_call.original_win = vim.api.nvim_get_current_win()
-  state_call.original_buf = vim.api.nvim_get_current_buf()
-  state_call.original_ft = vim.bo.filetype
-  state_call.original_pos = vim.api.nvim_win_get_cursor(state_call.original_win)
+  state = initialize_state()
+  logger.log("Calhierarchy ilinitialize_state: " .. vim.inspect(state))
 
   -- Get the symbol name at cursor for better display
   local cword = vim.fn.expand("<cword>")
-  state_call.current_symbol_name = cword
+  state.current_symbol_name = cword
 
   -- Set highlight
   vim.api.nvim_set_hl(0, M.config.highlight, {
@@ -726,7 +940,7 @@ function M.show(direction)
       -- Process the first item (typically there's only one)
       process_call_hierarchy_item(result[1], direction, cache_key, notify_opts)
     end)
-  -- If specific methods are supported but not prepare, use a synthetic item
+    -- If specific methods are supported but not prepare, use a synthetic item
   elseif
     (direction == CallDirection.INCOMING and support.incoming)
     or (direction == CallDirection.OUTGOING and support.outgoing)
@@ -817,7 +1031,7 @@ function M.show_call_picker(selectaItems, notify_opts)
     row_position = M.config.row_position,
     debug = M.config.debug,
     custom_keymaps = M.config.custom_keymaps,
-    formatter = formatter, -- Add our custom formatter
+    formatter = formatter,
     -- Enable hierarchical filtering
     preserve_hierarchy = true,
     -- Define how to find an item's parent
@@ -845,33 +1059,68 @@ function M.show_call_picker(selectaItems, notify_opts)
       on_render = function(buf, filtered_items)
         apply_simple_highlights(buf, filtered_items, M.config)
       end,
-      on_buffer_clear = function()
-        ui.cleanup_previews(state_call, true)
-      end,
+      on_buffer_clear = function() end,
     },
     multiselect = {
       enabled = M.config.multiselect.enabled,
       indicator = M.config.multiselect.indicator,
-      on_select = function(selected_items)
-        ui.cleanup_previews(state_call, false)
-        if type(selected_items) == "table" and selected_items[1] then
-          M.jump_to_call(selected_items[1])
-        end
-      end,
+      on_select = function(item) end,
     },
     on_select = function(item)
-      ui.cleanup_previews(state_call, false)
-      M.jump_to_call(item)
+      if not item or not item.value then
+        logger.log("Invalid item for selection")
+        return
+      end
+
+      logger.log(string.format("Selected symbol: %s at line %d", item.value.name, item.value.lnum))
+
+      local cache_eventignore = vim.o.eventignore
+      vim.o.eventignore = "BufEnter"
+
+      pcall(function()
+        -- Set mark for jumplist
+        vim.api.nvim_win_call(state.original_win, function()
+          vim.cmd("normal! m'")
+        end)
+
+        -- Open file using edit_file function
+        local file_path = item.value.file_path
+        local buf_id = edit_file(file_path, state.original_win)
+        if buf_id then
+          vim.api.nvim_win_set_cursor(state.original_win, { item.value.lnum, 0 })
+          vim.api.nvim_win_call(state.original_win, function()
+            vim.cmd("normal! zz")
+          end)
+        end
+      end)
+
+      vim.o.eventignore = cache_eventignore
     end,
     on_cancel = function()
-      ui.cleanup_previews(state_call, true)
+      logger.log("Canceling preview")
+
+      if state.original_win and vim.api.nvim_win_is_valid(state.original_win) then
+        -- Clear highlights but don't delete the buffer
+        if state.preview.scratch_buf and vim.api.nvim_buf_is_valid(state.preview.scratch_buf) then
+          vim.api.nvim_buf_clear_namespace(state.preview.scratch_buf, state.preview.preview_ns, 0, -1)
+        end
+
+        -- Restore original state
+        restore_window_state(state.original_win, state.preview)
+      end
     end,
     on_move = function(item)
-      if M.config.preview.highlight_on_move and M.config.preview.highlight_mode == "always" then
-        if item and not item.value.is_header then
-          ui.highlight_symbol(item.value, state_call.original_win, state_call.preview_ns, state_call)
-        end
+      if not state.original_win or not vim.api.nvim_win_is_valid(state.original_win) then
+        logger.log("Invalid original window")
+        return
       end
+
+      -- Save state on first move
+      if not state.preview.original_bufnr then
+        save_window_state(state.original_win, state.preview)
+      end
+
+      preview_symbol(item, state.original_win, state.preview)
     end,
   }
 
@@ -898,82 +1147,11 @@ function M.show_call_picker(selectaItems, notify_opts)
       group = augroup,
       pattern = tostring(picker_win),
       callback = function()
-        ui.cleanup_previews(state_call, true)
         pcall(vim.api.nvim_del_augroup_by_name, "NamuCallHierarchyCleanup")
       end,
       once = true,
     })
   end
-end
-
----Jump to the location of a call
----@param item table The selected item
-function M.jump_to_call(item)
-  if not item or not item.value then
-    vim.notify("Invalid call item", vim.log.levels.ERROR)
-    return
-  end
-
-  local value = item.value
-  -- Skip headers and sections
-  if value.is_header or value.is_section then
-    return
-  end
-
-  -- Clean up all preview resources before jumping
-  ui.cleanup_previews(state_call, false)
-
-  -- Return to the original window if we're in the picker window
-  if state_call.original_win and vim.api.nvim_win_is_valid(state_call.original_win) then
-    vim.api.nvim_set_current_win(state_call.original_win)
-  end
-
-  -- Record the current position in jumplist
-  vim.cmd.normal({ "m`", bang = true })
-
-  -- If it's a different file, open it properly
-  if value.uri and value.file_path then
-    local current_uri = vim.uri_from_bufnr(vim.api.nvim_get_current_buf())
-
-    if value.uri ~= current_uri then
-      -- Use edit command to properly open the file in the current window
-      -- This ensures LSP attaches correctly
-      vim.cmd("edit " .. vim.fn.fnameescape(value.file_path))
-    end
-  end
-
-  -- Jump to position
-  if value.lnum and value.col then
-    vim.api.nvim_win_set_cursor(0, { value.lnum, value.col - 1 })
-
-    -- Center the view on the line
-    vim.cmd("normal! zz")
-
-    -- Optionally flash the line to make it more obvious
-    if M.config.flash_line_on_jump then
-      local ns_id = vim.api.nvim_create_namespace("namu_callhierarchy_jump")
-      vim.api.nvim_buf_clear_namespace(0, ns_id, 0, -1)
-
-      local flash_hl_group = M.config.flash_highlight or "IncSearch"
-
-      -- Add highlight
-      vim.api.nvim_buf_add_highlight(0, ns_id, flash_hl_group, value.lnum - 1, 0, -1)
-
-      -- Remove highlight after a short delay
-      vim.defer_fn(function()
-        if vim.api.nvim_buf_is_valid(0) then
-          vim.api.nvim_buf_clear_namespace(0, ns_id, 0, -1)
-        end
-      end, 300)
-    end
-  end
-
-  -- Make sure the current buffer is in the buffer list
-  local current_buf = vim.api.nvim_get_current_buf()
-  vim.api.nvim_buf_set_option(current_buf, "buflisted", true)
-
-  -- Return true to indicate successful navigation
-  return true
 end
 
 ---Show incoming calls for symbol at cursor
@@ -995,7 +1173,7 @@ end
 ---@param opts table|nil User config options
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
-  -- Add tree guide highlight
+  -- TODO: Add tree guide highlight to the highlights
   vim.api.nvim_set_hl(0, "NamuTreeGuides", {
     link = "Comment",
     default = true,
