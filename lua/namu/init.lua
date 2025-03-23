@@ -7,7 +7,7 @@ M.config = {
   selecta = { enable = true, options = {} },
   colorscheme = { enable = false, options = {} },
   ui_select = { enable = false, options = {} },
-  namu_callhierarchy = { enable = false, options = {} },
+  namu_callhierarchy = { enable = true, options = {} },
 }
 
 M.setup = function(opts)
