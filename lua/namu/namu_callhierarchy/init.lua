@@ -1,10 +1,11 @@
 local selecta = require("namu.selecta.selecta")
 local navigation = require("namu.namu_callhierarchy.navigation")
 local lsp = require("namu.namu_symbols.lsp")
-local ui = require("namu.namu_symbols.ui")
 local symbol_utils = require("namu.core.symbol_utils")
 local logger = require("namu.utils.logger")
 local config_defaults = require("namu.namu_symbols.config")
+local ext = require("namu.namu_symbols.external_plugins")
+local utils = require("namu.namu_symbols.utils")
 local M = {}
 
 ---@type NamuState
@@ -142,34 +143,6 @@ local function restore_window_state(win_id, preview_state)
 end
 
 local function preview_symbol(item, win_id, preview_state)
-  logger.benchmark_start("preview_symbol_vim_async")
-
-  if not item or not item.value then
-    logger.log("Invalid item for preview")
-    logger.benchmark_end("preview_symbol_vim_async")
-    return
-  end
-
-  local file_path = item.value.file_path
-  if not file_path then
-    logger.log("No file path in item")
-    logger.benchmark_end("preview_symbol_vim_async")
-    return
-  end
-
-  logger.log(string.format("Previewing symbol: %s at line %d in %s", item.value.name, item.value.lnum, file_path))
-
-  logger.benchmark_start("buffer_creation")
-  if not preview_state.scratch_buf or not vim.api.nvim_buf_is_valid(preview_state.scratch_buf) then
-    preview_state.scratch_buf = create_scratch_buffer()
-  end
-  logger.benchmark_end("buffer_creation")
-
-  local cache_eventignore = vim.o.eventignore
-  vim.o.eventignore = "BufEnter"
-
-
-local function preview_symbol(item, win_id, preview_state)
   if not item or not item.value then
     logger.log("Invalid item for preview")
     return
@@ -251,17 +224,6 @@ M.config = vim.tbl_deep_extend("force", M.defaul_config, {
     show_cycles = false, -- Whether to show recursive calls
   },
 })
--- if M.config.custom_keymaps then
---   M.call_keymaps = M.config.custom_keymaps
---   local handlers = symbol_utils.create_keymaps_handlers(M.config, state_call, ui, selecta, ext, utils)
---   -- Set handlers on your module-specific keymaps
---   M.call_keymaps.yank.handler = handlers.yank
---   M.call_keymaps.delete.handler = handlers.delete
---   M.call_keymaps.vertical_split.handler = handlers.vertical_split
---   M.call_keymaps.horizontal_split.handler = handlers.horizontal_split
---   M.call_keymaps.codecompanion.handler = handlers.codecompanion
---   M.call_keymaps.avante.handler = handlers.avante
--- end
 
 local pending_requests = 0
 local calls_cache = {}
