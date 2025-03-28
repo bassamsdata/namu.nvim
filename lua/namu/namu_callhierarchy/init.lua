@@ -200,13 +200,15 @@ local function preview_symbol(item, win_id, preview_state)
 
     -- Clear previous highlights and set new one
     vim.api.nvim_buf_clear_namespace(preview_state.scratch_buf, preview_state.preview_ns, 0, -1)
-    vim.api.nvim_buf_add_highlight(preview_state.scratch_buf, preview_state.preview_ns, "Visual", lnum - 1, 0, -1)
+    vim.api.nvim_buf_set_extmark(preview_state.scratch_buf, preview_state.preview_ns, lnum - 1, 0, {
+      end_line = lnum,
+      hl_group = "NamuPreview",
+      hl_eol = true,
+    })
 
     vim.o.eventignore = cache_eventignore
   end)
 end
-
--- opulence
 
 ---@type CallHierarchyConfig
 M.defaul_config = config_defaults.values --[[@as CallHierarchyConfig]]
