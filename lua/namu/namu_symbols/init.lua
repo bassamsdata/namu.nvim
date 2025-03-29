@@ -279,17 +279,6 @@ M._test = {
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
   ui.setup(M.config)
-
-  if M.config.kinds and M.config.kinds.enable_highlights then
-    ui.setup_highlights()
-  end
-
-  vim.api.nvim_create_autocmd("ColorScheme", {
-    group = vim.api.nvim_create_augroup("namuHighlights", { clear = true }),
-    callback = function()
-      ui.setup_highlights()
-    end,
-  })
 end
 
 --Sets up default keymappings for symbol navigation

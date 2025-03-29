@@ -266,32 +266,6 @@ local function restore_cursor()
   end
 end
 
----Set up the highlight groups
----@return nil
-local function setup_highlights()
-  -- Helper function to add default = true to highlight attributes
-  local function hl(attrs)
-    attrs.default = true
-    return attrs
-  end
-
-  local highlights = {
-    NamuPrefix = hl({ link = "Special" }),
-    NamuMatch = hl({ link = "Identifier" }),
-    NamuFilter = hl({ link = "Type" }),
-    NamuCursor = hl({ blend = 100, nocombine = true }),
-    NamuPrompt = hl({ link = "FloatTitle" }),
-    NamuSelected = hl({ link = "Statement" }),
-    NamuFooter = hl({ link = "Comment" }),
-    NamuCurrentLine = hl({ link = M.config.current_highlight.hl_group }),
-  }
-
-  M.log("Setting up highlights...")
-  for name, attrs in pairs(highlights) do
-    vim.api.nvim_set_hl(0, name, attrs)
-  end
-end
-
 ---@class PrefixInfo
 ---@field text string The prefix text (icon or kind text)
 ---@field width number Total width including padding
@@ -1890,31 +1864,9 @@ M._test = {
   calculate_window_size = calculate_window_size,
   validate_input = matcher.validate_input,
   apply_highlights = apply_highlights,
-  setup_highlights = setup_highlights,
   get_window_position = get_window_position,
   parse_position = parse_position,
 }
-
-local function async_update(state, new_items, opts)
-  vim.schedule(function()
-    if not state or not state.active then
-      return
-    end
-
-    logger.log("Updating items")
-    state.items = new_items
-    state.filtered_items = new_items
-
-    if vim.api.nvim_win_is_valid(state.win) and vim.api.nvim_buf_is_valid(state.buf) then
-      update_display(state, opts)
-      vim.cmd("redraw")
-      logger.log("Display updated")
-    else
-    end
-  end)
-end
-
-M.async_update = async_update
 
 ---@param opts? table
 function M.setup(opts)
@@ -1922,18 +1874,6 @@ function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts)
   -- Set up initial highlights
   logger.setup(opts)
-  M.log("Calling setup_highlights from M.setup")
-  setup_highlights()
-
-  -- Create autocmd for ColorScheme event
-  M.log("Creating ColorScheme autocmd")
-  vim.api.nvim_create_autocmd("ColorScheme", {
-    group = vim.api.nvim_create_augroup("SelectaHighlights", { clear = true }),
-    callback = function()
-      M.log("ColorScheme autocmd triggered")
-      setup_highlights()
-    end,
-  })
 end
 
 ---Open current buffer in a split and jump to the selected symbol's location

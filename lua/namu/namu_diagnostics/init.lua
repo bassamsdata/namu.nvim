@@ -7,14 +7,6 @@ local selecta = require("namu.selecta.selecta").pick
 local preview_utils = require("namu.core.preview_utils")
 local M = {}
 
----@class DiagnosticConfig
----@field highlights table<string, string> Highlight groups for different diagnostic severities
----@field icons table<string, string> Icons for different diagnostic severities
----@field window table Window configuration
----@field custom_keymaps table[] Keymap configuration
----@field debug boolean Enable debug logging
-
----@type DiagnosticConfig
 M.config = {
   highlights = {
     Error = "DiagnosticVirtualTextError",

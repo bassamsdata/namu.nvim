@@ -1137,15 +1137,6 @@ end
 ---@param opts table|nil User config options
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
-  -- TODO: Add tree guide highlight to the highlights
-  vim.api.nvim_set_hl(0, "NamuTreeGuides", {
-    link = "Comment",
-    default = true,
-  })
-  vim.api.nvim_set_hl(0, "NamuFileInfo", {
-    link = "Comment",
-    default = true,
-  })
 end
 
 ---Setup default keymaps
