@@ -3,25 +3,21 @@ local M = {}
 -- Store all highlight groups
 local hl_groups = {}
 
+-- Thanks to @nvim-snacks for this one
 -- Simple function to set highlights and remember them for ColorScheme events
 function M.set_highlights(groups, opts)
   opts = opts or {}
-
   for name, def in pairs(groups) do
     -- Apply any prefix
     local hl_name = opts.prefix and (opts.prefix .. name) or name
-
     -- Convert string to link definition
     local hl_def = type(def) == "string" and { link = def } or def
-
     -- Add default flag if specified
     if opts.default ~= false then
       hl_def.default = true
     end
-
     -- Store for colorscheme changes
     hl_groups[hl_name] = hl_def
-
     -- Set the highlight
     vim.api.nvim_set_hl(0, hl_name, hl_def)
   end
@@ -85,7 +81,6 @@ function M.setup()
     NamuTreeGuides = "Comment",
     NamuFileInfo = "Comment",
     NamuPreview = "Visual",
-
     -- Parent/nested structure highlights
     NamuParent = "Title", -- Makes parent items stand out with title styling
     NamuNested = "Identifier", -- Good contrast for nested items

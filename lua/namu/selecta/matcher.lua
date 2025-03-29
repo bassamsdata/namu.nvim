@@ -3,8 +3,8 @@ local logger = require("namu.utils.logger")
 
 -- Scoring constants
 local MATCH_SCORES = {
-  prefix = 100, -- Starts with the query
-  contains = 60, -- Contains the query somewhere
+  prefix = 100, -- word starts with the exact query
+  contains = 60, -- Contains the exact query somewhere in a word
   fuzzy = 25, -- Fuzzy match
 }
 
@@ -51,9 +51,6 @@ function M.find_fuzzy_match(text, query, has_uppercase)
     logger.log("Fuzzy match error: " .. error_msg)
     return nil, 0, 0
   end
-  -- if #query > 4 then -- Only log for longer queries to reduce noise
-  --   logger.log(string.format("Fuzzy: '%s' → '%s'", text, query))
-  -- end
 
   -- Initialize variables
   local positions = {}
