@@ -135,7 +135,7 @@ M.defaults = {
   },
   -- This is a preset that let's set window without really get into the hassle of tuning window options
   -- top10 meaning top 10% of the window
-  row_position = "top10", -- options: "center"|"top10"|"top10_right"|"center_right"|"bottom",
+  row_position = "top10", -- options: "center"|"top10"|"top10_right"|"center_right"|"bottom", --
   window = {
     auto_size = true,
     min_height = 1,
@@ -143,7 +143,8 @@ M.defaults = {
     max_width = 120,
     max_height = 41,
     padding = 2,
-    border = "rounded",
+    -- NOTE: this is borrored from mini.nvim, it's for latest nightly
+    border = (vim.fn.exists("+winborder") == 1 and vim.o.winborder ~= "") and vim.o.winborder or "rounded",
     title_pos = "left",
     show_footer = true,
     footer_pos = "right",

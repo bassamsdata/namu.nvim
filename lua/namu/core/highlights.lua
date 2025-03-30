@@ -65,6 +65,7 @@ function M.setup()
     NamuPrompt = "FloatTitle",
     NamuSelected = "Statement",
     NamuFooter = "Comment",
+    NamuCurrentItem = "CursorLine",
     -- Namu Symbols
     NamuPrefixSymbol = "@Comment",
     NamuSymbolFunction = "@function",
@@ -87,6 +88,10 @@ function M.setup()
     NamuStyle = "Type", -- Type highlighting works well for style elements
   })
 
+  -- FIX: for some reason, always when start neovim, this gets cleared - so this is a workaround
+  vim.schedule(function()
+    vim.api.nvim_set_hl(0, "NamuCursor", { blend = 100, nocombine = true, default = true })
+  end)
   -- Diagnostic highlights - create background versions
   -- for _, name in ipairs({
   --   "DiagnosticVirtualTextError",
