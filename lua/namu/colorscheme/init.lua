@@ -31,7 +31,9 @@ M.config = {
     hl_group = "CursorLine",
     prefix_icon = " ",
   },
+  icon = "󱠦", -- 󱠦 -  -  -- 󰚟
 }
+local notify_opts = { title = "Namu", icon = M.config.icon }
 
 ---@param callback? fun(success: boolean, error_message?: string) Callback function after setup is complete
 ---@diagnostic disable-next-line: unused-local
@@ -47,7 +49,7 @@ local function setup_persistence(callback)
   uv.fs_mkdir(plugin_dir, 493, function(err) -- 493 is equivalent to 0755 permissions
     if err and err:match("^EEXIST") == nil then
       vim.schedule(function()
-        vim.notify("Failed to create plugin directory: " .. err, vim.log.levels.ERROR)
+        vim.notify("Failed to create plugin directory: " .. err, vim.log.levels.ERROR, notify_opts)
       end)
       return
     end
@@ -82,7 +84,7 @@ vim.api.nvim_create_autocmd("ColorScheme", {
       uv.fs_open(namu_color_persist, "w", 438, function(open_err, fd) -- 438 is 0666 permissions
         if open_err then
           vim.schedule(function()
-            vim.notify("Failed to create persistence file: " .. open_err, vim.log.levels.ERROR)
+            vim.notify("Failed to create persistence file: " .. open_err, vim.log.levels.ERROR, notify_opts)
           end)
           return
         end
@@ -90,19 +92,19 @@ vim.api.nvim_create_autocmd("ColorScheme", {
         uv.fs_write(fd, content, 0, function(write_err)
           if write_err then
             vim.schedule(function()
-              vim.notify("Failed to write persistence file: " .. write_err, vim.log.levels.ERROR)
+              vim.notify("Failed to write persistence file: " .. write_err, vim.log.levels.ERROR, notify_opts)
             end)
           end
 
           uv.fs_close(fd, function(close_err)
             if close_err then
               vim.schedule(function()
-                vim.notify("Failed to close persistence file: " .. close_err, vim.log.levels.ERROR)
+                vim.notify("Failed to close persistence file: " .. close_err, vim.log.levels.ERROR, notify_opts)
               end)
             end
 
             vim.schedule(function()
-              vim.notify("Persistence setup complete", vim.log.levels.INFO)
+              vim.notify("Persistence setup complete", vim.log.levels.INFO, notify_opts)
             end)
           end)
         end)
@@ -176,9 +178,9 @@ function M.show(opts)
         if opts.write_shada then
           vim.cmd("silent! wshada")
         end
-        vim.notify("Colorscheme set to: " .. item.value, vim.log.levels.INFO)
+        vim.notify("Colorscheme set to: " .. item.value, vim.log.levels.INFO, notify_opts)
       else
-        vim.notify("No colorscheme selected.", vim.log.levels.WARN)
+        vim.notify("No colorscheme selected.", vim.log.levels.WARN, notify_opts)
       end
     end,
     on_cancel = function()
@@ -189,7 +191,7 @@ function M.show(opts)
         vim.wait(2, function()
           local ok, _ = pcall(vim.cmd.colorscheme, item.value)
           if not ok then
-            vim.notify(("Cannot load colorscheme %s"):format(item.value), vim.log.levels.ERROR)
+            vim.notify(("Cannot load colorscheme %s"):format(item.value), vim.log.levels.ERROR, notify_opts)
           end
         end)
       end
