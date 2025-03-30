@@ -1,12 +1,13 @@
 local ui = require("namu.namu_symbols.ui")
 local M = {}
+local notify_opts = { title = "Namu", icon = require("namu").config.icon }
 
 ---Yank the symbol text to registers
 ---@param items table|table[] Single item or array of selected items
 ---@param state table The picker state
 function M.yank_symbol_text(items, state)
   if not state.original_buf or not vim.api.nvim_buf_is_valid(state.original_buf) then
-    vim.notify("Invalid buffer", vim.log.levels.ERROR)
+    vim.notify("Invalid buffer", vim.log.levels.ERROR, notify_opts)
     return
   end
 
@@ -37,7 +38,7 @@ function M.yank_symbol_text(items, state)
         table.insert(all_text, table.concat(lines, "\n"))
       end
     else
-      vim.notify("Invalid symbol found, skipping", vim.log.levels.WARN)
+      vim.notify("Invalid symbol found, skipping", vim.log.levels.WARN, notify_opts)
     end
   end
 
@@ -45,7 +46,7 @@ function M.yank_symbol_text(items, state)
     local final_text = table.concat(all_text, "\n\n")
     vim.fn.setreg('"', final_text) -- Set to unnamed register
     vim.fn.setreg("+", final_text) -- Set to system clipboard if unnamed register is not supported
-    vim.notify(string.format("Yanked %d symbol(s) to clipboard", #symbols), vim.log.levels.INFO)
+    vim.notify(string.format("Yanked %d symbol(s) to clipboard", #symbols), vim.log.levels.INFO, notify_opts)
     return true
   end
   return false
@@ -56,7 +57,7 @@ end
 ---@param state table The picker state
 function M.delete_symbol_text(items, state)
   if not state.original_buf or not vim.api.nvim_buf_is_valid(state.original_buf) then
-    vim.notify("Invalid buffer", vim.log.levels.ERROR)
+    vim.notify("Invalid buffer", vim.log.levels.ERROR, notify_opts)
     return
   end
 
@@ -86,12 +87,12 @@ function M.delete_symbol_text(items, state)
       vim.api.nvim_buf_set_lines(state.original_buf, symbol.lnum - 1, symbol.end_lnum, false, {})
       deleted_count = deleted_count + 1
     else
-      vim.notify("Invalid symbol found, skipping", vim.log.levels.WARN)
+      vim.notify("Invalid symbol found, skipping", vim.log.levels.WARN, notify_opts)
     end
   end
 
   if deleted_count > 0 then
-    vim.notify(string.format("Deleted %d symbol(s)", deleted_count), vim.log.levels.INFO)
+    vim.notify(string.format("Deleted %d symbol(s)", deleted_count), vim.log.levels.INFO, notify_opts)
     ui.clear_preview_highlight(state.original_win, state.preview_ns)
     return true
   end

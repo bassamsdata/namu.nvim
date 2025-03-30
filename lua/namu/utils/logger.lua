@@ -5,6 +5,10 @@ local debug_enabled = false
 local benchmarks = {}
 local benchmark_results = {}
 local uv = vim.uv or vim.loop
+-- Memory tracking
+local memory_checkpoints = {}
+local memory_history = {}
+local memory_tracking_enabled = true
 
 -- Try to load string buffer, fallback to standard methods
 local has_string_buffer, string_buffer = pcall(require, "string.buffer")
@@ -180,6 +184,122 @@ function M.analyze_bottlenecks(total_benchmark_name)
     local percentage = (benchmark.time / total_time * 100)
     M.log(string.format("%d. %s: %.3f ms (%.1f%%)", i, benchmark.name, benchmark.time, percentage), "BENCHMARK")
   end
+end
+
+--- Enable or disable memory tracking
+---@param enable boolean
+function M.enable_memory_tracking(enable)
+  memory_tracking_enabled = enable
+  if enable then
+    collectgarbage("collect") -- Start with clean slate
+  end
+end
+
+--- Record current memory usage at a named checkpoint
+---@param label string Name of the checkpoint
+---@param force_gc boolean Whether to force garbage collection before measuring
+---@return number Memory usage in KB
+function M.memory_checkpoint(label, force_gc)
+  if force_gc then
+    collectgarbage("collect")
+  end
+
+  local mem_kb = collectgarbage("count")
+
+  -- Store checkpoint regardless of tracking being enabled
+  memory_checkpoints[label] = mem_kb
+
+  -- Only log and store history if tracking is enabled
+  if memory_tracking_enabled then
+    table.insert(memory_history, {
+      timestamp = os.time(),
+      label = label,
+      memory_kb = mem_kb,
+    })
+
+    M.log(string.format("Memory checkpoint [%s]: %.2f KB", label, mem_kb), "MEMORY")
+  end
+
+  return mem_kb
+end
+
+--- Get memory usage difference between two checkpoints
+---@param from_label string Starting checkpoint name
+---@param to_label string Ending checkpoint name
+---@return number|nil Delta in KB or nil if labels not found
+function M.memory_delta(from_label, to_label)
+  if not memory_checkpoints[from_label] or not memory_checkpoints[to_label] then
+    M.log(string.format("Cannot calculate memory delta: missing checkpoints %s or %s", from_label, to_label), "ERROR")
+    return nil
+  end
+
+  local delta = memory_checkpoints[to_label] - memory_checkpoints[from_label]
+
+  if memory_tracking_enabled then
+    M.log(string.format("Memory delta [%s → %s]: %.2f KB", from_label, to_label, delta), "MEMORY")
+  end
+
+  return delta
+end
+
+--- Generate a memory usage report
+---@param detailed boolean Whether to include full history
+---@return table Memory usage report
+function M.memory_report(detailed)
+  local report = {
+    current = collectgarbage("count"),
+    checkpoints = vim.deepcopy(memory_checkpoints),
+    peak = 0,
+    history = detailed and vim.deepcopy(memory_history) or nil,
+  }
+
+  -- Find peak memory usage
+  for _, checkpoint in pairs(memory_checkpoints) do
+    if checkpoint > report.peak then
+      report.peak = checkpoint
+    end
+  end
+
+  -- Log the report summary
+  if memory_tracking_enabled then
+    M.log(
+      string.format(
+        "Memory usage report - Current: %.2f KB, Peak: %.2f KB, Checkpoints: %d",
+        report.current,
+        report.peak,
+        vim.tbl_count(memory_checkpoints)
+      ),
+      "MEMORY"
+    )
+
+    if detailed then
+      M.log("Memory checkpoints:", "MEMORY")
+
+      -- Sort checkpoints by memory usage (highest first)
+      local sorted = {}
+      for label, usage in pairs(memory_checkpoints) do
+        table.insert(sorted, { label = label, usage = usage })
+      end
+
+      table.sort(sorted, function(a, b)
+        return a.usage > b.usage
+      end)
+
+      for _, item in ipairs(sorted) do
+        M.log(string.format("  %s: %.2f KB", item.label, item.usage), "MEMORY")
+      end
+    end
+  end
+
+  return report
+end
+
+--- Clear all memory checkpoints
+function M.clear_memory_checkpoints()
+  memory_checkpoints = {}
+  memory_history = {}
+  collectgarbage("collect")
+  M.log("Memory checkpoints cleared", "MEMORY")
 end
 
 return M

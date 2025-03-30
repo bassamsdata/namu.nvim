@@ -159,6 +159,7 @@ function M.request_symbols(bufnr, method, callback, extra_params)
   local params = make_params(bufnr, method, extra_params)
 
   -- Send request
+  -- Send request
   logger.log("Sending LSP request")
   local success, request_id = client:request(method, params, function(request_err, result, ctx)
     logger.log("\n=== LSP Response ===")
@@ -167,6 +168,17 @@ function M.request_symbols(bufnr, method, callback, extra_params)
 
     state.current_request = nil
     callback(request_err, result, ctx)
+
+    -- Add this critical part to resume ALL waiting coroutines
+    vim.schedule(function()
+      -- This schedules the coroutine resumption after the callback is done
+      local co = coroutine.running()
+      for thread, status in pairs(coroutine) do
+        if type(thread) == "thread" and status == "suspended" and thread ~= co then
+          pcall(coroutine.resume, thread)
+        end
+      end
+    end)
   end)
 
   if success and request_id then

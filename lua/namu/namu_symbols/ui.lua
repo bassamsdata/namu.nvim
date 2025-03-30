@@ -1,36 +1,6 @@
 local M = {}
 local logger = require("namu.utils.logger")
 
-function M.setup_highlights()
-  -- Helper function to add default = true to highlight attributes
-  local function hl(attrs)
-    attrs.default = true
-    return attrs
-  end
-
-  local highlights = {
-    NamuPrefixSymbol = hl({ link = "@Comment" }),
-    NamuSymbolFunction = hl({ link = "@function" }),
-    NamuSymbolMethod = hl({ link = "@function.method" }),
-    NamuSymbolClass = hl({ link = "@lsp.type.class" }),
-    NamuSymbolInterface = hl({ link = "@lsp.type.interface" }),
-    NamuSymbolVariable = hl({ link = "@lsp.type.variable" }),
-    NamuSymbolConstant = hl({ link = "@lsp.type.constant" }),
-    NamuSymbolProperty = hl({ link = "@lsp.type.property" }),
-    NamuSymbolField = hl({ link = "@lsp.type.field" }),
-    NamuSymbolEnum = hl({ link = "@lsp.type.enum" }),
-    NamuSymbolModule = hl({ link = "@lsp.type.module" }),
-  }
-
-  if M.config and M.config.highlight then
-    highlights[M.config.highlight] = hl({ link = "Visual" })
-  end
-
-  for name, attrs in pairs(highlights) do
-    vim.api.nvim_set_hl(0, name, attrs)
-  end
-end
-
 function M.clear_preview_highlight(win, ns_id)
   if ns_id then
     local bufnr = vim.api.nvim_win_get_buf(win)
@@ -134,11 +104,11 @@ function M.find_meaningful_node(node, lnum)
   ---@diagnostic disable-next-line: undefined-field
   local type = target_node:type()
 
-  -- HACK: if there is  decorator, catch the whole decorator which is
+  -- HACK: if there is decorator, catch the whole decorator which is
   -- "decorated_definition".
   if filetype == "python" and type == "decorator" then
     return parent_node
-  elseif vim.bo.filetype == "c" then
+  elseif vim.bo.filetype == "c" then -- need to go one step up to highlight the full node for fn and me
     current = node
     while current do
       if current:type() == "function_definition" then

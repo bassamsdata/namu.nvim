@@ -46,7 +46,8 @@ local function symbols_to_selecta_items(symbols, config)
 
     -- Extract file information
     local file_path = symbol.location.uri:gsub("file://", "")
-    local bufnr = vim.fn.bufadd(file_path)
+    -- TODO: why we need bufadd???????
+    -- local bufnr = vim.fn.bufadd(file_path)
 
     -- Create range information
     local range = symbol.location.range
@@ -65,7 +66,7 @@ local function symbols_to_selecta_items(symbols, config)
         col = col,
         end_lnum = end_row,
         end_col = end_col,
-        bufnr = bufnr,
+        -- bufnr = bufnr,
         file_path = file_path,
         symbol = symbol,
       },
@@ -83,7 +84,7 @@ local function symbols_to_selecta_items(symbols, config)
     end
     return a.kind < b.kind
   end)
-
+  impl.logger.log("✅ Converted " .. #items .. " items")
   return items
 end
 
@@ -219,6 +220,10 @@ local function apply_workspace_highlights(buf, filtered_items, config)
 
   for idx, item in ipairs(filtered_items) do
     local line = idx - 1
+    -- Skip items without a value (like loading indicators)
+    if not item.value then
+      goto continue
+    end
     local value = item.value
     local kind = value.kind
     local kind_hl = config.kinds.highlights[kind] or "Identifier"
@@ -232,36 +237,73 @@ local function apply_workspace_highlights(buf, filtered_items, config)
     local line_text = lines[1]
 
     -- Find parts to highlight
-    -- local name_end = line_text:find("%[") - 2
-    -- local kind_start = name_end + 2
-    -- local kind_end = line_text:find("%]", kind_start)
-    -- local file_start = line_text:find("-") + 2
-    --
-    -- -- Highlight symbol name
-    -- vim.api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
-    --   end_row = line,
-    --   end_col = name_end,
-    --   hl_group = kind_hl,
-    --   priority = 110,
-    -- })
-    --
-    -- -- Highlight kind
-    -- vim.api.nvim_buf_set_extmark(buf, ns_id, line, kind_start, {
-    --   end_row = line,
-    --   end_col = kind_end,
-    --   hl_group = "Type",
-    --   priority = 110,
-    -- })
+    local name_end = line_text:find("%[") - 2
+    local kind_start = name_end + 2
+    local kind_end = line_text:find("%]", kind_start)
+    local file_start = line_text:find("-") + 2
+
+    -- Highlight symbol name
+    vim.api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
+      end_row = line,
+      end_col = name_end,
+      hl_group = kind_hl,
+      priority = 110,
+    })
+
+    -- Highlight kind
+    vim.api.nvim_buf_set_extmark(buf, ns_id, line, kind_start, {
+      end_row = line,
+      end_col = kind_end,
+      hl_group = "Type",
+      priority = 110,
+    })
 
     -- Highlight file info
-    -- vim.api.nvim_buf_set_extmark(buf, ns_id, line, file_start, {
-    --   end_row = line,
-    --   end_col = #line_text,
-    --   hl_group = "Directory",
-    --   priority = 110,
-    -- })
+    vim.api.nvim_buf_set_extmark(buf, ns_id, line, file_start, {
+      end_row = line,
+      end_col = #line_text,
+      hl_group = "Directory",
+      priority = 110,
+    })
 
     ::continue::
+  end
+end
+
+local function create_async_symbol_source(original_buf, config)
+  return function(query)
+    impl.logger.log("📬 Creating async source for query: '" .. query .. "'")
+
+    -- Return a function that will handle the async processing
+    local process_fn = function(callback)
+      impl.logger.log("📡 Making LSP request for query: " .. query)
+
+      -- Make the LSP request directly
+      impl.lsp.request_symbols(original_buf, "workspace/symbol", function(err, symbols, ctx)
+        if err then
+          impl.logger.log("❌ LSP error: " .. tostring(err))
+          callback({}) -- Empty results on error
+          return
+        end
+
+        if not symbols or #symbols == 0 then
+          impl.logger.log("⚠️ No symbols returned from LSP")
+          callback({}) -- Empty results when no symbols
+          return
+        end
+
+        impl.logger.log("📦 Got " .. #symbols .. " symbols from LSP")
+
+        -- Process the symbols into selecta items
+        local items = symbols_to_selecta_items(symbols, config)
+        impl.logger.log("✅ Processed " .. #items .. " items from symbols")
+
+        -- Return the processed items via callback
+        callback(items)
+      end, { query = query or "" })
+    end
+
+    return process_fn
   end
 end
 
@@ -285,32 +327,44 @@ function impl.show_with_query(config, query, opts)
 
   -- Set options
   opts = opts or {}
-  query = query or ""
 
+  -- Create placeholder items to show even when no initial symbols
+  local placeholder_items = {
+    {
+      text = query and query ~= "" and "Searching for symbols matching '" .. query .. "'..."
+        or "Type to search for workspace symbols...",
+      icon = "󰍉",
+      value = nil,
+      is_placeholder = true,
+    },
+  }
   -- Make LSP request
   impl.lsp.request_symbols(state.original_buf, "workspace/symbol", function(err, symbols, ctx)
+    local initial_items = placeholder_items
+
     if err then
-      vim.notify("Error fetching workspace symbols: " .. tostring(err), vim.log.levels.ERROR)
-      return
+      vim.notify("Error fetching workspace symbols: " .. tostring(err), vim.log.levels.WARN)
+    elseif symbols and #symbols > 0 then
+      -- If we got actual symbols, use them
+      initial_items = symbols_to_selecta_items(symbols, config)
+    else
+      -- Some LSPs require a query - no need for notification here
+      -- logger.log("No initial workspace symbols found - LSP may require a query")
     end
 
-    if not symbols or #symbols == 0 then
-      vim.notify("No workspace symbols found", vim.log.levels.INFO)
-      return
-    end
-
-    -- Convert to selecta items
-    local items = symbols_to_selecta_items(symbols, config)
-
-    -- Show picker
-    impl.selecta(items, {
+    -- Always show picker, even with placeholder items
+    impl.selecta(initial_items, {
       title = "Workspace Symbols" .. (query ~= "" and (" - " .. query) or ""),
       window = config.window,
       current_highlight = config.current_highlight,
       debug = config.debug,
       custom_keymaps = config.custom_keymaps,
       preserve_order = true,
-      -- Symbol type filtering
+
+      -- Add coroutine-based async source
+      async_source = create_async_symbol_source(state.original_buf, config),
+
+      -- Rest of options remain the same as before
       pre_filter = function(items, input_query)
         local filter = impl.symbol_utils.parse_symbol_filter(input_query, config)
         if filter then
@@ -321,23 +375,23 @@ function impl.show_with_query(config, query, opts)
         end
         return items, input_query
       end,
-      -- Custom formatter
-      formatter = function(item)
-        return impl.format_utils.format_item_for_display(item, config)
-      end,
-      -- Highlighting in the picker
+
+      -- formatter = function(item)
+      --   return impl.format_utils.format_item_for_display(item, config)
+      -- end,
+
       hooks = {
         on_render = function(buf, filtered_items)
-          apply_workspace_highlights(buf, filtered_items, config)
+          -- apply_workspace_highlights(buf, filtered_items, config)
         end,
       },
-      -- Preview on movement
+
       on_move = function(item)
-        if item and item.value then
-          preview_symbol(item, state.original_win)
-        end
+        -- if item and item.value then
+        --   preview_symbol(item, state.original_win)
+        -- end
       end,
-      -- Jump to symbol on selection
+
       on_select = function(item)
         if not item or not item.value then
           return
@@ -354,6 +408,7 @@ function impl.show_with_query(config, query, opts)
         end
 
         -- Jump to file position
+        -- TODO: check here why we need bufadd
         local value = item.value
         local bufnr = vim.fn.bufadd(value.file_path)
 
@@ -368,7 +423,7 @@ function impl.show_with_query(config, query, opts)
           value.col,
         })
       end,
-      -- Clean up on cancel
+
       on_cancel = function()
         -- Clear highlights
         vim.api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
@@ -398,7 +453,7 @@ function impl.show_with_query(config, query, opts)
         end
       end,
     })
-  end, { query = query })
+  end, { query = query or "" })
 end
 
 -- Default show function (empty query)

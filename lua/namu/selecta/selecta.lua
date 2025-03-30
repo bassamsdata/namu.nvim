@@ -57,6 +57,8 @@ require('selecta').pick(items, {
 ---@field height number Window height
 ---@field selected table<string, boolean> Map of selected item ids
 ---@field selected_count number Number of items currently selected
+---@field async_co? thread Active coroutine for async fetching
+---@field is_loading boolean Whether items are being loaded asynchronously
 
 ---@class SelectaItem
 ---@field text string Display text
@@ -120,6 +122,8 @@ require('selecta').pick(items, {
 ---@field movement? SelectaMovementConfig
 ---@field custom_keymaps? table<string, SelectaCustomAction> Custom actions
 ---@field pre_filter? fun(items: SelectaItem[], query: string): SelectaItem[], string Function to pre-filter items before matcher
+---@field async_source? fun(query: string): function A function that returns a coroutine for async fetching
+---@field loading_indicator? { text: string, icon: string } Custom loading indicator
 
 ---@class SelectaHooks
 ---@field on_render? fun(buf: number, items: SelectaItem[], opts: SelectaOptions) Called after items are rendered
@@ -166,7 +170,7 @@ M.config = {
     title_prefix = "> ",
     width_ratio = 0.6,
     height_ratio = 0.6,
-    auto_size = false, -- Default to fixed size
+    auto_size = true, -- Default to fixed size
     min_width = 20, -- Minimum width even when auto-sizing
     max_width = 120, -- Maximum width even when auto-sizing
     padding = 2, -- Extra padding for content
@@ -220,6 +224,10 @@ M.config = {
     max_items = nil, -- No limit by default
   },
   custom_keymaps = {},
+  loading_indicator = {
+    text = "Loading results...",
+    icon = "󰇚",
+  },
 }
 
 ---@type CursorCache
@@ -350,7 +358,7 @@ local function calculate_window_size(items, opts, formatter)
       if M.config.right_position.fixed then
         -- For right-aligned windows, available width is from right position to screen edge
         local right_col = math.floor(vim.o.columns * M.config.right_position.ratio)
-        max_available_width = vim.o.columns - right_col - padding
+        max_available_width = vim.o.columns - right_col - (padding * 2) -- Subtract p
       else
         -- For flexible position, use full screen width with padding
         max_available_width = vim.o.columns - (padding * 2)
@@ -494,10 +502,17 @@ end
 ---@param query string
 ---@param opts SelectaOptions
 function M.update_filtered_items(state, query, opts)
+  --  logger.benchmark_start("selecta_filter_total")
+  -- Skip normal filtering if we're loading
+  if state.is_loading then
+    return state.filtered_items
+  end
+
   local items_to_filter = state.items
   local actual_query = query
 
   if opts.pre_filter then
+    --    logger.benchmark_start("pre_filter")
     local new_items, new_query = opts.pre_filter(state.items, query)
     if new_items then
       items_to_filter = new_items
@@ -740,7 +755,7 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
   local display_str = opts.formatter(item)
 
   local padding_width = 0
-  if opts.current_highlight.enabled and #opts.current_highlight.prefix_icon > 0 then
+  if opts.current_highlight and opts.current_highlight.enabled and #opts.current_highlight.prefix_icon > 0 then
     padding_width = vim.api.nvim_strwidth(opts.current_highlight.prefix_icon)
   end
   -- First, check if this is a symbol filter query
@@ -901,14 +916,14 @@ local function update_current_highlight(state, opts, line_nr)
     end_row = line_nr + 1,
     end_col = 0,
     hl_eol = true,
-    hl_group = "NamuCurrentLine",
+    hl_group = "NamuCurrentItem",
     priority = 201, -- Higher than regular highlights but lower than matches
   })
 
   -- Add the prefix icon if enabled
   if opts.current_highlight.enabled and #opts.current_highlight.prefix_icon > 0 then
     vim.api.nvim_buf_set_extmark(state.buf, current_selection_ns, line_nr, 0, {
-      virt_text = { { opts.current_highlight.prefix_icon, "NamuCurrentLine" } },
+      virt_text = { { opts.current_highlight.prefix_icon, "NamuCurrentItem" } },
       virt_text_pos = "overlay",
       priority = 201, -- Higher priority than the line highlight
     })
@@ -975,6 +990,8 @@ local function resize_window(state, opts)
     return
   end
   -- Calculate new dimensions based on filtered items
+  -- BUG: we need to limit the new_width to the available space on the screen so
+  -- it doesn't push the col to go left
   local new_width, new_height = calculate_window_size(state.filtered_items, opts, opts.formatter)
   local current_config = vim.api.nvim_win_get_config(state.win)
   -- Calculate maximum height based on available space below the initial row
@@ -1003,7 +1020,7 @@ local function resize_window(state, opts)
   local win_config = {
     relative = current_config.relative,
     row = current_config.row, -- or state.row
-    col = current_config.col, -- or state.col
+    col = state.col, -- or state.col
     width = new_width,
     height = new_height,
     style = current_config.style,
@@ -1056,27 +1073,53 @@ end
 -- Main update_display function using the split functions
 ---@param state SelectaState
 ---@param opts SelectaOptions
-local function update_display(state, opts)
+function M.update_display(state, opts)
   if not state.active then
     return
   end
-
   local query = table.concat(state.query)
   update_prompt(state, opts)
+  -- Special handling for loading state
+  if state.is_loading and #state.filtered_items == 1 and state.filtered_items[1].is_loading then
+    logger.log("Helllllo Loading state...")
+    if vim.api.nvim_buf_is_valid(state.buf) then
+      vim.api.nvim_buf_clear_namespace(state.buf, ns_id, 0, -1)
+
+      local loading_text = state.filtered_items[1].text
+      vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, { loading_text })
+
+      -- Apply loading highlight
+      vim.api.nvim_buf_set_extmark(state.buf, ns_id, 0, 0, {
+        end_col = #loading_text,
+        hl_group = "Comment",
+        priority = 100,
+      })
+    end
+
+    -- Update window size if needed
+    if opts.window.auto_resize then
+      resize_window(state, opts)
+    end
+
+    return
+  end
 
   if query ~= "" or not opts.initially_hidden then
-    M.update_filtered_items(state, query, opts)
-
     -- Call before render hook
     if opts.hooks and opts.hooks.before_render then
+      --      logger.benchmark_start("before_render_hook")
       opts.hooks.before_render(state.filtered_items, opts)
+      --      logger.benchmark_end("before_render_hook")
     end
 
     -- Update footer after filtered items are updated
     if opts.window.show_footer then
+      --      logger.benchmark_start("footer_update")
       update_footer(state, state.win, opts)
+      --      logger.benchmark_end("footer_update")
     end
 
+    --    logger.benchmark_start("window_resize")
     if opts.window.auto_resize then
       resize_window(state, opts)
 
@@ -1102,23 +1145,33 @@ local function update_display(state, opts)
       vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
 
       -- Apply highlights
+      --      logger.benchmark_start("apply_highlights")
       for i, item in ipairs(state.filtered_items) do
         local line_nr = i - 1
         local line = lines[i]
         local line_length = vim.api.nvim_strwidth(line)
         apply_highlights(state.buf, line_nr, item, opts, query, line_length, state)
       end
+      --      logger.benchmark_end("apply_highlights")
       -- Call render hook after highlights are applied
       if opts.hooks and opts.hooks.on_render then
+        -- TODO: Maybe we can do it as a loop similar for apply_highlights
+        -- so that we can enhance performance by checking if the item is visible
+        --        logger.benchmark_start("render_hook")
         opts.hooks.on_render(state.buf, state.filtered_items, opts)
+        --        logger.benchmark_end("render_hook")
       end
       -- M.add_padding_to_all_items(state, opts)
 
+      --      logger.benchmark_start("cursor_update")
       update_cursor_position(state, opts)
       local cursor_pos = vim.api.nvim_win_get_cursor(state.win)
       update_current_highlight(state, opts, cursor_pos[1] - 1)
+      --      logger.benchmark_end("cursor_update")
     end
+  --    logger.benchmark_end("buffer_update")
   else
+    --    logger.benchmark_start("clear_buffer")
     if vim.api.nvim_buf_is_valid(state.buf) then
       vim.api.nvim_buf_clear_namespace(state.buf, ns_id, 0, -1)
       vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, {})
@@ -1137,6 +1190,138 @@ local function update_display(state, opts)
       state.filtered_items = original_filtered_items
     end
   end
+  --  logger.benchmark_end("display_update_total")
+end
+
+local loading_ns_id = vim.api.nvim_create_namespace("selecta_loading_indicator")
+---@param state SelectaState
+---@param query string
+---@param opts SelectaOptions
+---@param callback function
+---@return boolean started
+function M.start_async_fetch(state, query, opts, callback)
+  if state.last_request_time and (vim.loop.now() - state.last_request_time) < 10 then
+    logger.log("🚫 Debounced rapid request")
+    return false
+  end
+  state.last_request_time = vim.loop.now()
+  -- Only start if we have an async source and query changed
+  if not opts.async_source or state.last_query == query then
+    logger.log("🔄 Skipping async fetch - same query or no async source")
+    return false
+  end
+
+  logger.log("🚀 Starting async fetch for query: '" .. query .. "'")
+  -- Store query
+  state.last_query = query
+
+  -- Set loading state for internal tracking
+  state.is_loading = true
+
+  -- Add a loading indicator using extmark instead of replacing items
+  if state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) then
+    -- Get loading indicator text and icon with fallbacks
+    local loading_icon = "󰇚" -- Default icon
+    local loading_text = "Loading..."
+
+    -- Safely access the loading indicator configuration with fallbacks
+    if opts.loading_indicator then
+      loading_icon = opts.loading_indicator.icon or loading_icon
+      loading_text = opts.loading_indicator.text or loading_text
+    elseif M.config.loading_indicator then
+      loading_icon = M.config.loading_indicator.icon or loading_icon
+      loading_text = M.config.loading_indicator.text or loading_text
+    end
+
+    -- Clear any previous loading indicator
+    vim.api.nvim_buf_clear_namespace(state.prompt_buf, loading_ns_id, 0, -1)
+
+    -- Add the loading indicator as virtual text at the end of the prompt
+    state.loading_extmark_id = vim.api.nvim_buf_set_extmark(state.prompt_buf, loading_ns_id, 0, 0, {
+      virt_text = { { " " .. loading_icon .. " " .. loading_text, "Comment" } },
+      virt_text_pos = "eol",
+      priority = 200,
+    })
+  end
+
+  -- Get the process function
+  logger.log("🔌 Getting process function from async_source")
+  local process_fn = opts.async_source(query)
+
+  -- Define the callback to handle processed items
+  local function handle_items(items)
+    vim.schedule(function()
+      -- Skip if picker was closed
+      if not state.active then
+        logger.log("⛔ Picker no longer active, aborting")
+        return
+      end
+
+      -- Clear loading indicator
+      if state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) then
+        vim.api.nvim_buf_clear_namespace(state.prompt_buf, loading_ns_id, 0, -1)
+        state.loading_extmark_id = nil
+      end
+
+      if items and type(items) == "table" then
+        logger.log("📦 Received " .. #items .. " items from async source")
+
+        -- Update with results
+        state.items = items
+        state.filtered_items = items
+
+        -- Apply filtering if needed
+        if query ~= "" and #items > 0 then
+          -- Apply filtering logic
+          M.update_filtered_items(state, query, vim.tbl_deep_extend("force", opts, { async_source = nil }))
+        end
+      else
+        -- Handle error or empty results
+        logger.log("⚠️ Invalid items returned: " .. type(items))
+        state.filtered_items = { { text = "No matching symbols found", icon = "󰅚", value = nil } }
+      end
+
+      -- Clear loading state
+      state.is_loading = false
+
+      -- Update display
+      if callback then
+        callback()
+      end
+    end)
+  end
+
+  -- Start the process and pass our callback
+  process_fn(handle_items)
+
+  return true
+end
+
+---@param state SelectaState
+---@param opts SelectaOptions
+function M.process_query(state, opts)
+  local query = table.concat(state.query)
+
+  -- Step 1: Try async fetch if configured
+  if opts.async_source then
+    -- Try to start async fetch, pass callback for display update
+    local started_async = M.start_async_fetch(state, query, opts, function()
+      -- This callback runs after async operation completes
+      M.update_filtered_items(state, query, opts)
+      M.update_display(state, opts)
+      vim.cmd("redraw")
+    end)
+
+    -- If async started successfully, return early without updating display
+    -- The display update will happen in the callback when async completes
+    if started_async then
+      return
+    end
+  end
+
+  -- Step 2: If we didn't start an async operation, filter and update normally
+  M.update_filtered_items(state, query, opts)
+  M.update_display(state, opts)
 end
 
 ---Close the picker and restore cursor
@@ -1147,6 +1332,15 @@ function M.close_picker(state)
     return
   end
   state.active = false
+  -- No need to explicitly terminate coroutines - just mark as inactive
+  -- TODO: why not close the coroutines
+  state.async_co = nil
+  state.is_loading = false
+  -- Clear loading indicator if exists
+  if state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) and state.loading_extmark_id then
+    vim.api.nvim_buf_clear_namespace(state.prompt_buf, loading_ns_id, 0, -1)
+    state.loading_extmark_id = nil
+  end
   if state.prompt_win and vim.api.nvim_win_is_valid(state.prompt_win) then
     vim.api.nvim_win_close(state.prompt_win, true)
   end
@@ -1270,8 +1464,15 @@ local function create_picker(items, opts)
     cursor_moved = false,
     selected = {},
     selected_count = 0,
+    async_co = nil,
+    is_loading = false,
+    last_query = nil, -- Initialize last_query for async tracking
+    loading_extmark_id = nil,
+    last_request_time = nil,
   }
+  --  logger.benchmark_end("state_init")
 
+  --  logger.benchmark_start("window_calc")
   local width, height
   if opts.initially_hidden then
     -- Use minimum width and height when initially hidden
@@ -1331,9 +1532,13 @@ local function create_picker(items, opts)
   vim.wo[state.win].cursorlineopt = "both"
   vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = state.buf })
   vim.api.nvim_set_option_value("buftype", "nofile", { buf = state.buf })
-  logger.benchmark_end("window_setup")
+  -- TODO: this is for later to apply the same highlight of the filtype
+  -- to the text for better highlighting.
+  -- vim.api.nvim_buf_set_name(state.buf, "Namu_items")
+  -- vim.api.nvim_buf_set_option(state.buf, "filetype", "match")
+  --  logger.benchmark_end("window_setup")
 
-  logger.benchmark_start("initial_display")
+  --  logger.benchmark_start("initial_display")
   -- First update the display
   -- update_display(state, opts)
 
@@ -1512,7 +1717,7 @@ local function handle_toggle(state, opts, direction)
     -- Only move if toggle was successful
     if was_toggled then
       -- Update display first
-      update_display(state, opts)
+      M.process_query(state, opts)
 
       -- Calculate next position with wrapping
       local next_pos
@@ -1591,7 +1796,7 @@ local function handle_untoggle(state, opts)
     state.selected_count = state.selected_count - 1
 
     -- Update display
-    update_display(state, opts)
+    M.process_query(state, opts)
 
     -- Ensure cursor stays at the correct position
     pcall(vim.api.nvim_win_set_cursor, state.win, { prev_selected_pos, 0 })
@@ -1676,11 +1881,11 @@ local function handle_char(state, char, opts)
       end
     elseif char_key == vim.api.nvim_replace_termcodes(multiselect_keys.select_all, true, true, true) then
       bulk_selection(state, opts, true)
-      update_display(state, opts)
+      M.process_query(state, opts)
       return nil
     elseif char_key == vim.api.nvim_replace_termcodes(multiselect_keys.clear_all, true, true, true) then
       bulk_selection(state, opts, false)
-      update_display(state, opts)
+      M.process_query(state, opts)
       return nil
     end
   end
@@ -1728,11 +1933,11 @@ local function handle_char(state, char, opts)
     return nil
   elseif vim.tbl_contains(movement_keys.delete_word, char_key) then
     delete_last_word(state)
-    update_display(state, opts)
+    M.process_query(state, opts)
     return nil
   elseif vim.tbl_contains(movement_keys.clear_line, char_key) then
     clear_query_line(state)
-    update_display(state, opts)
+    M.process_query(state, opts)
     return nil
   elseif char_key == SPECIAL_KEYS.MOUSE and vim.v.mouse_win ~= state.win and vim.v.mouse_win ~= state.prompt_win then
     if opts.on_cancel then
@@ -1758,7 +1963,7 @@ local function handle_char(state, char, opts)
     state.cursor_moved = false
   end
 
-  update_display(state, opts)
+  M.process_query(state, opts)
   return nil
 end
 
@@ -1809,9 +2014,13 @@ function M.pick(items, opts)
         return prefix_padding .. prefix_info.text .. padding .. item.text
       end
     end
+  --  logger.benchmark_end("opts_setup")
 
+  --  logger.benchmark_start("picker_creation")
   local state = create_picker(items, opts)
-  update_display(state, opts)
+  --  logger.benchmark_end("picker_creation")
+  --  logger.benchmark_start("initial_setup")
+  M.process_query(state, opts)
   vim.cmd("redraw")
   hide_cursor()
 

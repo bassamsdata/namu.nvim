@@ -9,8 +9,9 @@ vim.g.namu_loaded = true
 local command_descriptions = {
   symbols = "Jump to location using namu functionality",
   colorscheme = "Select and apply colorscheme",
-  help = "Show help information (use 'help symbols' or 'help analysis' for detailed views)",
   call = "Show call hierarchy (use 'call in', 'call out', or 'call both')", -- Add this line
+  workspace = "Search workspace symbols with LSP",
+  help = "Show help information (use 'help symbols' or 'help analysis' for detailed views)",
 }
 -- Argument validators
 ---@type table<string, fun(args: string[]): boolean, string?>
@@ -59,6 +60,9 @@ local command_validators = {
       return false, "invalid call type. Valid types: in, out, both"
     end
     return true
+  end,
+  workspace = function(args)
+    return #args <= 1, "workspace command accepts an optional search query"
   end,
   help = function(args)
     if #args > 1 then
@@ -120,6 +124,10 @@ local registry = {
     elseif call_type == "both" then
       require("namu.namu_callhierarchy").show_both_calls()
     end
+  end,
+  workspace = function(args)
+    local query = args[1] or ""
+    require("namu.namu_workspace").show_with_query(query)
   end,
   help = function(args)
     if #args == 0 then
