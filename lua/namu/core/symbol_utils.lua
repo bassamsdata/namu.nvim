@@ -21,7 +21,6 @@ function M.find_nearest_symbol(items)
   -- Cache cursor position
   local cursor_pos = vim.api.nvim_win_get_cursor(0)
   local cursor_line = cursor_pos[1]
-  logger.log("find_nearest_symbol() - Looking for symbol at line " .. cursor_line)
   -- Early exit if no items
   if #items == 0 then
     return nil
@@ -42,8 +41,6 @@ function M.find_nearest_symbol(items)
     end
     -- Calculate distance (how many lines away)
     local distance = math.abs(cursor_line - symbol.lnum)
-    logger.log("find_nearest_symbol() - Symbol at line " .. symbol.lnum)
-    logger.log("find_nearest_symbol() - Distance to symbol: " .. distance)
     -- If this symbol is closer than our current best
     if distance < smallest_distance then
       smallest_distance = distance
@@ -291,9 +288,10 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
       if state.original_win and state.original_pos and vim.api.nvim_win_is_valid(state.original_win) then
         vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
       end
+      --      logger.benchmark_report()
+      logger.analyze_bottlenecks("ctags_show_total")
     end,
     on_move = function(item)
-      logger.log("on_move()" .. vim.inspect(state))
       if config.preview.highlight_on_move and config.preview.highlight_mode == "always" then
         if item then
           ui.highlight_symbol(item.value, state.original_win, state.preview_ns)

@@ -301,7 +301,15 @@ local function preview_diagnostics(item, win_id)
         end
       end
 
-      -- Create the extmark with validated positions
+      -->> ACTUAL HIGHLIGHTS -------------------------------------- <<--
+      -- TODO: we need to extract the background color only for this one
+      pcall(vim.api.nvim_buf_set_extmark, bufnr, state.preview_ns, value.lnum, 0, {
+        end_row = value.lnum + 1,
+        hl_eol = true,
+        hl_group = hl_group,
+        hl_mode = "blend",
+        priority = 300,
+      })
       pcall(vim.api.nvim_buf_set_extmark, bufnr, state.preview_ns, value.lnum, value.col, {
         end_row = end_row,
         end_col = end_col,
@@ -687,12 +695,14 @@ function M.show(scope)
     end,
     on_select = function(item)
       if item and item.value then
+        vim.api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
         -- Reset preview state when selecting
         if
           state.preview_state
           and state.preview_state.scratch_buf
           and vim.api.nvim_buf_is_valid(state.preview_state.scratch_buf)
         then
+          vim.api.nvim_buf_clear_namespace(state.preview_state.scratch_buf, state.preview_ns, 0, -1)
           vim.api.nvim_buf_delete(state.preview_state.scratch_buf, { force = true })
           state.preview_state.scratch_buf = nil
         end

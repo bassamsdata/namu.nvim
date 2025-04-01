@@ -226,16 +226,15 @@ function M.add_tree_state_to_items(items)
     end
   end
 
-
   -- Debug parent-child relationships
-  for parent_sig, children in pairs(children_by_parent) do
-    logger.log("Parent " .. parent_sig .. " has " .. #children .. " children")
-  end
+  -- for parent_sig, children in pairs(children_by_parent) do
+  --   logger.log("Parent " .. parent_sig .. " has " .. #children .. " children")
+  -- end
 
   -- Add a synthetic root if needed
   local need_synthetic_root = (root_item_count > 1 or root_item_count == 0) and items_with_parent > 0
   if need_synthetic_root then
-    logger.log("Need synthetic root detected")
+    -- logger.log("Need synthetic root detected")
 
     -- Find items that should be treated as top-level (have parent signatures that don't exist)
     local orphaned_items = {}
@@ -245,7 +244,7 @@ function M.add_tree_state_to_items(items)
       end
     end
 
-    logger.log("Orphaned items (parents don't exist): " .. #orphaned_items)
+    -- logger.log("Orphaned items (parents don't exist): " .. #orphaned_items)
 
     -- Create a temporary root signature
     local root_signature = "synthetic_root"
@@ -269,7 +268,7 @@ function M.add_tree_state_to_items(items)
       return
     end
 
-    logger.log("Processing " .. #children .. " children for parent " .. parent_signature)
+    -- logger.log("Processing " .. #children .. " children for parent " .. parent_signature)
 
     for i, child in ipairs(children) do
       local is_last = (i == #children)
@@ -283,7 +282,7 @@ function M.add_tree_state_to_items(items)
       end
       table.insert(child_tree_state, is_last)
 
-      logger.log("Child " .. (child.value.signature or "unknown") .. " tree_state: " .. vim.inspect(child_tree_state))
+      -- logger.log("Child " .. (child.value.signature or "unknown") .. " tree_state: " .. vim.inspect(child_tree_state))
 
       -- Set the tree state on the item
       child.tree_state = child_tree_state

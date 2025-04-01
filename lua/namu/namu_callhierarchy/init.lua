@@ -132,6 +132,7 @@ local function restore_window_state(win_id, preview_state)
     if preview_state.original_cursor then
       vim.api.nvim_win_set_cursor(win_id, preview_state.original_cursor)
     end
+    -- TEST: I think this is become redundunt
     if preview_state.original_view then
       vim.api.nvim_win_call(win_id, function()
         vim.fn.winrestview(preview_state.original_view)

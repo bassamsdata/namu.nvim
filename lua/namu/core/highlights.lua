@@ -60,12 +60,12 @@ function M.setup()
   M.set_highlights({
     NamuCursor = { blend = 100, nocombine = true },
     NamuPrefix = "Special",
-    NamuMatch = "Identifier",
-    NamuFilter = "Type",
-    NamuPrompt = "FloatTitle",
-    NamuSelected = "Statement",
-    NamuFooter = "Comment",
-    NamuCurrentItem = "CursorLine",
+    NamuMatch = "Identifier", -- the matched characters in items
+    NamuFilter = "Type", -- the prefix in prompt window
+    NamuPrompt = "FloatTitle", -- Prompt window
+    NamuSelected = "Statement", -- Selected item in selection mode
+    NamuFooter = "Comment", -- Footer text
+    NamuCurrentItem = "CursorLine", -- Highlight the current item
     -- Namu Symbols
     NamuPrefixSymbol = "@Comment",
     NamuSymbolFunction = "@function",

@@ -15,6 +15,7 @@ M.defaults = {
       -- "Interface",
       -- "Field",
       -- "Struct",
+      -- "Array"
     },
     go = {
       "Function",
@@ -31,7 +32,6 @@ M.defaults = {
     python = { "Function", "Class", "Method" },
     -- Filetype specific
     yaml = { "Object", "Array" },
-    json = { "Module" },
     toml = { "Object" },
     markdown = { "String" },
   },
@@ -120,6 +120,7 @@ M.defaults = {
     prefix_kind_colors = true,
     enable_highlights = true,
     highlights = {
+      -- TODO: change the highlights name to refer to highilgiht.lua
       PrefixSymbol = "NamuPrefixSymbol",
       Function = "NamuSymbolFunction",
       Method = "NamuSymbolMethod",
@@ -143,7 +144,7 @@ M.defaults = {
     max_width = 120,
     max_height = 41,
     padding = 2,
-    -- NOTE: this is borrored from mini.nvim, it's for latest nightly
+    -- this is borrored from @mini.nvim, thanks :), it's for >= 0.11
     border = (vim.fn.exists("+winborder") == 1 and vim.o.winborder ~= "") and vim.o.winborder or "rounded",
     title_pos = "left",
     show_footer = true,

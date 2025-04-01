@@ -77,13 +77,14 @@ local function symbols_to_selecta_items(symbols, config)
     table.insert(items, item)
   end
 
+  -- BUG: NO need for this one
   -- Sort items by kind, then by name
-  table.sort(items, function(a, b)
-    if a.kind == b.kind then
-      return a.value.name < b.value.name
-    end
-    return a.kind < b.kind
-  end)
+  -- table.sort(items, function(a, b)
+  --   if a.kind == b.kind then
+  --     return a.value.name < b.value.name
+  --   end
+  --   return a.kind < b.kind
+  -- end)
   impl.logger.log("✅ Converted " .. #items .. " items")
   return items
 end
