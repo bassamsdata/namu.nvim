@@ -532,7 +532,7 @@ local function make_call_hierarchy_request(method, params, callback)
     return
   end
   -- Make the request directly
-  client.request(method, params, function(err, result, ctx)
+  client:request(method, params, function(err, result, ctx)
     callback(err, result, ctx)
   end, bufnr)
 end
