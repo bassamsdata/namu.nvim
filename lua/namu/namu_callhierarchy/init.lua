@@ -292,11 +292,11 @@ local function check_call_hierarchy_support(bufnr)
     end
 
     -- Check for specific method support, which may exist independently
-    if client.supports_method and client.supports_method("callHierarchy/incomingCalls") then
+    if client:supports_method("callHierarchy/incomingCalls", bufnr) then
       support.incoming = true
     end
 
-    if client.supports_method and client.supports_method("callHierarchy/outgoingCalls") then
+    if client:supports_method("callHierarchy/outgoingCalls", bufnr) then
       support.outgoing = true
     end
   end

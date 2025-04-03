@@ -29,7 +29,7 @@ local function ensure_client_compatibility(client)
       -- Special handling for supports_method in older versions
       if key == "supports_method" then
         return function(_, method)
-          return client.supports_method(method)
+          return client:supports_method(method)
         end
       end
 
@@ -168,17 +168,6 @@ function M.request_symbols(bufnr, method, callback, extra_params)
 
     state.current_request = nil
     callback(request_err, result, ctx)
-
-    -- Add this critical part to resume ALL waiting coroutines
-    vim.schedule(function()
-      -- This schedules the coroutine resumption after the callback is done
-      local co = coroutine.running()
-      for thread, status in pairs(coroutine) do
-        if type(thread) == "thread" and status == "suspended" and thread ~= co then
-          pcall(coroutine.resume, thread)
-        end
-      end
-    end)
   end)
 
   if success and request_id then
