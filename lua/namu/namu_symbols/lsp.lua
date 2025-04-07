@@ -54,7 +54,7 @@ local function get_client_with_method(bufnr, method)
   logger.log("\n=== Finding LSP client ===")
   logger.log(string.format("Buffer: %d, Method: %s", bufnr, method))
 
-  local get_clients_fn = vim.lsp.get_clients or vim.lsp.get_active_clients
+  local get_clients_fn = vim.lsp.get_clients
   local clients = vim.tbl_map(ensure_client_compatibility, get_clients_fn({ bufnr = bufnr }))
 
   logger.log(string.format("Found %d clients", #clients))
@@ -89,7 +89,7 @@ end
 ---@return table LSP position parameters
 function M.make_position_params(bufnr)
   -- Get the first client attached to the buffer to use its encoding
-  local get_clients_fn = vim.lsp.get_clients or vim.lsp.get_active_clients
+  local get_clients_fn = vim.lsp.get_clients
   local clients = get_clients_fn({ bufnr = bufnr })
   -- Default to utf-16 if no clients found
   local position_encoding = "utf-16"
