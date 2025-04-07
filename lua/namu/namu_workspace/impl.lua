@@ -381,119 +381,123 @@ function impl.show_with_query(config, query, opts)
     end
 
     -- Always show picker, even with placeholder items
-    impl.selecta(initial_items, {
-      title = "Workspace Symbols ",
-      config,
-      window = config.window,
-      current_highlight = config.current_highlight,
-      debug = config.debug,
-      custom_keymaps = config.custom_keymaps,
-      preserve_order = true,
+    impl.selecta(
+      initial_items,
+      vim.tbl_deep_extend("force", config, {
+        title = "Workspace Symbols ",
+        config,
+        -- row_position = config.row_position,
+        -- window = config.window,
+        -- current_highlight = config.current_highlight,
+        -- debug = config.debug,
+        -- custom_keymaps = config.custom_keymaps,
+        -- preserve_order = true,
 
-      -- Add coroutine-based async source
-      async_source = create_async_symbol_source(state.original_buf, config),
+        -- Add coroutine-based async source
+        async_source = create_async_symbol_source(state.original_buf, config),
 
-      -- Rest of options remain the same as before
-      pre_filter = function(items, input_query)
-        local filter = impl.symbol_utils.parse_symbol_filter(input_query, config)
-        if filter then
-          local filtered = vim.tbl_filter(function(item)
-            return vim.tbl_contains(filter.kinds, item.kind)
-          end, items)
-          return filtered, filter.remaining
-        end
-        return items, input_query
-      end,
-
-      -- formatter = function(item)
-      -- end,
-
-      hooks = {
-        on_render = function(buf, filtered_items)
-          -- The context from selecta contains information about visible lines
-          -- which our improved apply_workspace_highlights will use
-          apply_workspace_highlights(buf, filtered_items, config)
+        -- Rest of options remain the same as before
+        pre_filter = function(items, input_query)
+          local filter = impl.symbol_utils.parse_symbol_filter(input_query, config)
+          if filter then
+            local filtered = vim.tbl_filter(function(item)
+              return vim.tbl_contains(filter.kinds, item.kind)
+            end, items)
+            return filtered, filter.remaining
+          end
+          return items, input_query
         end,
-      },
 
-      on_move = function(item)
-        if item and item.value then
-          -- preview_symbol(item, state.original_win)
-          preview_workspace_item(item, state.original_win)
-        end
-      end,
+        -- formatter = function(item)
+        -- end,
 
-      on_select = function(item)
-        if not item or not item.value then
-          impl.logger.log("Invalid item for selection")
-          return
-        end
-        impl.logger.log(string.format("Selected symbol: %s at line %d", item.value.name, item.value.lnum))
-        -- -- Clean up preview state
-        -- if
-        --   state.preview_state
-        --   and state.preview_state.scratch_buf
-        --   and vim.api.nvim_buf_is_valid(state.preview_state.scratch_buf)
-        -- then
-        --   vim.api.nvim_buf_delete(state.preview_state.scratch_buf, { force = true })
-        --   state.preview_state.scratch_buf = nil
-        -- end
-        local cache_eventignore = vim.o.eventignore
-        vim.o.eventignore = "BufEnter"
-        pcall(function()
-          -- Set mark for jumplist
-          vim.api.nvim_win_call(state.original_win, function()
-            vim.cmd("normal! m'")
+        hooks = {
+          on_render = function(buf, filtered_items)
+            -- The context from selecta contains information about visible lines
+            -- which our improved apply_workspace_highlights will use
+            apply_workspace_highlights(buf, filtered_items, config)
+          end,
+        },
+
+        on_move = function(item)
+          if item and item.value then
+            -- preview_symbol(item, state.original_win)
+            preview_workspace_item(item, state.original_win)
+          end
+        end,
+
+        on_select = function(item)
+          if not item or not item.value then
+            impl.logger.log("Invalid item for selection")
+            return
+          end
+          impl.logger.log(string.format("Selected symbol: %s at line %d", item.value.name, item.value.lnum))
+          -- -- Clean up preview state
+          -- if
+          --   state.preview_state
+          --   and state.preview_state.scratch_buf
+          --   and vim.api.nvim_buf_is_valid(state.preview_state.scratch_buf)
+          -- then
+          --   vim.api.nvim_buf_delete(state.preview_state.scratch_buf, { force = true })
+          --   state.preview_state.scratch_buf = nil
+          -- end
+          local cache_eventignore = vim.o.eventignore
+          vim.o.eventignore = "BufEnter"
+          pcall(function()
+            -- Set mark for jumplist
+            vim.api.nvim_win_call(state.original_win, function()
+              vim.cmd("normal! m'")
+            end)
+
+            -- Jump to file position using the shared edit_file function
+            local value = item.value
+            local buf_id = impl.preview_utils.edit_file(value.file_path, state.original_win)
+
+            -- Set cursor position
+            if buf_id then
+              vim.api.nvim_win_set_cursor(state.original_win, {
+                value.lnum + 1,
+                value.col,
+              })
+              vim.api.nvim_win_call(state.original_win, function()
+                vim.cmd("normal! zz")
+              end)
+            end
           end)
 
-          -- Jump to file position using the shared edit_file function
-          local value = item.value
-          local buf_id = impl.preview_utils.edit_file(value.file_path, state.original_win)
+          vim.o.eventignore = cache_eventignore
+        end,
 
-          -- Set cursor position
-          if buf_id then
-            vim.api.nvim_win_set_cursor(state.original_win, {
-              value.lnum + 1,
-              value.col,
-            })
-            vim.api.nvim_win_call(state.original_win, function()
-              vim.cmd("normal! zz")
-            end)
-          end
-        end)
-
-        vim.o.eventignore = cache_eventignore
-      end,
-
-      on_cancel = function()
-        -- Clear highlights
-        vim.api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
-        if
-          state.preview_state
-          and state.preview_state.scratch_buf
-          and vim.api.nvim_buf_is_valid(state.preview_state.scratch_buf)
-        then
-          vim.api.nvim_buf_clear_namespace(state.preview_state.scratch_buf, state.preview_ns, 0, -1)
-        end
-
-        -- Restore original window state
-        if state.preview_state then
-          impl.preview_utils.restore_window_state(state.original_win, state.preview_state)
-        else
-          -- Fallback restoration
+        on_cancel = function()
+          -- Clear highlights
+          vim.api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
           if
-            state.original_win
-            and state.original_pos
-            and state.original_buf
-            and vim.api.nvim_win_is_valid(state.original_win)
-            and vim.api.nvim_buf_is_valid(state.original_buf)
+            state.preview_state
+            and state.preview_state.scratch_buf
+            and vim.api.nvim_buf_is_valid(state.preview_state.scratch_buf)
           then
-            vim.api.nvim_win_set_buf(state.original_win, state.original_buf)
-            vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
+            vim.api.nvim_buf_clear_namespace(state.preview_state.scratch_buf, state.preview_ns, 0, -1)
           end
-        end
-      end,
-    })
+
+          -- Restore original window state
+          if state.preview_state then
+            impl.preview_utils.restore_window_state(state.original_win, state.preview_state)
+          else
+            -- Fallback restoration
+            if
+              state.original_win
+              and state.original_pos
+              and state.original_buf
+              and vim.api.nvim_win_is_valid(state.original_win)
+              and vim.api.nvim_buf_is_valid(state.original_buf)
+            then
+              vim.api.nvim_win_set_buf(state.original_win, state.original_buf)
+              vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
+            end
+          end
+        end,
+      })
+    )
   end, { query = query or "" })
 end
 
