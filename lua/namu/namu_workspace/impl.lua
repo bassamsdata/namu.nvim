@@ -246,70 +246,23 @@ local function apply_workspace_highlights(buf, filtered_items, config)
     local file_path_text = line_text:sub(file_start)
     local last_slash_pos = file_path_text:match(".*/()")
 
-    -- Get file icon for the file path
-    local function get_file_icon(file_path)
-      -- Extract the file name from the path
-      local filename = vim.fs.basename(file_path)
-      local extension = filename:match("%.([^%.]+)$")
+    -- Find the icon part of the text if it exists
+    local icon_end = file_start
+    local icon_match = file_path_text:match("^(.-) ")
 
-      -- Try to get icon from mini.icons
-      local icon, icon_hl, is_default
-      local mini_icons_ok, mini_icons = pcall(require, "mini.icons")
-      if mini_icons_ok then
-        -- First try with exact filename
-        icon, icon_hl = mini_icons.get("file", filename)
-
-        -- If it's a default icon and we have an extension, try by extension
-        if is_default and extension then
-          local ext_icon, ext_hl, ext_is_default = mini_icons.get("extension", extension)
-          if not ext_is_default then
-            icon, icon_hl = ext_icon, ext_hl
-          end
-        end
-      else
-        -- Fall back to nvim-web-devicons
-        local devicons_ok, devicons = pcall(require, "nvim-web-devicons")
-        if devicons_ok then
-          local dev_icon, dev_hl = devicons.get_icon(filename, extension, { default = true })
-          if dev_icon then
-            icon, icon_hl = dev_icon, dev_hl
-          end
-        end
-      end
-
-      -- If we still don't have an icon, provide a safe default
-      if not icon then
-        icon = "󰈔" -- Default file icon
-        icon_hl = "Normal"
-      end
-
-      return icon, icon_hl
-    end
-
-    local file_icon, icon_hl
-    if last_slash_pos then
-      -- Get full filename
-      local filename = file_path_text:sub(last_slash_pos)
-      file_icon, icon_hl = get_file_icon(value.file_path)
-    else
-      file_icon, icon_hl = get_file_icon(value.file_path)
-    end
-
-    -- Insert the icon with appropriate highlight
-    if file_icon then
-      -- Create icon with appropriate spacing
-      local icon_width = vim.fn.strdisplaywidth(file_icon)
-      local icon_text = file_icon .. " "
-
-      -- Add icon at the beginning of file path
+    -- Only consider it an icon if it's reasonably short (icons are typically 1-2 chars)
+    if icon_match and vim.fn.strwidth(icon_match) <= 2 then
+      local _, icon_hl = get_file_icon(value.file_path)
+      -- Highlight the icon with icon_hl (use the same highlight as the symbol)
       vim.api.nvim_buf_set_extmark(buf, ns_id, line_idx, file_start - 1, {
-        virt_text = { { icon_text, icon_hl } },
-        virt_text_pos = "overlay",
+        end_row = line_idx,
+        end_col = file_start + #icon_match,
+        hl_group = icon_hl, -- Use same highlight as the symbol name and kind
         priority = 120,
       })
 
-      -- Adjust file_start to account for the icon we've added
-      local icon_offset = icon_width + 1 -- icon width + space
+      -- Skip the icon and space for highlighting the rest of the path
+      icon_end = file_start + #icon_match + 1
     end
 
     if last_slash_pos then
@@ -317,7 +270,7 @@ local function apply_workspace_highlights(buf, filtered_items, config)
       local path_end = file_start + last_slash_pos - 2
 
       -- Highlight directory path as Comment
-      vim.api.nvim_buf_set_extmark(buf, ns_id, line_idx, file_start - 1, {
+      vim.api.nvim_buf_set_extmark(buf, ns_id, line_idx, icon_end - 1, {
         end_row = line_idx,
         end_col = path_end,
         hl_group = "Comment",
@@ -333,7 +286,7 @@ local function apply_workspace_highlights(buf, filtered_items, config)
       })
     else
       -- No path separator, just a filename - highlight with symbol highlight
-      vim.api.nvim_buf_set_extmark(buf, ns_id, line_idx, file_start - 1, {
+      vim.api.nvim_buf_set_extmark(buf, ns_id, line_idx, icon_end - 1, {
         end_row = line_idx,
         end_col = #line_text,
         hl_group = kind_hl,
