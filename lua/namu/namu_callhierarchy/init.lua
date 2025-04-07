@@ -4,6 +4,7 @@ local lsp = require("namu.namu_symbols.lsp")
 local symbol_utils = require("namu.core.symbol_utils")
 local logger = require("namu.utils.logger")
 local config_defaults = require("namu.namu_symbols.config")
+local preview_utils = require("namu.core.preview_utils")
 local ext = require("namu.namu_symbols.external_plugins")
 local utils = require("namu.namu_symbols.utils")
 local M = {}
@@ -11,34 +12,6 @@ local M = {}
 ---@type NamuState
 ---@type NamuState
 local state = nil
-local handlers = nil
-local uv = vim.uv or vim.loop
-
--- Not so Async wrapper for vim.fn.readfile using a coroutine.
--- I tested a lot of methods for reading files, and this method came on top interms
--- of performance, I might change it to io.read though since both are almost the same
--- speed
-local function readfile_async(path, callback)
-  local co = coroutine.create(function()
-    -- Wrap the blocking readfile in a protected call.
-    local ok, lines = pcall(vim.fn.readfile, path)
-    -- Pass the result to the provided callback.
-    callback(ok, lines)
-  end)
-  -- Start the coroutine.
-  coroutine.resume(co)
-end
-
-local function create_preview_state()
-  logger.log("Creating new preview state")
-  return {
-    original_bufnr = nil,
-    original_cursor = nil,
-    original_view = nil,
-    preview_ns = vim.api.nvim_create_namespace("namu_preview_" .. vim.fn.rand()),
-    scratch_buf = nil,
-  }
-end
 
 local function initialize_state()
   logger.log("Initializing preview state")
@@ -48,7 +21,7 @@ local function initialize_state()
     original_buf = vim.api.nvim_get_current_buf(),
     original_pos = vim.api.nvim_win_get_cursor(0),
     -- Add preview state locally
-    preview = create_preview_state(),
+    preview = preview_utils.create_preview_state(),
   }
 
   logger.log(
@@ -62,153 +35,18 @@ local function initialize_state()
   return current_state
 end
 
-local function edit_file(path, win_id)
-  logger.log(string.format("Editing file: %s in window: %s", path, win_id))
-  if type(path) ~= "string" then
-    logger.log("Invalid path type")
-    return
+local function preview_callhierarchy_item(item, win_id)
+  if not state.preview_state then
+    state.preview_state = preview_utils.create_preview_state("callhierarchy_preview")
   end
 
-  local b = vim.api.nvim_win_get_buf(win_id or 0)
-  local try_mimic_buf_reuse = (vim.fn.bufname(b) == "" and vim.bo[b].buftype ~= "quickfix" and not vim.bo[b].modified)
-    and (#vim.fn.win_findbuf(b) == 1 and vim.deep_equal(vim.fn.getbufline(b, 1, "$"), { "" }))
-
-  if try_mimic_buf_reuse then
-    logger.log("Will try to reuse empty buffer")
-  end
-
-  local buf_id = vim.fn.bufadd(vim.fn.fnamemodify(path, ":."))
-  logger.log("Created/got buffer: " .. buf_id)
-
-  -- Set buffer in window (also loads it)
-  local ok, err = pcall(vim.api.nvim_win_set_buf, win_id or 0, buf_id)
-  if not ok then
-    logger.log("Failed to set buffer: " .. err)
-    return
-  end
-
-  vim.bo[buf_id].buflisted = true
-
-  if try_mimic_buf_reuse then
-    pcall(vim.api.nvim_buf_delete, b, { unload = false })
-    logger.log("Deleted old empty buffer")
-  end
-
-  return buf_id
-end
-local function create_scratch_buffer()
-  logger.log("Creating scratch buffer for preview")
-  local buf = vim.api.nvim_create_buf(false, true)
-  vim.bo[buf].bufhidden = "wipe"
-  vim.bo[buf].buftype = "nofile"
-  vim.bo[buf].swapfile = false
-  vim.bo[buf].matchpairs = ""
-  return buf
-end
-
-local function save_window_state(win_id, preview_state)
-  logger.log("Saving window state for win_id: " .. win_id)
-  preview_state.original_bufnr = vim.api.nvim_win_get_buf(win_id)
-  preview_state.original_cursor = vim.api.nvim_win_get_cursor(win_id)
-  preview_state.original_view = vim.api.nvim_win_call(win_id, function()
-    return vim.fn.winsaveview()
-  end)
-end
-
-local function restore_window_state(win_id, preview_state)
-  logger.log("Restoring window state for win_id: " .. win_id)
-  if not preview_state.original_bufnr then
-    return
-  end
-
-  local cache_eventignore = vim.o.eventignore
-  vim.o.eventignore = "all"
-
-  pcall(function()
-    if vim.api.nvim_buf_is_valid(preview_state.original_bufnr) then
-      vim.api.nvim_win_set_buf(win_id, preview_state.original_bufnr)
-    end
-
-    if preview_state.original_cursor then
-      vim.api.nvim_win_set_cursor(win_id, preview_state.original_cursor)
-    end
-    -- TEST: I think this is become redundunt
-    if preview_state.original_view then
-      vim.api.nvim_win_call(win_id, function()
-        vim.fn.winrestview(preview_state.original_view)
-      end)
-    end
-  end)
-
-  vim.o.eventignore = cache_eventignore
-end
-
-local function preview_symbol(item, win_id, preview_state)
-  if not item or not item.value then
-    logger.log("Invalid item for preview")
-    return
-  end
-
-  local file_path = item.value.file_path
-  if not file_path then
-    logger.log("No file path in item")
-    return
-  end
-
-  logger.log(string.format("Previewing symbol: %s at line %d in %s", item.value.name, item.value.lnum, file_path))
-
-  if not preview_state.scratch_buf or not vim.api.nvim_buf_is_valid(preview_state.scratch_buf) then
-    preview_state.scratch_buf = create_scratch_buffer()
-  end
-
-  local cache_eventignore = vim.o.eventignore
-  vim.o.eventignore = "BufEnter"
-
-  -- Read file content asynchronously using our coroutine wrapper.
-  readfile_async(file_path, function(ok, lines)
-    if not ok or not lines then
-      logger.log("Failed to read file: " .. file_path)
-      vim.o.eventignore = cache_eventignore
-      return
-    end
-
-    -- Set buffer content and options
-    vim.api.nvim_buf_set_lines(preview_state.scratch_buf, 0, -1, false, lines)
-
-    -- Set filetype for syntax highlighting
-    local ft = vim.filetype.match({ filename = file_path })
-    if ft then
-      vim.bo[preview_state.scratch_buf].filetype = ft
-
-      -- Try using treesitter if available
-      if preview_state.scratch_buf and vim.api.nvim_buf_is_valid(preview_state.scratch_buf) then
-        local has_parser, parser = pcall(vim.treesitter.get_parser, preview_state.scratch_buf, ft)
-        if has_parser and parser then
-          parser:parse()
-        end
-      end
-    end
-
-    -- Set scratch buffer in window
-    vim.api.nvim_win_set_buf(win_id, preview_state.scratch_buf)
-
-    -- Set cursor to symbol line and center
-    local lnum = item.value.lnum or 1
-    vim.api.nvim_win_set_cursor(win_id, { lnum, 0 })
-    vim.api.nvim_win_call(win_id, function()
-      vim.cmd("normal! zz")
-    end)
-
-    -- Clear previous highlights and set new one
-    vim.api.nvim_buf_clear_namespace(preview_state.scratch_buf, preview_state.preview_ns, 0, -1)
-    vim.api.nvim_buf_set_extmark(preview_state.scratch_buf, preview_state.preview_ns, lnum - 1, 0, {
-      end_line = lnum,
-      hl_group = "NamuPreview",
-      hl_eol = true,
-    })
-
-    vim.o.eventignore = cache_eventignore
-  end)
+  preview_utils.preview_symbol(item, win_id, state.preview_state, {
+    highlight_group = "NamuPreview",
+    -- Assuming callhierarchy lnum is 1-based, offset by -1 for highlight (0-based)
+    highlight_line_offset = -1,
+    -- No adjustment needed for cursor (already 1-based)
+    line_index_offset = 0,
+  })
 end
 
 ---@type CallHierarchyConfig
@@ -217,7 +55,7 @@ M.config = vim.tbl_deep_extend("force", M.defaul_config, {
   preserve_hierarchy = true,
   current_highlight = {
     enabled = true,
-    hl_group = "CursorLine",
+    hl_group = "NamuCurrentItem",
     prefix_icon = " ",
   },
   sort_by_nesting_depth = true,
@@ -1032,6 +870,7 @@ function M.show_call_picker(selectaItems, notify_opts)
       on_select = function(item) end,
     },
     on_select = function(item)
+      -- TODO: add clear highlights here
       if not item or not item.value then
         logger.log("Invalid item for selection")
         return
@@ -1050,7 +889,7 @@ function M.show_call_picker(selectaItems, notify_opts)
 
         -- Open file using edit_file function
         local file_path = item.value.file_path
-        local buf_id = edit_file(file_path, state.original_win)
+        local buf_id = preview_utils.edit_file(file_path, state.original_win)
         if buf_id then
           vim.api.nvim_win_set_cursor(state.original_win, { item.value.lnum, 0 })
           vim.api.nvim_win_call(state.original_win, function()
@@ -1071,7 +910,7 @@ function M.show_call_picker(selectaItems, notify_opts)
         end
 
         -- Restore original state
-        restore_window_state(state.original_win, state.preview)
+        preview_utils.restore_window_state(state.original_win, state.preview)
       end
     end,
     on_move = function(item)
@@ -1082,10 +921,12 @@ function M.show_call_picker(selectaItems, notify_opts)
 
       -- Save state on first move
       if not state.preview.original_bufnr then
-        save_window_state(state.original_win, state.preview)
+        preview_utils.save_window_state(state.original_win, state.preview)
       end
 
-      preview_symbol(item, state.original_win, state.preview)
+      -- TODO: clean here
+      -- preview_symbol(item, state.original_win, state.preview)
+      preview_callhierarchy_item(item, state.original_win)
     end,
   }
 

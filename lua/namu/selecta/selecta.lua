@@ -917,7 +917,7 @@ local function update_current_highlight(state, opts, line_nr)
     end_col = 0,
     hl_eol = true,
     hl_group = "NamuCurrentItem",
-    priority = 201, -- Higher than regular highlights but lower than matches
+    priority = 202, -- Higher than regular highlights but lower than matches
   })
 
   -- Add the prefix icon if enabled
@@ -925,7 +925,7 @@ local function update_current_highlight(state, opts, line_nr)
     vim.api.nvim_buf_set_extmark(state.buf, current_selection_ns, line_nr, 0, {
       virt_text = { { opts.current_highlight.prefix_icon, "NamuCurrentItem" } },
       virt_text_pos = "overlay",
-      priority = 201, -- Higher priority than the line highlight
+      priority = 202, -- Higher priority than the line highlight
     })
   end
 end
@@ -1081,7 +1081,6 @@ function M.update_display(state, opts)
   update_prompt(state, opts)
   -- Special handling for loading state
   if state.is_loading and #state.filtered_items == 1 and state.filtered_items[1].is_loading then
-    logger.log("Helllllo Loading state...")
     if vim.api.nvim_buf_is_valid(state.buf) then
       vim.api.nvim_buf_clear_namespace(state.buf, ns_id, 0, -1)
 
@@ -1107,19 +1106,14 @@ function M.update_display(state, opts)
   if query ~= "" or not opts.initially_hidden then
     -- Call before render hook
     if opts.hooks and opts.hooks.before_render then
-      --      logger.benchmark_start("before_render_hook")
       opts.hooks.before_render(state.filtered_items, opts)
-      --      logger.benchmark_end("before_render_hook")
     end
 
     -- Update footer after filtered items are updated
     if opts.window.show_footer then
-      --      logger.benchmark_start("footer_update")
       update_footer(state, state.win, opts)
-      --      logger.benchmark_end("footer_update")
     end
 
-    --    logger.benchmark_start("window_resize")
     if opts.window.auto_resize then
       resize_window(state, opts)
 
@@ -1145,33 +1139,25 @@ function M.update_display(state, opts)
       vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
 
       -- Apply highlights
-      --      logger.benchmark_start("apply_highlights")
       for i, item in ipairs(state.filtered_items) do
         local line_nr = i - 1
         local line = lines[i]
         local line_length = vim.api.nvim_strwidth(line)
         apply_highlights(state.buf, line_nr, item, opts, query, line_length, state)
       end
-      --      logger.benchmark_end("apply_highlights")
       -- Call render hook after highlights are applied
       if opts.hooks and opts.hooks.on_render then
         -- TODO: Maybe we can do it as a loop similar for apply_highlights
         -- so that we can enhance performance by checking if the item is visible
         --        logger.benchmark_start("render_hook")
         opts.hooks.on_render(state.buf, state.filtered_items, opts)
-        --        logger.benchmark_end("render_hook")
       end
-      -- M.add_padding_to_all_items(state, opts)
 
-      --      logger.benchmark_start("cursor_update")
       update_cursor_position(state, opts)
       local cursor_pos = vim.api.nvim_win_get_cursor(state.win)
       update_current_highlight(state, opts, cursor_pos[1] - 1)
-      --      logger.benchmark_end("cursor_update")
     end
-  --    logger.benchmark_end("buffer_update")
   else
-    --    logger.benchmark_start("clear_buffer")
     if vim.api.nvim_buf_is_valid(state.buf) then
       vim.api.nvim_buf_clear_namespace(state.buf, ns_id, 0, -1)
       vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, {})
@@ -1190,7 +1176,6 @@ function M.update_display(state, opts)
       state.filtered_items = original_filtered_items
     end
   end
-  --  logger.benchmark_end("display_update_total")
 end
 
 local loading_ns_id = vim.api.nvim_create_namespace("selecta_loading_indicator")
@@ -1214,10 +1199,8 @@ function M.start_async_fetch(state, query, opts, callback)
   logger.log("🚀 Starting async fetch for query: '" .. query .. "'")
   -- Store query
   state.last_query = query
-
   -- Set loading state for internal tracking
   state.is_loading = true
-
   -- Add a loading indicator using extmark instead of replacing items
   if state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) then
     -- Get loading indicator text and icon with fallbacks

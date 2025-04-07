@@ -1,7 +1,14 @@
 local M = {}
-
+-- TEST: Testing this new design to load the plugin lazely so doesn't affect neovim startup
 -- Only load config (lightweight)
 M.config = require("namu.namu_symbols.config").values
+M.config = vim.tbl_deep_extend("force", M.config, {
+  current_highlight = {
+    enabled = true,
+    hl_group = "NamuCurrentItem",
+    prefix_icon = " ",
+  },
+})
 
 -- Flag to track if implementation is loaded
 local impl_loaded = false
@@ -11,10 +18,8 @@ local function load_impl()
   if impl_loaded then
     return
   end
-
   -- Load the actual implementation
   local impl = require("namu.namu_workspace.impl")
-
   -- Copy all implementation functions to the module
   for k, v in pairs(impl) do
     if type(v) == "function" then
@@ -26,7 +31,6 @@ local function load_impl()
       M[k] = v
     end
   end
-
   impl_loaded = true
 end
 
@@ -45,7 +49,5 @@ function M.show_with_query(query, opts)
   load_impl()
   return M.show_with_query(query, opts)
 end
-
--- Any other public API functions follow the same pattern
 
 return M
