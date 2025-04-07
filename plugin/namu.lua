@@ -9,8 +9,9 @@ vim.g.namu_loaded = true
 local command_descriptions = {
   symbols = "Jump to location using namu functionality",
   colorscheme = "Select and apply colorscheme",
-  call = "Show call hierarchy (use 'call in', 'call out', or 'call both')", -- Add this line
+  call = "Show call hierarchy (use 'call in', 'call out', or 'call both')",
   workspace = "Search workspace symbols with LSP",
+  diagnostics = "Show diagnostics for current buffer",
   help = "Show help information (use 'help symbols' or 'help analysis' for detailed views)",
 }
 -- Argument validators
@@ -63,6 +64,9 @@ local command_validators = {
   end,
   workspace = function(args)
     return #args <= 1, "workspace command accepts an optional search query"
+  end,
+  diagnostics = function(args)
+    return #args == 0, "diagnostics command doesn't accept arguments"
   end,
   help = function(args)
     if #args > 1 then
@@ -128,6 +132,9 @@ local registry = {
   workspace = function(args)
     local query = args[1] or ""
     require("namu.namu_workspace").show_with_query(query)
+  end,
+  diagnostics = function(args)
+    require("namu.namu_diagnostics").show()
   end,
   help = function(args)
     if #args == 0 then
