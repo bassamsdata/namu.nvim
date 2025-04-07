@@ -385,6 +385,7 @@ end
 function impl.show_with_query(config, query, opts)
   -- Load dependencies
   load_deps()
+  impl.logger.log("namu_workspace show_with_query " .. vim.inspect(config))
 
   -- Save state
   state.config = config
@@ -429,6 +430,7 @@ function impl.show_with_query(config, query, opts)
     -- Always show picker, even with placeholder items
     impl.selecta(initial_items, {
       title = "Workspace Symbols ",
+      config,
       window = config.window,
       current_highlight = config.current_highlight,
       debug = config.debug,
@@ -450,18 +452,8 @@ function impl.show_with_query(config, query, opts)
         return items, input_query
       end,
 
-      formatter = function(item)
-        local prefix_padding = ""
-        if
-          config.current_highlight
-          and config.current_highlight.enabled
-          and config.current_highlight.prefix_icon
-          and #config.current_highlight.prefix_icon > 0
-        then
-          prefix_padding = string.rep(" ", vim.api.nvim_strwidth(config.current_highlight.prefix_icon))
-        end
-        return prefix_padding .. item.text
-      end,
+      -- formatter = function(item)
+      -- end,
 
       hooks = {
         on_render = function(buf, filtered_items)
