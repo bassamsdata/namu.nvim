@@ -65,7 +65,6 @@ function M.find_containing_symbol(items)
   local cursor_pos = vim.api.nvim_win_get_cursor(0)
   local cursor_line, cursor_col = cursor_pos[1], cursor_pos[2] + 1
 
-  logger.log("find_containing_symbol() - Looking for symbol at line " .. cursor_line .. ", col " .. cursor_col)
   -- Early exit if no items
   if #items == 0 then
     logger.log("find_containing_symbol() - No items to search")
@@ -93,13 +92,11 @@ function M.find_containing_symbol(items)
 
   -- Find approximate position using binary search
   local start_index = binary_search_range(items, cursor_line)
-  logger.log("find_containing_symbol() - Binary search returned index " .. start_index)
 
   -- Search window size
   local WINDOW_SIZE = 10
   local start_pos = math.max(1, start_index - WINDOW_SIZE)
   local end_pos = math.min(#items, start_index + WINDOW_SIZE)
-  logger.log("find_containing_symbol() - Searching window from " .. start_pos .. " to " .. end_pos)
 
   -- Find the most specific symbol within the window
   local matching_symbol = nil
@@ -136,9 +133,6 @@ function M.find_containing_symbol(items)
 
     ::continue::
   end
-  logger.log(
-    "find_containing_symbol() - Final match: " .. (matching_symbol and matching_symbol.value.name or "none found")
-  )
 
   return matching_symbol
 end
@@ -289,7 +283,6 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
         vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
       end
       --      logger.benchmark_report()
-      logger.analyze_bottlenecks("ctags_show_total")
     end,
     on_move = function(item)
       if config.preview.highlight_on_move and config.preview.highlight_mode == "always" then

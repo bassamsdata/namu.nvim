@@ -502,7 +502,6 @@ end
 ---@param query string
 ---@param opts SelectaOptions
 function M.update_filtered_items(state, query, opts)
-  --  logger.benchmark_start("selecta_filter_total")
   -- Skip normal filtering if we're loading
   if state.is_loading then
     return state.filtered_items
@@ -512,7 +511,6 @@ function M.update_filtered_items(state, query, opts)
   local actual_query = query
 
   if opts.pre_filter then
-    --    logger.benchmark_start("pre_filter")
     local new_items, new_query = opts.pre_filter(state.items, query)
     if new_items then
       items_to_filter = new_items
@@ -1149,7 +1147,6 @@ function M.update_display(state, opts)
       if opts.hooks and opts.hooks.on_render then
         -- TODO: Maybe we can do it as a loop similar for apply_highlights
         -- so that we can enhance performance by checking if the item is visible
-        --        logger.benchmark_start("render_hook")
         opts.hooks.on_render(state.buf, state.filtered_items, opts)
       end
 
@@ -1196,7 +1193,6 @@ function M.start_async_fetch(state, query, opts, callback)
     return false
   end
 
-  logger.log("🚀 Starting async fetch for query: '" .. query .. "'")
   -- Store query
   state.last_query = query
   -- Set loading state for internal tracking
@@ -1453,9 +1449,6 @@ local function create_picker(items, opts)
     loading_extmark_id = nil,
     last_request_time = nil,
   }
-  --  logger.benchmark_end("state_init")
-
-  --  logger.benchmark_start("window_calc")
   local width, height
   if opts.initially_hidden then
     -- Use minimum width and height when initially hidden
@@ -1519,9 +1512,7 @@ local function create_picker(items, opts)
   -- to the text for better highlighting.
   -- vim.api.nvim_buf_set_name(state.buf, "Namu_items")
   -- vim.api.nvim_buf_set_option(state.buf, "filetype", "match")
-  --  logger.benchmark_end("window_setup")
 
-  --  logger.benchmark_start("initial_display")
   -- First update the display
   -- update_display(state, opts)
 
@@ -1997,12 +1988,8 @@ function M.pick(items, opts)
         return prefix_padding .. prefix_info.text .. padding .. item.text
       end
     end
-  --  logger.benchmark_end("opts_setup")
 
-  --  logger.benchmark_start("picker_creation")
   local state = create_picker(items, opts)
-  --  logger.benchmark_end("picker_creation")
-  --  logger.benchmark_start("initial_setup")
   M.process_query(state, opts)
   vim.cmd("redraw")
   hide_cursor()
@@ -2064,7 +2051,6 @@ M._test = {
 function M.setup(opts)
   opts = opts or {}
   M.config = vim.tbl_deep_extend("force", M.config, opts)
-  -- Set up initial highlights
   logger.setup(opts)
 end
 

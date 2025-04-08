@@ -28,7 +28,7 @@ M.config = {
   },
   current_highlight = {
     enabled = true,
-    hl_group = "CursorLine",
+    hl_group = "NamuCurrentItem",
     prefix_icon = " ",
   },
   icon = "󱠦", -- 󱠦 -  -  -- 󰚟

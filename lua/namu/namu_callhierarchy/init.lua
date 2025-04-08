@@ -5,7 +5,6 @@ local symbol_utils = require("namu.core.symbol_utils")
 local logger = require("namu.utils.logger")
 local config_defaults = require("namu.namu_symbols.config")
 local preview_utils = require("namu.core.preview_utils")
-local ext = require("namu.namu_symbols.external_plugins")
 local M = {}
 
 ---@type NamuState
@@ -256,7 +255,7 @@ local function calls_to_selecta_items(calls, direction, depth, parent_tree_state
 
   -- Convert the map to an array while preserving insertion order
   local items = {}
-  for i, call in ipairs(calls) do
+  for _, call in ipairs(calls) do
     -- Generate the same signature as above to find the item in our map
     local item_data = direction == CallDirection.INCOMING and call.from or call.to
     if not item_data or not item_data.range then
@@ -679,9 +678,6 @@ function M.show(direction)
   end
   -- Save state on first move
   preview_utils.save_window_state(state.original_win, state.preview_state)
-
-  logger.log("Calhierarchy ilinitialize_state: " .. vim.inspect(state))
-
   -- Get the symbol name at cursor for better display
   local cword = vim.fn.expand("<cword>")
   state.current_symbol_name = cword
@@ -856,17 +852,14 @@ function M.show_call_picker(selectaItems, notify_opts)
     multiselect = {
       enabled = M.config.multiselect.enabled,
       indicator = M.config.multiselect.indicator,
-      on_select = function(item) end,
+      -- TODO: make logic here
+      -- on_select = function(item) end,
     },
     on_select = function(item)
-      -- TODO: add clear highlights here
       if not item or not item.value then
         logger.log("Invalid item for selection")
         return
       end
-
-      logger.log(string.format("Selected symbol: %s at line %d", item.value.name, item.value.lnum))
-
       local cache_eventignore = vim.o.eventignore
       vim.o.eventignore = "BufEnter"
 
@@ -890,7 +883,6 @@ function M.show_call_picker(selectaItems, notify_opts)
       vim.o.eventignore = cache_eventignore
     end,
     on_cancel = function()
-      logger.log("on_cancel Canceling preview")
       -- Clear highlights
       vim.api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
       if

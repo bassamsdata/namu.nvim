@@ -37,7 +37,6 @@ function M.create_scratch_buffer()
 end
 
 function M.save_window_state(win_id, preview_state)
-  logger.log("Saving window state for win_id: " .. win_id)
   preview_state.original_buf = vim.api.nvim_win_get_buf(win_id)
   preview_state.original_pos = vim.api.nvim_win_get_cursor(win_id)
   preview_state.original_view = vim.api.nvim_win_call(win_id, function()
@@ -46,7 +45,6 @@ function M.save_window_state(win_id, preview_state)
 end
 
 function M.restore_window_state(win_id, preview_state)
-  logger.log("Restoring window state for win_id: " .. win_id)
   if not preview_state.original_buf then
     return
   end
@@ -104,9 +102,6 @@ function M.preview_symbol(item, win_id, preview_state, options)
   local lnum = value.lnum or 0
   local col = value.col or 0
   local name = value.name or item.text
-
-  logger.log(string.format("Previewing symbol: %s at line %d in %s", name, lnum, file_path))
-
   -- Make sure we have a valid scratch buffer
   if not preview_state.scratch_buf or not vim.api.nvim_buf_is_valid(preview_state.scratch_buf) then
     preview_state.scratch_buf = M.create_scratch_buffer()
@@ -195,23 +190,19 @@ function M.preview_symbol(item, win_id, preview_state, options)
 end
 
 function M.edit_file(path, win_id)
-  logger.log(string.format("Editing file: %s in window: %s", path, win_id or 0))
   if type(path) ~= "string" then
     logger.log("Invalid path type")
     return
   end
-
   local b = vim.api.nvim_win_get_buf(win_id or 0)
+  -- TODO: name teh scratch_buf and remove maybe this
   local try_mimic_buf_reuse = (vim.fn.bufname(b) == "" and vim.bo[b].buftype ~= "quickfix" and not vim.bo[b].modified)
     and (#vim.fn.win_findbuf(b) == 1 and vim.deep_equal(vim.fn.getbufline(b, 1, "$"), { "" }))
-
   if try_mimic_buf_reuse then
     logger.log("Will try to reuse empty buffer")
   end
-
   local buf_id = vim.fn.bufadd(vim.fn.fnamemodify(path, ":."))
   logger.log("Created/got buffer: " .. buf_id)
-
   -- Set buffer in window (also loads it)
   local ok, err = pcall(vim.api.nvim_win_set_buf, win_id or 0, buf_id)
   if not ok then

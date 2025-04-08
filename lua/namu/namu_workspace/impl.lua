@@ -338,8 +338,6 @@ end
 function impl.show_with_query(config, query, opts)
   -- Load dependencies
   load_deps()
-  impl.logger.log("namu_workspace show_with_query " .. vim.inspect(config))
-
   -- Save state
   state.config = config
   state.original_win = vim.api.nvim_get_current_win()
@@ -386,12 +384,6 @@ function impl.show_with_query(config, query, opts)
       vim.tbl_deep_extend("force", config, {
         title = "Workspace Symbols ",
         config,
-        -- row_position = config.row_position,
-        -- window = config.window,
-        -- current_highlight = config.current_highlight,
-        -- debug = config.debug,
-        -- custom_keymaps = config.custom_keymaps,
-        -- preserve_order = true,
 
         -- Add coroutine-based async source
         async_source = create_async_symbol_source(state.original_buf, config),

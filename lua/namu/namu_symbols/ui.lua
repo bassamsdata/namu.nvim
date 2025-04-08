@@ -177,7 +177,6 @@ function M.highlight_symbol(symbol, win, ns_id)
     })
 
     if node then
-      logger.log("highlight_symbol() - before finding meaningful node, its type is: " .. node:type())
       node = M.find_meaningful_node(node, symbol.lnum - 1)
     end
 

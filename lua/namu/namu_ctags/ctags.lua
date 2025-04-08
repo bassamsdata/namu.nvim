@@ -162,12 +162,6 @@ local function symbols_to_selecta_items(raw_symbols)
     local kind = lsp.symbol_kind(symbolKindMap[result.kind])
     local signature = generate_signature(result, depth)
     local display_name = get_display_name(result)
-    -- TODO: test it with out it and remove it
-    -- -- If this is a class, store its signature with full scope path
-    -- if result.kind == "class" then
-    --   local full_scope = result.scope and (result.scope .. "." .. result.name) or result.name
-    --   scope_signatures[full_scope] = signature
-    -- end
 
     local item = {
       value = {
@@ -191,9 +185,10 @@ local function symbols_to_selecta_items(raw_symbols)
   for _, symbol in ipairs(raw_symbols) do
     process_symbol_result(symbol)
   end
-  if impl.config.display.format == "tree_guides" then
-    items = format_utils.add_tree_state_to_items(items)
-  end
+  -- TODO: TREE - avoid this when file is big
+  -- if impl.config.display.format == "tree_guides" then
+  --   items = format_utils.add_tree_state_to_items(items)
+  -- end
   for _, item in ipairs(items) do
     item.text = format_utils.format_item_for_display(item, impl.config)
   end
@@ -264,7 +259,6 @@ function impl.show(config, opts)
   -- Store config for other functions to access
   impl.config = config
 
-  logger.benchmark_start("ctags_show_total")
   opts = opts or {}
   initialize_state()
 
