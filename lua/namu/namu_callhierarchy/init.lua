@@ -6,40 +6,21 @@ local logger = require("namu.utils.logger")
 local config_defaults = require("namu.namu_symbols.config")
 local preview_utils = require("namu.core.preview_utils")
 local ext = require("namu.namu_symbols.external_plugins")
-local utils = require("namu.namu_symbols.utils")
 local M = {}
 
 ---@type NamuState
----@type NamuState
-local state = nil
-
-local function initialize_state()
-  logger.log("Initializing preview state")
-  local current_state = {
-    -- Window tracking
-    original_win = vim.api.nvim_get_current_win(),
-    original_buf = vim.api.nvim_get_current_buf(),
-    original_pos = vim.api.nvim_win_get_cursor(0),
-    -- Add preview state locally
-    preview = preview_utils.create_preview_state(),
-  }
-
-  logger.log(
-    "Preview state initialized with original_win="
-      .. current_state.original_win
-      .. ", original_buf="
-      .. current_state.original_buf
-  )
-  logger.log("initialize_state: " .. vim.inspect(current_state))
-
-  return current_state
-end
+local state = {
+  original_win = nil,
+  original_buf = nil,
+  original_pos = nil,
+  preview_ns = vim.api.nvim_create_namespace("callhierarchy_preview"),
+  preview_state = nil,
+}
 
 local function preview_callhierarchy_item(item, win_id)
   if not state.preview_state then
     state.preview_state = preview_utils.create_preview_state("callhierarchy_preview")
   end
-
   preview_utils.preview_symbol(item, win_id, state.preview_state, {
     highlight_group = "NamuPreview",
     -- Assuming callhierarchy lnum is 1-based, offset by -1 for highlight (0-based)
@@ -690,7 +671,15 @@ function M.show(direction)
   direction = direction or CallDirection.BOTH
   processed_call_signatures = {}
 
-  state = initialize_state()
+  state.original_win = vim.api.nvim_get_current_win()
+  state.original_buf = vim.api.nvim_get_current_buf()
+  state.original_pos = vim.api.nvim_win_get_cursor(0)
+  if not state.preview_state then
+    state.preview_state = preview_utils.create_preview_state("callhierarchy_preview")
+  end
+  -- Save state on first move
+  preview_utils.save_window_state(state.original_win, state.preview_state)
+
   logger.log("Calhierarchy ilinitialize_state: " .. vim.inspect(state))
 
   -- Get the symbol name at cursor for better display
@@ -901,16 +890,31 @@ function M.show_call_picker(selectaItems, notify_opts)
       vim.o.eventignore = cache_eventignore
     end,
     on_cancel = function()
-      logger.log("Canceling preview")
-
-      if state.original_win and vim.api.nvim_win_is_valid(state.original_win) then
-        -- Clear highlights but don't delete the buffer
-        if state.preview.scratch_buf and vim.api.nvim_buf_is_valid(state.preview.scratch_buf) then
-          vim.api.nvim_buf_clear_namespace(state.preview.scratch_buf, state.preview.preview_ns, 0, -1)
+      logger.log("on_cancel Canceling preview")
+      -- Clear highlights
+      vim.api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
+      if
+        state.preview_state
+        and state.preview_state.scratch_buf
+        and vim.api.nvim_buf_is_valid(state.preview_state.scratch_buf)
+      then
+        vim.api.nvim_buf_clear_namespace(state.preview_state.scratch_buf, state.preview_ns, 0, -1)
+      end
+      -- Restore original window state
+      if state.preview_state then
+        preview_utils.restore_window_state(state.original_win, state.preview_state)
+      else
+        -- Fallback restoration
+        if
+          state.original_win
+          and state.original_pos
+          and state.original_buf
+          and vim.api.nvim_win_is_valid(state.original_win)
+          and vim.api.nvim_buf_is_valid(state.original_buf)
+        then
+          vim.api.nvim_win_set_buf(state.original_win, state.original_buf)
+          vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
         end
-
-        -- Restore original state
-        preview_utils.restore_window_state(state.original_win, state.preview)
       end
     end,
     on_move = function(item)
@@ -919,13 +923,6 @@ function M.show_call_picker(selectaItems, notify_opts)
         return
       end
 
-      -- Save state on first move
-      if not state.preview.original_bufnr then
-        preview_utils.save_window_state(state.original_win, state.preview)
-      end
-
-      -- TODO: clean here
-      -- preview_symbol(item, state.original_win, state.preview)
       preview_callhierarchy_item(item, state.original_win)
     end,
   }

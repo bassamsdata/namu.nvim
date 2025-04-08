@@ -9,6 +9,7 @@ M.config = {
   ui_select = { enable = false, options = {} },
   namu_callhierarchy = { enable = true, options = {} },
   namu_workspace = { enable = true, options = {} },
+  diagnostics = { enable = true, options = {} },
 }
 
 M.setup = function(opts)
@@ -32,6 +33,10 @@ M.setup = function(opts)
 
   if M.config.namu_workspace.enable then
     require("namu.namu_workspace").setup(M.config.namu_workspace.options)
+  end
+
+  if M.config.diagnostics.enable then
+    require("namu.namu_diagnostics").setup(M.config.diagnostics.options)
   end
 
   if M.config.colorscheme.enable then

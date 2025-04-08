@@ -11,7 +11,7 @@ local command_descriptions = {
   colorscheme = "Select and apply colorscheme",
   call = "Show call hierarchy (use 'call in', 'call out', or 'call both')",
   workspace = "Search workspace symbols with LSP",
-  diagnostics = "Show diagnostics for current buffer",
+  diagnostics = "Show diagnostics for current buffer (use 'diagnostics workspace' for workspace diagnostics)",
   help = "Show help information (use 'help symbols' or 'help analysis' for detailed views)",
 }
 -- Argument validators
@@ -66,7 +66,13 @@ local command_validators = {
     return #args <= 1, "workspace command accepts an optional search query"
   end,
   diagnostics = function(args)
-    return #args == 0, "diagnostics command doesn't accept arguments"
+    if #args > 1 then
+      return false, "diagnostics command accepts only one optional argument (workspace)"
+    end
+    if #args == 1 and args[1]:lower() ~= "workspace" then
+      return false, "invalid diagnostics type. Valid type: workspace"
+    end
+    return true
   end,
   help = function(args)
     if #args > 1 then
@@ -134,7 +140,11 @@ local registry = {
     require("namu.namu_workspace").show_with_query(query)
   end,
   diagnostics = function(args)
-    require("namu.namu_diagnostics").show()
+    if #args == 0 then
+      require("namu.namu_diagnostics").show()
+    else
+      require("namu.namu_diagnostics").show("workspace")
+    end
   end,
   help = function(args)
     if #args == 0 then
@@ -239,6 +249,13 @@ local function command_complete(_, line, col)
       ---@diagnostic disable-next-line: undefined-field
       return vim.startswith(type, prefix:lower())
     end, help_types)
+  end
+  if words[2] == "diagnostics" then
+    local diag_types = { "workspace" }
+    local prefix = words[3] or ""
+    return vim.tbl_filter(function(type)
+      return vim.startswith(type, prefix:lower())
+    end, diag_types)
   end
 
   return {}
