@@ -28,6 +28,15 @@ M.defaults = {
       "Property",
       -- "TypeParameter", -- For type parameters if using generics
     },
+    rust = {
+      "Function",
+      "Method",
+      "Class",
+      "Module",
+      "Property",
+      "Variable",
+      "Interface",
+    },
     lua = { "Function", "Method", "Table", "Module" },
     python = { "Function", "Class", "Method" },
     -- Filetype specific
