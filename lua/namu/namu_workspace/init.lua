@@ -8,6 +8,10 @@ M.config = vim.tbl_deep_extend("force", M.config, {
     hl_group = "NamuCurrentItem",
     prefix_icon = " ",
   },
+  window = {
+    min_width = 39,
+    max_width = 75,
+  },
 })
 
 -- Flag to track if implementation is loaded

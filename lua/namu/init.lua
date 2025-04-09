@@ -7,8 +7,8 @@ M.config = {
   selecta = { enable = true, options = {} },
   colorscheme = { enable = false, options = {} },
   ui_select = { enable = false, options = {} },
-  namu_callhierarchy = { enable = true, options = {} },
-  namu_workspace = { enable = true, options = {} },
+  callhierarchy = { enable = true, options = {} },
+  workspace = { enable = true, options = {} },
   diagnostics = { enable = true, options = {} },
 }
 
@@ -27,12 +27,12 @@ M.setup = function(opts)
     require("namu.namu_ctags").setup(M.config.namu_ctags.options)
   end
 
-  if M.config.namu_callhierarchy.enable then
-    require("namu.namu_callhierarchy").setup(M.config.namu_callhierarchy.options)
+  if M.config.callhierarchy.enable then
+    require("namu.namu_callhierarchy").setup(M.config.callhierarchy.options)
   end
 
-  if M.config.namu_workspace.enable then
-    require("namu.namu_workspace").setup(M.config.namu_workspace.options)
+  if M.config.workspace.enable then
+    require("namu.namu_workspace").setup(M.config.workspace.options)
   end
 
   if M.config.diagnostics.enable then

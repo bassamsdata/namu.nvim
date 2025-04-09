@@ -332,10 +332,22 @@ local function parse_position(position)
   }
 end
 
+local function calculate_max_available_height(position_info)
+  local lines = vim.o.lines
+  if position_info.type:match("^top") then
+    -- Handle any top position (top, top_right, with any percentage)
+    return lines - math.floor(lines * position_info.ratio) - vim.o.cmdheight - 4
+  elseif position_info.type == "bottom" then
+    return math.floor(vim.o.lines * 0.2)
+  else
+    return lines - math.floor(lines / 2) - 4
+  end
+end
+
 ---@param items SelectaItem[]
 ---@param opts SelectaOptions
 ---@param formatter fun(item: SelectaItem): string
-local function calculate_window_size(items, opts, formatter)
+local function calculate_window_size(items, opts, formatter, state_col)
   local max_width = opts.window.max_width or M.config.window.max_width
   local min_width = opts.window.min_width or M.config.window.min_width
   local max_height = opts.window.max_height or M.config.window.max_height
@@ -344,6 +356,32 @@ local function calculate_window_size(items, opts, formatter)
 
   -- Calculate content width
   local content_width = min_width
+  -- Calculate initial column position
+  local row_position = opts.row_position or M.config.row_position or "top10"
+  local position_info = parse_position(row_position)
+
+  local initial_col = state_col
+  if not initial_col then
+    if position_info.type:find("_right$") then
+      if M.config.right_position.fixed then
+        initial_col = math.floor(vim.o.columns * M.config.right_position.ratio)
+        -- Constrain max_width based on available space
+        max_width = math.min(max_width, vim.o.columns - initial_col - (padding * 2) - 1)
+      else
+        -- Constrain max_width based on available space
+        max_width = math.min(max_width, vim.o.columns - (padding * 2) - 1)
+        initial_col = math.floor((vim.o.columns - max_width) / 2) -- Default to center if not fixed
+      end
+    else
+      -- Constrain max_width based on available space
+      max_width = math.min(max_width, vim.o.columns - (padding * 2) - 1)
+      initial_col = math.floor((vim.o.columns - max_width) / 2) -- Center position
+    end
+  end
+
+  -- Calculate available width based on constrained max_width
+  local max_available_width = max_width
+
   if opts.window.auto_size then
     for _, item in ipairs(items) do
       local line = formatter(item)
@@ -351,42 +389,16 @@ local function calculate_window_size(items, opts, formatter)
       content_width = math.max(content_width, width)
     end
     content_width = content_width + padding
-    -- Calculate max available width based on position
-    local max_available_width
-    local row_position = opts.row_position or M.config.row_position or "top10"
-    if row_position:match("_right") then
-      if M.config.right_position.fixed then
-        -- For right-aligned windows, available width is from right position to screen edge
-        local right_col = math.floor(vim.o.columns * M.config.right_position.ratio)
-        max_available_width = vim.o.columns - right_col - (padding * 2) -- Subtract p
-      else
-        -- For flexible position, use full screen width with padding
-        max_available_width = vim.o.columns - (padding * 2)
-      end
-    else
-      max_available_width = vim.o.columns - (padding * 2)
-    end
 
     content_width = math.min(math.max(content_width, min_width), max_width, max_available_width)
   else
     -- Use ratio-based width
     content_width = math.floor(vim.o.columns * (opts.window.width_ratio or M.config.window.width_ratio))
+    content_width = math.min(content_width, max_available_width) -- Constrain ratio-based width as well
   end
 
   -- Calculate height based on number of items
-  local row_position = opts.row_position
-  local lines = vim.o.lines
-  local max_available_height
-  local position_info = parse_position(row_position)
-
-  if position_info.type:match("^top") then
-    -- Handle any top position (top, top_right, with any percentage)
-    max_available_height = lines - math.floor(lines * position_info.ratio) - vim.o.cmdheight - 4
-  elseif position_info.type == "bottom" then
-    max_available_height = math.floor(vim.o.lines * 0.2)
-  else
-    max_available_height = lines - math.floor(lines / 2) - 4
-  end
+  local max_available_height = calculate_max_available_height(position_info)
   local content_height = #items
 
   -- Constrain height between min and max values
@@ -994,15 +1006,7 @@ local function resize_window(state, opts)
   local new_width, new_height = calculate_window_size(state.filtered_items, opts, opts.formatter)
   local current_config = vim.api.nvim_win_get_config(state.win)
   -- Calculate maximum height based on available space below the initial row
-  local max_available_height
-  local row_position = opts.row_position or M.config.row_position
-  local position_info = parse_position(row_position)
-  if position_info.type:match("^top") then
-    -- Handle any top position (top, top_right, with any percentage)
-    max_available_height = vim.o.lines - math.floor(vim.o.lines * position_info.ratio) - vim.o.cmdheight - 4
-  else
-    max_available_height = vim.o.lines - state.row - vim.o.cmdheight - 4 -- Leave some space for status line
-  end
+  local max_available_height = calculate_max_available_height(parse_position(opts.row_position))
   new_height = math.min(new_height, max_available_height)
   -- print(
   --   string.format(
@@ -1016,6 +1020,11 @@ local function resize_window(state, opts)
   --   )
   -- )
   -- Main window config
+  local initial_col = state.col
+  local max_width = opts.window.max_width or M.config.window.max_width
+  local padding = opts.window.padding or M.config.window.padding
+  local max_available_width = vim.o.columns - initial_col - (padding * 2) - 1
+  new_width = math.min(new_width, max_available_width, max_width)
   local win_config = {
     relative = current_config.relative,
     row = current_config.row, -- or state.row
@@ -1497,7 +1506,7 @@ local function create_picker(items, opts)
     width = opts.window.min_width or M.config.window.min_width
     height = opts.window.min_height or M.config.window.min_height
   else
-    width, height = calculate_window_size(items, opts, opts.formatter)
+    width, height = calculate_window_size(items, opts, opts.formatter, 0)
   end
 
   local row, col = get_window_position(width, opts.row_position)
