@@ -511,13 +511,14 @@ function M.update_filtered_items(state, query, opts)
   local actual_query = query
 
   if opts.pre_filter then
-    local new_items, new_query = opts.pre_filter(state.items, query)
+    local new_items, new_query, metadata = opts.pre_filter(state.items, query)
     if new_items then
       items_to_filter = new_items
       -- Show the filtered items even if new_query is empty
       state.filtered_items = new_items
     end
     actual_query = new_query or ""
+    state.filter_metadata = metadata
   end
 
   -- Only proceed with further filtering if there's an actual query
@@ -1068,6 +1069,43 @@ local function update_footer(state, win, opts)
   })
 end
 
+-- Create a namespace for the filter info display
+local filter_info_ns = vim.api.nvim_create_namespace("selecta_filter_info")
+
+-- Function to update the filter info display
+local function update_filter_info(state, filter_metadata)
+  -- Clear previous extmarks
+  if state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) then
+    vim.api.nvim_buf_clear_namespace(state.prompt_buf, filter_info_ns, 0, -1)
+
+    -- If we have filter metadata and no extra text after the filter, show it
+    if filter_metadata and filter_metadata.is_symbol_filter then
+      -- Only show info if there's no additional text after the filter code
+      local remaining = filter_metadata.remaining or ""
+
+      if remaining == "" then -- Only show if no extra text after the filter
+        local direct_count = filter_metadata.direct_match_count or 0
+        local description = filter_metadata.filter_type or "items"
+
+        -- Format: "14 fn"
+        local info_text = string.format("%d %s", direct_count, description)
+
+        -- Set the extmark with the filter info - right aligned
+        vim.api.nvim_buf_set_extmark(
+          state.prompt_buf,
+          filter_info_ns,
+          0, -- Line 0
+          0, -- Column position (will be ignored with right_align)
+          {
+            virt_text = { { info_text, "Comment" } },
+            virt_text_pos = "right_align",
+          }
+        )
+      end
+    end
+  end
+end
+
 -- Main update_display function using the split functions
 ---@param state SelectaState
 ---@param opts SelectaOptions
@@ -1097,6 +1135,8 @@ function M.update_display(state, opts)
     if opts.window.auto_resize then
       resize_window(state, opts)
     end
+    -- Update filter info display
+    update_filter_info(state, state.filter_metadata)
 
     return
   end
@@ -1135,6 +1175,8 @@ function M.update_display(state, opts)
       end
 
       vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
+      -- Update filter info display
+      update_filter_info(state, state.filter_metadata)
 
       -- Apply highlights
       for i, item in ipairs(state.filtered_items) do

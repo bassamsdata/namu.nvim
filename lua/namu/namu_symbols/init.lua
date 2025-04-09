@@ -79,19 +79,6 @@ local function initialize_state()
   end
 end
 
-local function initialize_handlers()
-  handlers = symbol_utils.create_keymaps_handlers(M.config, state, ui, selecta, ext, utils)
-
-  if M.config.custom_keymaps then
-    M.config.custom_keymaps.yank.handler = handlers.yank
-    M.config.custom_keymaps.delete.handler = handlers.delete
-    M.config.custom_keymaps.vertical_split.handler = handlers.vertical_split
-    M.config.custom_keymaps.horizontal_split.handler = handlers.horizontal_split
-    M.config.custom_keymaps.codecompanion.handler = handlers.codecompanion
-    M.config.custom_keymaps.avante.handler = handlers.avante
-  end
-end
-
 local symbol_cache = nil
 local symbol_range_cache = {}
 

@@ -1,6 +1,7 @@
 local M = {}
 local logger = require("namu.utils.logger")
 
+-- FIX: This is bad, we actualy need state instead of getting buf from win
 function M.clear_preview_highlight(win, ns_id)
   if ns_id then
     local bufnr = vim.api.nvim_win_get_buf(win)
@@ -24,7 +25,8 @@ function M.get_prefix(depth, style)
   return prefix
 end
 
----Finds index of symbol at current cursor position
+---Finds index of symbol at current cursor position when inital open picker
+---for initial_index varibale
 ---@param items SelectaItem[] The filtered items list
 ---@param symbol SelectaItem table The symbol to find
 ---@return number|nil index The index of the symbol if found

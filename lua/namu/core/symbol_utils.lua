@@ -231,12 +231,122 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
     pre_filter = function(items, query)
       local filter = M.parse_symbol_filter(query, config)
       if filter then
-        local kinds_lower = vim.tbl_map(string.lower, filter.kinds)
-        local filtered = vim.tbl_filter(function(item)
-          return item.kind and vim.tbl_contains(kinds_lower, string.lower(item.kind))
-        end, items)
-        return filtered, filter.remaining
+        -- Create a lookup table for faster kind matching
+        local kinds_lookup = {}
+        for _, kind in ipairs(filter.kinds) do
+          kinds_lookup[string.lower(kind)] = true
+        end
+
+        -- If not preserving hierarchy, use a simple optimized filter
+        if not config.preserve_hierarchy then
+          local filtered = {}
+          local count = 0
+          for _, item in ipairs(items) do
+            if item.kind and kinds_lookup[string.lower(item.kind)] then
+              count = count + 1
+              filtered[count] = item
+              item.is_direct_match = true
+            end
+          end
+
+          return filtered,
+            filter.remaining,
+            {
+              is_symbol_filter = true,
+              filter_type = filter.filter_type,
+              description = filter.description,
+              direct_match_count = count,
+              remaining = filter.remaining,
+            }
+        end
+
+        -- For preserving hierarchy, optimize the multiple passes
+
+        -- First identify direct matches
+        local direct_match_indices = {}
+        local direct_match_count = 0
+
+        for i, item in ipairs(items) do
+          item.is_direct_match = nil -- Reset
+          if item.kind and kinds_lookup[string.lower(item.kind)] then
+            item.is_direct_match = true
+            direct_match_count = direct_match_count + 1
+            direct_match_indices[direct_match_count] = i
+          end
+        end
+
+        -- Build a map of all items by signature - only once
+        local item_map = {}
+        for i, item in ipairs(items) do
+          if item.value and item.value.signature then
+            item_map[item.value.signature] = { index = i, item = item }
+          end
+        end
+
+        -- Build the include set with direct matches and parents
+        local include_indices = {}
+        local parent_count = 0
+
+        for i = 1, direct_match_count do
+          local idx = direct_match_indices[i]
+          local item = items[idx]
+          include_indices[idx] = true
+
+          -- Trace parents
+          local current = item
+          local visited = { [idx] = true }
+
+          while current and current.value and current.value.parent_signature do
+            local parent_key = current.value.parent_signature
+            local parent_entry = item_map[parent_key]
+
+            if parent_entry and not visited[parent_entry.index] then
+              include_indices[parent_entry.index] = true
+              visited[parent_entry.index] = true
+              parent_entry.item.is_direct_match = false
+              current = parent_entry.item
+              parent_count = parent_count + 1
+            else
+              break
+            end
+          end
+        end
+
+        -- Build result list while preserving order
+        local result_count = 0
+        local result_items = {}
+
+        for i, item in ipairs(items) do
+          if include_indices[i] then
+            result_count = result_count + 1
+            result_items[result_count] = item
+          end
+        end
+
+        -- Conditionally log only when debugging is enabled
+        if config.debug then
+          logger.log(
+            string.format(
+              "Filter results: %d items (%d direct + %d parents)",
+              result_count,
+              direct_match_count,
+              parent_count
+            )
+          )
+        end
+
+        return result_items,
+          filter.remaining,
+          {
+            is_symbol_filter = true,
+            filter_type = filter.filter_type,
+            description = filter.description,
+            direct_match_count = direct_match_count,
+            parent_count = parent_count,
+            remaining = filter.remaining,
+          }
       end
+
       return items, query
     end,
     hooks = {

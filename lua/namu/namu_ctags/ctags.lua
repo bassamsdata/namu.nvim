@@ -185,10 +185,10 @@ local function symbols_to_selecta_items(raw_symbols)
   for _, symbol in ipairs(raw_symbols) do
     process_symbol_result(symbol)
   end
-  -- TODO: TREE - avoid this when file is big
-  -- if impl.config.display.format == "tree_guides" then
-  --   items = format_utils.add_tree_state_to_items(items)
-  -- end
+  -- TODO: TREE - avoid this when file is big - benchmark first
+  if impl.config.display.format == "tree_guides" then
+    items = format_utils.add_tree_state_to_items(items)
+  end
   for _, item in ipairs(items) do
     item.text = format_utils.format_item_for_display(item, impl.config)
   end
