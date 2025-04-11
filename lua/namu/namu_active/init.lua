@@ -74,6 +74,7 @@ local function symbols_to_selecta_items(raw_symbols, source)
     local prefix = ui.get_prefix(depth, style)
     local display_text = prefix .. clean_name
 
+    -- TODO: we need buf name so we can assign it as parent or root to be able to filter later.
     local kind = lsp.symbol_kind(result.kind)
     local item = {
       value = {
@@ -115,6 +116,7 @@ local function symbols_to_selecta_items(raw_symbols, source)
     items = format_utils.add_tree_state_to_items(items)
   end
 
+  -- TODO: this has to be in format items later maybe
   for _, item in ipairs(items) do
     item.text = (source == "lsp" and " " or " ") .. format_utils.format_item_for_display(item, config.values)
   end
@@ -128,6 +130,9 @@ end
 local function process_buffer(bufnr)
   local promise = Promise.new()
 
+  -- TODO: Needs to check listed first because it eliminates a lot, the loaded, valid, and then has lsp or treesitter
+  -- no need for filetype after that, maybe use vim.fn.getbufvar(bufnr, "&buflisted") == 1
+  -- and probably this will elimnate the error when we don't have lsp, not totally though
   if not vim.api.nvim_buf_is_valid(bufnr) or not vim.api.nvim_buf_is_loaded(bufnr) or vim.bo[bufnr].buftype ~= "" then
     promise:resolve({}, "Buffer invalid or not loaded")
     return promise

@@ -35,7 +35,7 @@ M.defaults = {
       "Module",
       "Property",
       "Variable",
-      "Interface",
+      "Interface", -- rust cosider traits as Interface
     },
     lua = { "Function", "Method", "Table", "Module" },
     python = { "Function", "Class", "Method" },
