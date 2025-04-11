@@ -50,7 +50,7 @@ end
 ---@param bufnr number
 ---@param method string LSP method to check for
 ---@return vim.lsp.Client|nil, string|nil
-local function get_client_with_method(bufnr, method)
+function M.get_client_with_method(bufnr, method)
   logger.log("\n=== Finding LSP client ===")
   logger.log(string.format("Buffer: %d, Method: %s", bufnr, method))
 
@@ -106,7 +106,7 @@ end
 ---@param method string
 ---@param extra_params? table Additional parameters
 ---@return table
-local function make_params(bufnr, method, extra_params)
+function M.make_params(bufnr, method, extra_params)
   logger.log("\n=== Making LSP parameters ===")
   logger.log(string.format("Method: %s", method))
   logger.log("Extra params: " .. vim.inspect(extra_params))
@@ -148,7 +148,7 @@ function M.request_symbols(bufnr, method, callback, extra_params)
   end
 
   -- Get client with method support
-  local client, err = get_client_with_method(bufnr, method)
+  local client, err = M.get_client_with_method(bufnr, method)
   if err then
     logger.log("Error getting client: " .. err)
     callback(err, nil, nil)
@@ -156,7 +156,7 @@ function M.request_symbols(bufnr, method, callback, extra_params)
   end
 
   -- Create params
-  local params = make_params(bufnr, method, extra_params)
+  local params = M.make_params(bufnr, method, extra_params)
 
   -- Send request
   -- Send request
