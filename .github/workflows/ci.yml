@@ -14,13 +14,21 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            neovim_url: https://github.com/neovim/neovim/releases/download/nightly/nvim-linux-x86_64.tar.gz
-          - os: ubuntu-latest
-            neovim_url: https://github.com/neovim/neovim/releases/download/v0.10.0/nvim-linux64.tar.gz
+        fail-fast: false
+        matrix:
+          include:
+            - os: ubuntu-latest
+              neovim_url: https://github.com/neovim/neovim/releases/download/nightly/nvim-linux64.tar.gz
+              name: Neovim nightly
+            - os: ubuntu-latest
+              neovim_url: https://github.com/neovim/neovim/releases/download/v0.11.0/nvim-linux64.tar.gz
+              name: Neovim 0.11.0 (Linux)
+            - os: macos-latest
+              neovim_url: https://github.com/neovim/neovim/releases/download/v0.11.0/nvim-macos.tar.gz
+              name: Neovim 0.11.0 (macOS)
+            - os: ubuntu-latest
+              neovim_url: https://github.com/neovim/neovim/releases/download/v0.10.4/nvim-linux64.tar.gz
+              name: Neovim 0.10.4
 
     steps:
       - name: Checkout Repository 🛎️
