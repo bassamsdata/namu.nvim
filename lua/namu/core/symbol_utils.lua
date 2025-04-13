@@ -220,7 +220,6 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
     row_position = config.row_position,
     custom_keymaps = vim.tbl_deep_extend("force", config.custom_keymaps, {}),
     debug = config.debug,
-    -- TODO: make it configurable
     preserve_hierarchy = config.preserve_hierarchy or false,
     parent_key = function(item)
       return item.value and item.value.parent_signature
@@ -358,6 +357,9 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
         if state.original_win and state.original_pos and vim.api.nvim_win_is_valid(state.original_win) then
           vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
         end
+        state.original_buf = nil
+        state.original_pos = nil
+        state.original_win = nil
       end,
     },
     multiselect = {
@@ -392,7 +394,6 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
       if state.original_win and state.original_pos and vim.api.nvim_win_is_valid(state.original_win) then
         vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
       end
-      --      logger.benchmark_report()
     end,
     on_move = function(item)
       if config.preview.highlight_on_move and config.preview.highlight_mode == "always" then
@@ -461,15 +462,10 @@ function M.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
       vim.notify("No original buffer available", vim.log.levels.ERROR)
       return
     end
-
-    local new_win = selecta.open_in_split(item, "vertical", state, ui)
+    -- Replace selecta.open_in_split with your new utility function
+    local new_win = selecta.open_in_split(item, "vertical", state)
     if new_win then
-      local symbol = item.value
-      if symbol and symbol.lnum and symbol.col then
-        -- Set cursor to symbol position
-        pcall(vim.api.nvim_win_set_cursor, new_win, { symbol.lnum, symbol.col - 1 })
-        vim.cmd("normal! zz")
-      end
+      -- Most of this is now handled in open_in_split, so we can simplify
       ui.clear_preview_highlight(state.original_win, state.preview_ns)
       return false
     end
@@ -480,14 +476,10 @@ function M.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
       vim.notify("No original buffer available", vim.log.levels.ERROR)
       return
     end
-    local new_win = selecta.open_in_split(item, "horizontal", state, ui)
+    -- Replace selecta.open_in_split with your new utility function
+    local new_win = selecta.open_in_split(item, "horizontal", state)
     if new_win then
-      local symbol = item.value
-      if symbol and symbol.lnum and symbol.col then
-        -- Set cursor to symbol position
-        pcall(vim.api.nvim_win_set_cursor, new_win, { symbol.lnum, symbol.col - 1 })
-        vim.cmd("normal! zz")
-      end
+      -- Most of this is now handled in open_in_split, so we can simplify
       ui.clear_preview_highlight(state.original_win, state.preview_ns)
       return false
     end

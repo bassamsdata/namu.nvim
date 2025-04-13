@@ -2110,51 +2110,125 @@ end
 ---@param split_type? "vertical"|"horizontal" The type of split to create (defaults to horizontal)
 ---@param module_state NamuState The state from the calling module
 ---@return number|nil window_id The new window ID if successful
-function M.open_in_split(item, split_type, module_state)
-  if not item then
+
+-- Add to a core utility module (e.g., namu.core.split_utils)
+-- Function to find a loaded buffer by file path
+---@param path string The file path to search for
+---@return number|nil The buffer number if found, nil otherwise
+local function find_buf_by_path(path)
+  if not path or path == "" then
     return nil
   end
 
-  -- Use module_state for original window and position if available
-  local original_win = module_state.original_win and module_state.original_win or vim.api.nvim_get_current_win()
-  local original_pos = module_state.original_pos and module_state.original_pos or vim.api.nvim_win_get_cursor(0)
-  M.close_picker(state)
-  if not original_win or not vim.api.nvim_win_is_valid(original_win) then
-    vim.notify("Original window is no longer valid", vim.log.levels.ERROR)
+  -- Normalize path for comparison
+  local normalized_path = vim.fn.fnamemodify(path, ":p")
+
+  -- Check all buffers
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(bufnr) then
+      local buf_path = vim.api.nvim_buf_get_name(bufnr)
+      if buf_path and buf_path ~= "" then
+        if vim.fn.fnamemodify(buf_path, ":p") == normalized_path then
+          return bufnr
+        end
+      end
+    end
+  end
+
+  return nil
+end
+
+-- Main split function
+function M.open_in_split(item, split_type, module_state)
+  if not item or not item.value then
     return nil
   end
-  local new_win
-  -- Execute window operations in the context of the original window
-  vim.api.nvim_win_call(original_win, function()
-    local split_cmd = split_type == "vertical" and "vsplit" or "split"
-    vim.cmd(split_cmd)
-    new_win = vim.api.nvim_get_current_win()
-  end)
-  -- Configure the new window
-  if new_win then
-    vim.api.nvim_win_call(new_win, function()
-      -- For call hierarchy item, open the target file in the new window
-      if item.value and item.value.uri and item.value.file_path then
-        vim.cmd("edit " .. vim.fn.fnameescape(item.value.file_path))
-      end
-      -- Jump to position
-      if item.value and item.value.lnum and item.value.col then
-        vim.api.nvim_win_set_cursor(0, { item.value.lnum, item.value.col - 1 })
-        vim.cmd("normal! zz")
-      end
-    end)
+
+  -- Capture original module_state
+  local original_win = module_state.original_win or vim.api.nvim_get_current_win()
+  local original_buf = module_state.original_buf or vim.api.nvim_get_current_buf()
+  local original_pos = module_state.original_pos or vim.api.nvim_win_get_cursor(original_win)
+
+  -- Get target info
+  local target_bufnr = item.value.bufnr or original_buf -- fallback for buffer_symbols
+  local target_path = nil
+
+  -- Try to get path from multiple possible sources
+  if item.value.file_path then
+    target_path = item.value.file_path
+  elseif item.value.uri then
+    target_path = vim.uri_to_fname(item.value.uri)
+  elseif item.value.filename then
+    target_path = item.value.filename
   end
-  -- Restore original window's cursor position
-  vim.api.nvim_win_call(original_win, function()
-    if original_pos then
-      pcall(vim.api.nvim_win_set_cursor, 0, original_pos)
+
+  -- If we have a path but no valid bufnr, try to find an existing buffer
+  if (not target_bufnr or not vim.api.nvim_buf_is_valid(target_bufnr)) and target_path then
+    target_bufnr = find_buf_by_path(target_path)
+  end
+
+  local target_lnum = item.value.lnum or (item.value.range and item.value.range.start.line)
+  local target_col = item.value.col or (item.value.range and item.value.range.start.character) or 0
+
+  -- Determine split direction
+  local split_config = {
+    win = original_win,
+    split = split_type == "vertical" and "right" or "below",
+    noautocmd = true, -- Performance optimization
+  }
+
+  -- Create split window
+  local new_win = vim.api.nvim_open_win(0, true, split_config)
+  if not new_win then
+    return nil
+  end
+
+  -- Set up buffer in the new window
+  if target_bufnr and vim.api.nvim_buf_is_valid(target_bufnr) then
+    -- Use existing buffer
+    vim.api.nvim_win_set_buf(new_win, target_bufnr)
+  elseif target_path then
+    -- Try to load the file into a new buffer
+    local buf_id = vim.fn.bufadd(target_path)
+    vim.bo[buf_id].buflisted = true
+    vim.api.nvim_win_set_buf(new_win, buf_id)
+
+    -- Ensure the buffer is loaded (important for LSP features)
+    if not vim.api.nvim_buf_is_loaded(buf_id) then
+      vim.fn.bufload(buf_id)
     end
-  end)
-  -- Finally, focus the new window for the user
-  -- This is intentional and desired behavior, not a side effect
-  if new_win and vim.api.nvim_win_is_valid(new_win) then
-    vim.api.nvim_set_current_win(new_win)
   end
+
+  -- Set cursor position and center
+  if target_lnum then
+    -- Handle different indexing conventions (0-based vs 1-based)
+    local line = type(target_lnum) == "number" and target_lnum or tonumber(target_lnum)
+    if line then
+      -- Adjust for 1-based line numbers if needed
+      if vim.api.nvim_buf_get_option(vim.api.nvim_win_get_buf(new_win), "buftype") ~= "terminal" then
+        line = line > 0 and line or 1
+      end
+
+      local col = (type(target_col) == "number" and target_col >= 0) and target_col or 0
+
+      pcall(vim.api.nvim_win_set_cursor, new_win, { line, col })
+
+      -- Center view
+      vim.api.nvim_win_call(new_win, function()
+        vim.cmd("normal! zz")
+      end)
+    end
+  end
+
+  -- Restore original window
+  vim.api.nvim_win_call(original_win, function()
+    vim.api.nvim_win_set_buf(original_win, original_buf)
+    pcall(vim.api.nvim_win_set_cursor, original_win, original_pos)
+  end)
+
+  -- Focus new window
+  vim.api.nvim_set_current_win(new_win)
+
   return new_win
 end
 

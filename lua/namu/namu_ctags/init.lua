@@ -12,6 +12,7 @@ M.config = vim.tbl_deep_extend("force", M.config, {
 
 -- Flag to track if implementation is loaded
 local impl_loaded = false
+local impl = nil
 
 -- Function to load the full implementation
 local function load_impl()
@@ -19,18 +20,7 @@ local function load_impl()
     return
   end
   -- Load the actual implementation
-  local impl = require("namu.namu_ctags.ctags")
-  -- Copy all implementation functions to the module
-  for k, v in pairs(impl) do
-    if type(v) == "function" then
-      -- Create wrapper that passes config to implementation
-      M[k] = function(...)
-        return v(M.config, ...)
-      end
-    else
-      M[k] = v
-    end
-  end
+  impl = require("namu.namu_ctags.ctags")
   impl_loaded = true
 end
 
@@ -42,14 +32,20 @@ end
 -- Define API functions that lazy-load the implementation
 function M.show(opts)
   load_impl()
-  return M.show(opts) -- Now calls the implementation version
+  if not impl then
+    return
+  end
+  return impl.show(M.config, opts)
 end
 
 -- Expose test functionality but with lazy loading
 M._test = setmetatable({}, {
   __index = function(_, key)
     load_impl()
-    return M._test[key]
+    if not impl then
+      return
+    end
+    return impl._test[key]
   end,
 })
 

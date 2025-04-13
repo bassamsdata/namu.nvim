@@ -92,7 +92,9 @@ function M.preview_symbol(item, win_id, preview_state, options)
   end
 
   local value = item.value
-  local file_path = value.file_path
+  local bufnr = value.bufnr
+  -- the second one for diagnostics
+  local file_path = value.file_path or vim.api.nvim_buf_get_name(bufnr)
   if not file_path then
     logger.log("No file path in item")
     return

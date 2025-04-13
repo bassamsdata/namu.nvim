@@ -33,7 +33,7 @@ end
 ---@param raw_symbols LSPSymbol[]
 ---@param source string "lsp"
 ---@return SelectaItem[]
-local function symbols_to_selecta_items(raw_symbols, source)
+local function symbols_to_selecta_items(raw_symbols, source, bufnr)
   local items = {}
   local function generate_signature(symbol, depth)
     local range = symbol.range or (symbol.location and symbol.location.range)
@@ -57,6 +57,7 @@ local function symbols_to_selecta_items(raw_symbols, source)
 
     local signature = generate_signature(result, depth)
 
+    -- BUG: I noticed this doesn't work for some reason, needs to double check
     if not lsp.should_include_symbol(result, config.values, vim.bo.filetype) then
       if result.children then
         for _, child in ipairs(result.children) do
@@ -89,6 +90,7 @@ local function symbols_to_selecta_items(raw_symbols, source)
         parent_signature = parent_signature,
       },
       icon = config.values.kindIcons[kind] or config.values.icon,
+      bufnr = bufnr,
       kind = kind,
       depth = depth,
       source = source,
@@ -117,6 +119,7 @@ local function symbols_to_selecta_items(raw_symbols, source)
   end
 
   -- TODO: this has to be in format items later maybe
+  -- Also, the display name is item.value.name
   for _, item in ipairs(items) do
     item.text = (source == "lsp" and " " or " ") .. format_utils.format_item_for_display(item, config.values)
   end
@@ -133,7 +136,12 @@ local function process_buffer(bufnr)
   -- TODO: Needs to check listed first because it eliminates a lot, the loaded, valid, and then has lsp or treesitter
   -- no need for filetype after that, maybe use vim.fn.getbufvar(bufnr, "&buflisted") == 1
   -- and probably this will elimnate the error when we don't have lsp, not totally though
-  if not vim.api.nvim_buf_is_valid(bufnr) or not vim.api.nvim_buf_is_loaded(bufnr) or vim.bo[bufnr].buftype ~= "" then
+  if
+    not vim.fn.getbufvar(bufnr, "&buflisted") == 1
+    or vim.bo[bufnr].buftype ~= ""
+    or not vim.api.nvim_buf_is_valid(bufnr)
+    or not vim.api.nvim_buf_is_loaded(bufnr)
+  then
     promise:resolve({}, "Buffer invalid or not loaded")
     return promise
   end
@@ -143,7 +151,7 @@ local function process_buffer(bufnr)
 
   Async:lsp_request(bufnr, method, params):and_then(function(lsp_symbols)
     if lsp_symbols and #lsp_symbols > 0 then
-      promise:resolve(symbols_to_selecta_items(lsp_symbols, "lsp"))
+      promise:resolve(symbols_to_selecta_items(lsp_symbols, "lsp", bufnr))
     else
       promise:resolve({}, "No LSP symbols found")
     end
@@ -167,6 +175,7 @@ function M.show()
     num_processed = num_processed + 1
     if err then
       vim.notify("Error processing buffer: " .. err, vim.log.levels.WARN, { title = "Namu" })
+      -- TODO: I need to figure out what to do with sort
     elseif items and #items > 0 then
       for _, item in ipairs(items) do
         table.insert(all_items, item)
@@ -178,6 +187,20 @@ function M.show()
         vim.notify("No LSP symbols found in active buffers", vim.log.levels.WARN, { title = "Namu" })
       else
         symbol_utils.show_picker(all_items, state, M.config, ui, selecta, "Active Symbols (LSP)", { title = "Namu" })
+        -- TODO:
+        -- on_move should be somthing like this:
+        -- PLEASE: Add eventignore
+        -- if not vim.api.nvim_win_is_valid(state.original_win) then
+        --   return
+        -- end
+        -- local start_win = state.original_win
+        -- local bufnr = item.bufnr
+        -- if vim.api.nvim_buf_is_valid(bufnr) then
+        --   pcall(vim.api.nvim_win_call, start_win, function()
+        --     vim.api.nvim_win_set_buf(start_win, bufnr)
+        --   end)
+        -- end
+        -- ui.highlight_symbol(item.value, state.original_win, state.preview_ns)
       end
     end
   end

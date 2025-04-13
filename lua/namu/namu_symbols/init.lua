@@ -64,9 +64,6 @@ local function initialize_state()
   state.original_ft = vim.bo.filetype
   state.original_pos = vim.api.nvim_win_get_cursor(state.original_win)
 
-  -- FIX: I need to find better way of doing this
-  -- If i moved this to setup then it's an issue and intervene with other modules
-  -- Recreate handlers with new state
   handlers = symbol_utils.create_keymaps_handlers(M.config, state, ui, selecta, ext, utils)
   -- Update keymap handlers
   if M.config.custom_keymaps then
@@ -166,6 +163,8 @@ local function symbols_to_selecta_items(raw_symbols)
         signature = signature,
         parent_signature = parent_signature,
       },
+      -- PERF: we need this for matcher.
+      text = clean_name,
       icon = M.config.kindIcons[kind] or M.config.icon,
       kind = kind,
       depth = depth,
@@ -194,10 +193,12 @@ local function symbols_to_selecta_items(raw_symbols)
     items = format_utils.add_tree_state_to_items(items)
   end
 
+  -- PERF: why we need this if we are still doing it inside
+  -- the formatter in show_picker, intersting :).
   -- Set display text for all items based on format
-  for _, item in ipairs(items) do
-    item.text = format_utils.format_item_for_display(item, M.config)
-  end
+  -- for _, item in ipairs(items) do
+  --   item.text = format_utils.format_item_for_display(item, M.config)
+  -- end
 
   symbol_cache = { key = cache_key, items = items }
   symbol_utils.update_symbol_ranges_cache(items, symbol_range_cache)

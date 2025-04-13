@@ -174,6 +174,7 @@ local function symbols_to_selecta_items(raw_symbols)
         end_col = 100,
         signature = signature,
         parent_signature = parent_signature,
+        bufnr = bufnr,
       },
       icon = impl.config.kindIcons[kind] or impl.config.icon,
       kind = kind,
@@ -189,6 +190,8 @@ local function symbols_to_selecta_items(raw_symbols)
   if impl.config.display.format == "tree_guides" then
     items = format_utils.add_tree_state_to_items(items)
   end
+  -- PERF: why we need this if we are still doing it inside
+  -- the formatter in show_picker, intersting :).
   for _, item in ipairs(items) do
     item.text = format_utils.format_item_for_display(item, impl.config)
   end
