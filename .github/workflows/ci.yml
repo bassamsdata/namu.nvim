@@ -18,16 +18,16 @@ jobs:
         matrix:
           include:
             - os: ubuntu-latest
-              neovim_url: https://github.com/neovim/neovim/releases/download/nightly/nvim-linux64.tar.gz
+              neovim_url: https://github.com/neovim/neovim/releases/download/nightly/nvim-linux-x86_64.tar.gz
               name: Neovim nightly
             - os: ubuntu-latest
-              neovim_url: https://github.com/neovim/neovim/releases/download/v0.11.0/nvim-linux64.tar.gz
+              neovim_url: https://github.com/neovim/neovim/releases/download/v0.11.0/nvim-linux-x86_64.tar.gz
               name: Neovim 0.11.0 (Linux)
             - os: macos-latest
-              neovim_url: https://github.com/neovim/neovim/releases/download/v0.11.0/nvim-macos.tar.gz
+              neovim_url: https://github.com/neovim/neovim/releases/download/v0.11.0/nvim-macos-arm64.tar.gz
               name: Neovim 0.11.0 (macOS)
             - os: ubuntu-latest
-              neovim_url: https://github.com/neovim/neovim/releases/download/v0.10.4/nvim-linux64.tar.gz
+              neovim_url: https://github.com/neovim/neovim/releases/download/v0.10.4/nvim-macos-x86_64.tar.gz
               name: Neovim 0.10.4
 
     steps:
