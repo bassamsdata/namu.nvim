@@ -159,7 +159,7 @@ end
 ---Handles visual highlighting of selected symbols in preview
 ---@param symbol table LSP symbol item
 ---@param win number Window handle
-function M.highlight_symbol(symbol, win, ns_id)
+function M.preview_symbol(symbol, win, ns_id)
   local bufnr = vim.api.nvim_win_get_buf(win)
 
   -- Use nvim_win_call to execute all window-related operations
@@ -189,7 +189,7 @@ function M.highlight_symbol(symbol, win, ns_id)
         end_col = ecol,
         hl_group = M.config.highlight,
         hl_eol = true,
-        priority = 1,
+        priority = 201,
         strict = false,
       })
 

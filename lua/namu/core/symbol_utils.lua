@@ -369,7 +369,7 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
         if config.preview.highlight_mode == "select" then
           ui.clear_preview_highlight(state.original_win, state.preview_ns)
           if type(selected_items) == "table" and selected_items[1] then
-            ui.highlight_symbol(selected_items[1].value, state.original_win, state.preview_ns, state)
+            ui.preview_symbol(selected_items[1].value, state.original_win, state.preview_ns, state)
           end
         end
         if type(selected_items) == "table" and selected_items[1] then
@@ -398,7 +398,7 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
     on_move = function(item)
       if config.preview.highlight_on_move and config.preview.highlight_mode == "always" then
         if item then
-          ui.highlight_symbol(item.value, state.original_win, state.preview_ns)
+          ui.preview_symbol(item.value, state.original_win, state.preview_ns)
         end
       end
     end,

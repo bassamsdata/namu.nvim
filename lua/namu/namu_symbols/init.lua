@@ -53,9 +53,9 @@ local handlers = nil
 
 local function initialize_state()
   -- Clear any existing highlights if state exists
-  if state and state.original_win and state.preview_ns then
-    ui.clear_preview_highlight(state.original_win, state.preview_ns)
-  end
+  -- if state and state.original_win and state.preview_ns then
+  --   ui.clear_preview_highlight(state.original_win, state.preview_ns)
+  -- end
 
   -- Create new state
   state = symbol_utils.create_state("namu_symbols_preview")

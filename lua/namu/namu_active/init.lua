@@ -200,7 +200,7 @@ function M.show()
         --     vim.api.nvim_win_set_buf(start_win, bufnr)
         --   end)
         -- end
-        -- ui.highlight_symbol(item.value, state.original_win, state.preview_ns)
+        -- ui.preview_symbol(item.value, state.original_win, state.preview_ns)
       end
     end
   end

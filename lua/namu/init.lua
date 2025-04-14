@@ -1,5 +1,4 @@
 local M = {}
-
 -- Default configuration
 M.config = {
   namu_symbols = { enable = true, options = {} },

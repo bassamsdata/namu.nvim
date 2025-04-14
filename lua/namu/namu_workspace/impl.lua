@@ -1,9 +1,9 @@
 -- Dependencies are only loaded when the module is actually used
 local impl = {}
-
+local selecta
 -- These get loaded only when needed
 local function load_deps()
-  impl.selecta = require("namu.selecta.selecta").pick
+  impl.selecta = require("namu.selecta.selecta")
   impl.lsp = require("namu.namu_symbols.lsp")
   impl.symbol_utils = require("namu.core.symbol_utils")
   impl.preview_utils = require("namu.core.preview_utils")
@@ -22,6 +22,26 @@ local state = {
   symbols = {},
   current_request = nil,
 }
+
+---Open diagnostic in vertical split
+---@param config table
+---@param items_or_item table|table[]
+---@param module_state table
+function impl.open_in_vertical_split(config, items_or_item, module_state)
+  local item = vim.islist(items_or_item) and items_or_item[1] or items_or_item
+  selecta.open_in_split(item, "vertical", state)
+  return false
+end
+
+---Open diagnostic in horizontal split
+---@param config table
+---@param items_or_item table|table[]
+---@param module_state table
+function impl.open_in_horizontal_split(config, items_or_item, module_state)
+  local item = vim.islist(items_or_item) and items_or_item[1] or items_or_item
+  selecta.open_in_split(item, "horizontal", state)
+  return false
+end
 
 -- Get file icon for the file path
 local function get_file_icon(file_path)
@@ -379,15 +399,13 @@ function impl.show_with_query(config, query, opts)
     end
 
     -- Always show picker, even with placeholder items
-    impl.selecta(
+    impl.selecta.pick(
       initial_items,
       vim.tbl_deep_extend("force", config, {
         title = "Workspace Symbols ",
         config,
-
         -- Add coroutine-based async source
         async_source = create_async_symbol_source(state.original_buf, config),
-
         -- Rest of options remain the same as before
         pre_filter = function(items, input_query)
           local filter = impl.symbol_utils.parse_symbol_filter(input_query, config)

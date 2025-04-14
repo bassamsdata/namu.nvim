@@ -2148,11 +2148,9 @@ function M.open_in_split(item, split_type, module_state)
   local original_win = module_state.original_win or vim.api.nvim_get_current_win()
   local original_buf = module_state.original_buf or vim.api.nvim_get_current_buf()
   local original_pos = module_state.original_pos or vim.api.nvim_win_get_cursor(original_win)
-
   -- Get target info
-  local target_bufnr = item.value.bufnr or original_buf -- fallback for buffer_symbols
+  local target_bufnr = item.value.bufnr or item.bufnr or original_buf -- fallback hierarchy: buffer_symbols -> item bufnr -> original buf
   local target_path = nil
-
   -- Try to get path from multiple possible sources
   if item.value.file_path then
     target_path = item.value.file_path
@@ -2166,17 +2164,13 @@ function M.open_in_split(item, split_type, module_state)
   if (not target_bufnr or not vim.api.nvim_buf_is_valid(target_bufnr)) and target_path then
     target_bufnr = find_buf_by_path(target_path)
   end
-
   local target_lnum = item.value.lnum or (item.value.range and item.value.range.start.line)
   local target_col = item.value.col or (item.value.range and item.value.range.start.character) or 0
-
-  -- Determine split direction
   local split_config = {
     win = original_win,
     split = split_type == "vertical" and "right" or "below",
     noautocmd = true, -- Performance optimization
   }
-
   -- Create split window
   local new_win = vim.api.nvim_open_win(0, true, split_config)
   if not new_win then
@@ -2205,14 +2199,11 @@ function M.open_in_split(item, split_type, module_state)
     local line = type(target_lnum) == "number" and target_lnum or tonumber(target_lnum)
     if line then
       -- Adjust for 1-based line numbers if needed
-      if vim.api.nvim_buf_get_option(vim.api.nvim_win_get_buf(new_win), "buftype") ~= "terminal" then
+      if vim.api.nvim_get_option_value("buftype", { win = vim.api.nvim_win_get_buf(new_win) }) ~= "terminal" then
         line = line > 0 and line or 1
       end
-
       local col = (type(target_col) == "number" and target_col >= 0) and target_col or 0
-
       pcall(vim.api.nvim_win_set_cursor, new_win, { line, col })
-
       -- Center view
       vim.api.nvim_win_call(new_win, function()
         vim.cmd("normal! zz")
@@ -2225,10 +2216,8 @@ function M.open_in_split(item, split_type, module_state)
     vim.api.nvim_win_set_buf(original_win, original_buf)
     pcall(vim.api.nvim_win_set_cursor, original_win, original_pos)
   end)
-
   -- Focus new window
   vim.api.nvim_set_current_win(new_win)
-
   return new_win
 end
 
