@@ -1,6 +1,6 @@
 ---@diagnostic disable: need-check-nil, param-type-mismatch
 local h = require("tests.helpers")
-local callhierarchy = require("namu.namu_callhierarchy")
+local callhierarchy = require("namu.namu_callhierarchy.callhierarchy")
 local navigation = require("namu.namu_callhierarchy.navigation")
 ---@diagnostic disable-next-line: undefined-global
 local new_set = MiniTest.new_set
