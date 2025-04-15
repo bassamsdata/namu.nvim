@@ -466,6 +466,10 @@ end
 ---@param items_or_item table|table[]
 ---@param state table
 function M.add_to_codecompanion(config, items_or_item, state)
+  local status, codecompanion = pcall(require, "codecompanion")
+  if not status then
+    return
+  end
   local items = vim.islist(items_or_item) and items_or_item or { items_or_item }
   local texts = {}
 
@@ -494,14 +498,18 @@ Context:
     table.insert(texts, text)
   end
 
-  local chat = require("codecompanion").chat()
-  if chat then
-    chat:add_buf_message({
-      role = require("codecompanion.config").constants.USER_ROLE,
-      content = table.concat(texts, "\n\n"),
-    })
-    chat.ui:open()
+  local chat = codecompanion.last_chat()
+  if not chat then
+    chat = codecompanion.chat()
+    if not chat then
+      return vim.notify("Could not create chat buffer", vim.log.levels.WARN)
+    end
   end
+  chat:add_buf_message({
+    role = require("codecompanion.config").constants.USER_ROLE,
+    content = table.concat(texts, "\n\n"),
+  })
+  chat.ui:open()
 end
 
 ---Open diagnostic in vertical split
