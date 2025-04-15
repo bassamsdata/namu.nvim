@@ -10,6 +10,7 @@ local lsp = require("namu.namu_symbols.lsp")
 local symbol_utils = require("namu.core.symbol_utils")
 local logger = require("namu.utils.logger")
 local preview_utils = require("namu.core.preview_utils")
+local api = vim.api
 local M = {}
 
 ---@type NamuState
@@ -17,7 +18,7 @@ local state = {
   original_win = nil,
   original_buf = nil,
   original_pos = nil,
-  preview_ns = vim.api.nvim_create_namespace("callhierarchy_preview"),
+  preview_ns = api.nvim_create_namespace("callhierarchy_preview"),
   preview_state = nil,
 }
 
@@ -286,7 +287,7 @@ end
 ---Creates a synthetic call hierarchy item based on the current position
 ---@return table Call hierarchy item
 local function create_synthetic_call_item()
-  local current_pos = vim.api.nvim_win_get_cursor(0)
+  local current_pos = api.nvim_win_get_cursor(0)
   local current_word = vim.fn.expand("<cword>")
   local uri = vim.uri_from_bufnr(0)
 
@@ -312,7 +313,7 @@ end
 
 -- Direct LSP request helper function to replace generic request_symbols
 local function make_call_hierarchy_request(method, params, callback)
-  local bufnr = vim.api.nvim_get_current_buf()
+  local bufnr = api.nvim_get_current_buf()
   -- Check if the current language server supports call hierarchy
   local clients = vim.lsp.get_clients({ bufnr = bufnr })
   local client
@@ -527,7 +528,7 @@ local function process_call_hierarchy_item(item, direction, cache_key, notify_op
   -- Global counter for pending requests
   pending_requests = 0
   -- Get the current position and file
-  local current_pos = vim.api.nvim_win_get_cursor(0)
+  local current_pos = api.nvim_win_get_cursor(0)
   local current_file = vim.fn.expand("%:t")
   -- Add the current symbol with file info
   local current_item = {
@@ -586,12 +587,12 @@ local function process_call_hierarchy_item(item, direction, cache_key, notify_op
 end
 
 local function apply_simple_highlights(buf, filtered_items, config)
-  local ns_id = vim.api.nvim_create_namespace("namu_callhierarchy_simple")
-  vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
+  local ns_id = api.nvim_create_namespace("namu_callhierarchy_simple")
+  api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
 
   for idx, item in ipairs(filtered_items) do
     local line = idx - 1
-    local lines = vim.api.nvim_buf_get_lines(buf, line, line + 1, false)
+    local lines = api.nvim_buf_get_lines(buf, line, line + 1, false)
     if #lines == 0 then
       goto continue
     end
@@ -608,7 +609,7 @@ local function apply_simple_highlights(buf, filtered_items, config)
 
     if file_start then
       -- Highlight from beginning to file info with kind highlight
-      vim.api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
+      api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
         end_row = line,
         end_col = file_start - 1, -- Up to file info
         hl_group = kind_hl,
@@ -617,7 +618,7 @@ local function apply_simple_highlights(buf, filtered_items, config)
 
       -- Highlight the file info
       local file_text = line_text:match(file_pattern)
-      vim.api.nvim_buf_set_extmark(buf, ns_id, line, file_start - 1, {
+      api.nvim_buf_set_extmark(buf, ns_id, line, file_start - 1, {
         end_row = line,
         end_col = file_start - 1 + #file_text,
         hl_group = "NamuFileInfo",
@@ -628,7 +629,7 @@ local function apply_simple_highlights(buf, filtered_items, config)
       local recursive_text = " %(recursive%)"
       local recursive_start = line_text:find(recursive_text, file_start + #file_text - 1)
       if recursive_start then
-        vim.api.nvim_buf_set_extmark(buf, ns_id, line, recursive_start - 1, {
+        api.nvim_buf_set_extmark(buf, ns_id, line, recursive_start - 1, {
           end_row = line,
           end_col = recursive_start - 1 + #recursive_text,
           hl_group = "WarningMsg",
@@ -637,7 +638,7 @@ local function apply_simple_highlights(buf, filtered_items, config)
       end
     else
       -- If no file info, highlight the entire line
-      vim.api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
+      api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
         end_row = line,
         end_col = #line_text,
         hl_group = kind_hl,
@@ -684,7 +685,7 @@ function M.show_call_picker(selectaItems, notify_opts)
     -- Handle current highlight prefix padding
     local prefix_padding = ""
     if M.config.current_highlight.enabled and #M.config.current_highlight.prefix_icon > 0 then
-      prefix_padding = string.rep(" ", vim.api.nvim_strwidth(M.config.current_highlight.prefix_icon))
+      prefix_padding = string.rep(" ", api.nvim_strwidth(M.config.current_highlight.prefix_icon))
     end
 
     -- Get the tree guides if available
@@ -772,7 +773,7 @@ function M.show_call_picker(selectaItems, notify_opts)
 
       pcall(function()
         -- Set mark for jumplist
-        vim.api.nvim_win_call(state.original_win, function()
+        api.nvim_win_call(state.original_win, function()
           vim.cmd("normal! m'")
         end)
 
@@ -780,8 +781,8 @@ function M.show_call_picker(selectaItems, notify_opts)
         local file_path = item.value.file_path
         local buf_id = preview_utils.edit_file(file_path, state.original_win)
         if buf_id then
-          vim.api.nvim_win_set_cursor(state.original_win, { item.value.lnum, 0 })
-          vim.api.nvim_win_call(state.original_win, function()
+          api.nvim_win_set_cursor(state.original_win, { item.value.lnum, 0 })
+          api.nvim_win_call(state.original_win, function()
             vim.cmd("normal! zz")
           end)
         end
@@ -791,13 +792,13 @@ function M.show_call_picker(selectaItems, notify_opts)
     end,
     on_cancel = function()
       -- Clear highlights
-      vim.api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
+      api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
       if
         state.preview_state
         and state.preview_state.scratch_buf
-        and vim.api.nvim_buf_is_valid(state.preview_state.scratch_buf)
+        and api.nvim_buf_is_valid(state.preview_state.scratch_buf)
       then
-        vim.api.nvim_buf_clear_namespace(state.preview_state.scratch_buf, state.preview_ns, 0, -1)
+        api.nvim_buf_clear_namespace(state.preview_state.scratch_buf, state.preview_ns, 0, -1)
       end
       -- Restore original window state
       if state.preview_state then
@@ -808,16 +809,16 @@ function M.show_call_picker(selectaItems, notify_opts)
           state.original_win
           and state.original_pos
           and state.original_buf
-          and vim.api.nvim_win_is_valid(state.original_win)
-          and vim.api.nvim_buf_is_valid(state.original_buf)
+          and api.nvim_win_is_valid(state.original_win)
+          and api.nvim_buf_is_valid(state.original_buf)
         then
-          vim.api.nvim_win_set_buf(state.original_win, state.original_buf)
-          vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
+          api.nvim_win_set_buf(state.original_win, state.original_buf)
+          api.nvim_win_set_cursor(state.original_win, state.original_pos)
         end
       end
     end,
     on_move = function(item)
-      if not state.original_win or not vim.api.nvim_win_is_valid(state.original_win) then
+      if not state.original_win or not api.nvim_win_is_valid(state.original_win) then
         logger.log("Invalid original window")
         return
       end
@@ -831,7 +832,7 @@ function M.show_call_picker(selectaItems, notify_opts)
     picker_opts.prefix_highlighter = function(buf, line_nr, item, icon_end, ns_id)
       local kind_hl = M.config.kinds.highlights[item.kind]
       if kind_hl then
-        vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, 0, {
+        api.nvim_buf_set_extmark(buf, ns_id, line_nr, 0, {
           end_col = icon_end,
           hl_group = kind_hl,
           priority = 100,
@@ -844,12 +845,12 @@ function M.show_call_picker(selectaItems, notify_opts)
   local picker_win = selecta.pick(unique_items, picker_opts)
 
   if picker_win then
-    local augroup = vim.api.nvim_create_augroup("NamuCallHierarchyCleanup", { clear = true })
-    vim.api.nvim_create_autocmd("WinClosed", {
+    local augroup = api.nvim_create_augroup("NamuCallHierarchyCleanup", { clear = true })
+    api.nvim_create_autocmd("WinClosed", {
       group = augroup,
       pattern = tostring(picker_win),
       callback = function()
-        pcall(vim.api.nvim_del_augroup_by_name, "NamuCallHierarchyCleanup")
+        pcall(api.nvim_del_augroup_by_name, "NamuCallHierarchyCleanup")
       end,
       once = true,
     })
@@ -862,9 +863,9 @@ function M.show(direction)
   direction = direction or CallDirection.BOTH
   processed_call_signatures = {}
 
-  state.original_win = vim.api.nvim_get_current_win()
-  state.original_buf = vim.api.nvim_get_current_buf()
-  state.original_pos = vim.api.nvim_win_get_cursor(0)
+  state.original_win = api.nvim_get_current_win()
+  state.original_buf = api.nvim_get_current_buf()
+  state.original_pos = api.nvim_win_get_cursor(0)
   if not state.preview_state then
     state.preview_state = preview_utils.create_preview_state("callhierarchy_preview")
   end
@@ -875,15 +876,15 @@ function M.show(direction)
   state.current_symbol_name = cword
 
   -- Set highlight
-  vim.api.nvim_set_hl(0, M.config.highlight, {
+  api.nvim_set_hl(0, M.config.highlight, {
     link = "Visual",
   })
 
   local notify_opts = { title = "Namu Call Hierarchy", icon = M.config.icon }
 
   -- Cache key includes buffer, position, and direction
-  local bufnr = vim.api.nvim_get_current_buf()
-  local cursor_pos = vim.api.nvim_win_get_cursor(0)
+  local bufnr = api.nvim_get_current_buf()
+  local cursor_pos = api.nvim_win_get_cursor(0)
   local cache_key = string.format("%d_%d_%d_%s", bufnr, cursor_pos[1], cursor_pos[2], direction)
 
   -- Check cache first

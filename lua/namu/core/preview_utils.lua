@@ -134,7 +134,7 @@ function M.preview_symbol(item, win_id, preview_state, options)
   options = options or {}
 
   local cache_eventignore = vim.o.eventignore
-  vim.o.eventignore = "all"
+  vim.o.eventignore = "BufEnter"
   -- If buffer is valid and loaded, use it directly
   if bufnr and vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_is_loaded(bufnr) then
     apply_preview_to_window(bufnr, win_id, lnum, col, options, preview_state, item)
