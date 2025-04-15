@@ -3,6 +3,7 @@ if vim.g.namu_loaded then
 end
 ---@diagnostic disable-next-line: inject-field
 vim.g.namu_loaded = true
+local api = vim.api
 
 -- Command documentation
 ---@type table<string, string>
@@ -149,18 +150,52 @@ local registry = {
   help = function(args)
     if #args == 0 then
       -- Show general help
-      local help_text = "Namu Commands:\n"
+      local help_text = "# Namu Help\n\n"
+      help_text = help_text .. "## Commands\n"
       for cmd, desc in pairs(command_descriptions) do
         help_text = help_text .. string.format("  %-15s%s\n", cmd, desc)
       end
-      help_text = help_text .. "\nSymbol Types:\n"
+      help_text = help_text .. "\n## Symbol Types\n"
       help_text = help_text .. "  function    Show only functions\n"
       help_text = help_text .. "  variable    Show only variables\n"
       help_text = help_text .. "  class       Show only classes\n"
-      help_text = help_text .. "\nHelp Types:\n"
+      help_text = help_text .. "\n## Help Types\n"
       help_text = help_text .. "  symbols     Show detailed symbol filtering help\n"
       help_text = help_text .. "  analysis    Show symbol analysis for current buffer\n"
-      vim.notify(help_text, vim.log.levels.INFO)
+      -- Calculate the width based on the longest line of text
+      local lines = vim.split(help_text, "\n")
+      local max_line_width = 0
+      for _, line in ipairs(lines) do
+        max_line_width = math.max(max_line_width, api.nvim_strwidth(line))
+      end
+      local width = max_line_width + 4 -- Add some padding
+      -- Ensure width doesn't go off screen (subtract 10 for padding/borders)
+      local ui = api.nvim_list_uis()[1]
+      width = math.min(width, ui.width - 10)
+      local height = #lines + 2
+      local bufnr = api.nvim_create_buf(false, true)
+      api.nvim_buf_set_lines(bufnr, 0, -1, true, lines)
+      api.nvim_set_option_value("filetype", "markdown", { buf = bufnr })
+      api.nvim_set_option_value("modifiable", false, { buf = bufnr })
+      api.nvim_set_option_value("buftype", "nofile", { buf = bufnr })
+      -- Calculate window position
+      local row = math.floor((ui.height - height) / 2)
+      local col = math.floor((ui.width - width) / 2)
+      local opts = {
+        relative = "editor",
+        width = width,
+        height = height,
+        row = row,
+        col = col,
+        style = "minimal",
+        -- this is borrored from @mini.nvim, thanks :), it's for >= 0.11
+        border = (vim.fn.exists("+winborder") == 1 and vim.o.winborder ~= "") and vim.o.winborder or "rounded",
+        title = "󱠦  Namu Help",
+        title_pos = "center",
+      }
+      local _ = api.nvim_open_win(bufnr, true, opts)
+      api.nvim_buf_set_keymap(bufnr, "n", "q", ":close<CR>", { noremap = true, silent = true })
+      api.nvim_buf_set_keymap(bufnr, "n", "<Esc>", ":close<CR>", { noremap = true, silent = true })
       return
     end
 
@@ -261,7 +296,7 @@ local function command_complete(_, line, col)
   return {}
 end
 
-vim.api.nvim_create_user_command("Namu", command_callback, {
+api.nvim_create_user_command("Namu", command_callback, {
   nargs = "+",
   complete = command_complete,
   desc = "Namu plugin command with subcommands. Use 'Namu help' for more information",
