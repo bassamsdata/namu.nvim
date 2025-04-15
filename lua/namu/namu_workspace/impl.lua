@@ -1,6 +1,7 @@
 -- Dependencies are only loaded when the module is actually used
 local impl = {}
 local selecta
+local api = vim.api
 -- These get loaded only when needed
 local function load_deps()
   impl.selecta = require("namu.selecta.selecta")
@@ -17,7 +18,7 @@ local state = {
   original_win = nil,
   original_buf = nil,
   original_pos = nil,
-  preview_ns = vim.api.nvim_create_namespace("workspace_preview"),
+  preview_ns = api.nvim_create_namespace("workspace_preview"),
   preview_state = nil,
   symbols = {},
   current_request = nil,
@@ -163,7 +164,7 @@ local function preview_workspace_item(item, win_id)
     -- highlight_fn = function(buf, ns, item)
     --   -- Add custom highlighting for workspace items
     --   local value = item.value
-    --   pcall(vim.api.nvim_buf_set_extmark, buf, ns, value.lnum, value.col, {
+    --   pcall(api.nvim_buf_set_extmark, buf, ns, value.lnum, value.col, {
     --     end_row = value.end_lnum,
     --     end_col = value.end_col,
     --     hl_group = state.config.highlight,
@@ -185,11 +186,11 @@ local function apply_workspace_highlights(buf, filtered_items, config)
   end
   last_highlight_time = current_time
 
-  local ns_id = vim.api.nvim_create_namespace("namu_workspace_picker")
-  vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
+  local ns_id = api.nvim_create_namespace("namu_workspace_picker")
+  api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
 
   -- Early exit if no valid buffer or items
-  if not vim.api.nvim_buf_is_valid(buf) or not filtered_items or #filtered_items == 0 then
+  if not api.nvim_buf_is_valid(buf) or not filtered_items or #filtered_items == 0 then
     impl.logger.log("apply_workspace_highlights: early exit - invalid buffer or no items")
     return
   end
@@ -197,13 +198,13 @@ local function apply_workspace_highlights(buf, filtered_items, config)
   local first_visible = 0
   local last_visible = #filtered_items - 1 -- Default to all items
   -- Cache the line count for efficiency
-  local line_count = vim.api.nvim_buf_line_count(buf)
+  local line_count = api.nvim_buf_line_count(buf)
   first_visible = math.max(0, first_visible)
   last_visible = math.min(line_count - 1, last_visible)
   -- Get all visible lines at once for efficiency
   local visible_lines = {}
   if last_visible >= first_visible then
-    visible_lines = vim.api.nvim_buf_get_lines(buf, first_visible, last_visible + 1, false)
+    visible_lines = api.nvim_buf_get_lines(buf, first_visible, last_visible + 1, false)
   end
   impl.logger.log(
     string.format("Highlighting %d visible lines from %d to %d", #visible_lines, first_visible, last_visible)
@@ -247,7 +248,7 @@ local function apply_workspace_highlights(buf, filtered_items, config)
     file_start = file_start + 2
 
     -- Highlight symbol name
-    vim.api.nvim_buf_set_extmark(buf, ns_id, line_idx, 0, {
+    api.nvim_buf_set_extmark(buf, ns_id, line_idx, 0, {
       end_row = line_idx,
       end_col = name_end,
       hl_group = kind_hl,
@@ -255,7 +256,7 @@ local function apply_workspace_highlights(buf, filtered_items, config)
     })
 
     -- Highlight kind with the same highlight group as the symbol name
-    vim.api.nvim_buf_set_extmark(buf, ns_id, line_idx, kind_start - 1, {
+    api.nvim_buf_set_extmark(buf, ns_id, line_idx, kind_start - 1, {
       end_row = line_idx,
       end_col = kind_end,
       hl_group = kind_hl, -- Now using same highlight as symbol name
@@ -274,7 +275,7 @@ local function apply_workspace_highlights(buf, filtered_items, config)
     if icon_match and vim.fn.strwidth(icon_match) <= 2 then
       local _, icon_hl = get_file_icon(value.file_path)
       -- Highlight the icon with icon_hl (use the same highlight as the symbol)
-      vim.api.nvim_buf_set_extmark(buf, ns_id, line_idx, file_start - 1, {
+      api.nvim_buf_set_extmark(buf, ns_id, line_idx, file_start - 1, {
         end_row = line_idx,
         end_col = file_start + #icon_match,
         hl_group = icon_hl, -- Use same highlight as the symbol name and kind
@@ -290,7 +291,7 @@ local function apply_workspace_highlights(buf, filtered_items, config)
       local path_end = file_start + last_slash_pos - 2
 
       -- Highlight directory path as Comment
-      vim.api.nvim_buf_set_extmark(buf, ns_id, line_idx, icon_end - 1, {
+      api.nvim_buf_set_extmark(buf, ns_id, line_idx, icon_end - 1, {
         end_row = line_idx,
         end_col = path_end,
         hl_group = "Comment",
@@ -298,7 +299,7 @@ local function apply_workspace_highlights(buf, filtered_items, config)
       })
 
       -- Highlight filename with same highlight as symbol
-      vim.api.nvim_buf_set_extmark(buf, ns_id, line_idx, path_end, {
+      api.nvim_buf_set_extmark(buf, ns_id, line_idx, path_end, {
         end_row = line_idx,
         end_col = #line_text,
         hl_group = kind_hl,
@@ -306,7 +307,7 @@ local function apply_workspace_highlights(buf, filtered_items, config)
       })
     else
       -- No path separator, just a filename - highlight with symbol highlight
-      vim.api.nvim_buf_set_extmark(buf, ns_id, line_idx, icon_end - 1, {
+      api.nvim_buf_set_extmark(buf, ns_id, line_idx, icon_end - 1, {
         end_row = line_idx,
         end_col = #line_text,
         hl_group = kind_hl,
@@ -360,9 +361,9 @@ function impl.show_with_query(config, query, opts)
   load_deps()
   -- Save state
   state.config = config
-  state.original_win = vim.api.nvim_get_current_win()
-  state.original_buf = vim.api.nvim_get_current_buf()
-  state.original_pos = vim.api.nvim_win_get_cursor(state.original_win)
+  state.original_win = api.nvim_get_current_win()
+  state.original_buf = api.nvim_get_current_buf()
+  state.original_pos = api.nvim_win_get_cursor(state.original_win)
 
   -- Save window state for potential restoration
   if not state.preview_state then
@@ -446,16 +447,16 @@ function impl.show_with_query(config, query, opts)
           -- if
           --   state.preview_state
           --   and state.preview_state.scratch_buf
-          --   and vim.api.nvim_buf_is_valid(state.preview_state.scratch_buf)
+          --   and api.nvim_buf_is_valid(state.preview_state.scratch_buf)
           -- then
-          --   vim.api.nvim_buf_delete(state.preview_state.scratch_buf, { force = true })
+          --   api.nvim_buf_delete(state.preview_state.scratch_buf, { force = true })
           --   state.preview_state.scratch_buf = nil
           -- end
           local cache_eventignore = vim.o.eventignore
           vim.o.eventignore = "BufEnter"
           pcall(function()
             -- Set mark for jumplist
-            vim.api.nvim_win_call(state.original_win, function()
+            api.nvim_win_call(state.original_win, function()
               vim.cmd("normal! m'")
             end)
 
@@ -465,11 +466,11 @@ function impl.show_with_query(config, query, opts)
 
             -- Set cursor position
             if buf_id then
-              vim.api.nvim_win_set_cursor(state.original_win, {
+              api.nvim_win_set_cursor(state.original_win, {
                 value.lnum + 1,
                 value.col,
               })
-              vim.api.nvim_win_call(state.original_win, function()
+              api.nvim_win_call(state.original_win, function()
                 vim.cmd("normal! zz")
               end)
             end
@@ -480,13 +481,13 @@ function impl.show_with_query(config, query, opts)
 
         on_cancel = function()
           -- Clear highlights
-          vim.api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
+          api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
           if
             state.preview_state
             and state.preview_state.scratch_buf
-            and vim.api.nvim_buf_is_valid(state.preview_state.scratch_buf)
+            and api.nvim_buf_is_valid(state.preview_state.scratch_buf)
           then
-            vim.api.nvim_buf_clear_namespace(state.preview_state.scratch_buf, state.preview_ns, 0, -1)
+            api.nvim_buf_clear_namespace(state.preview_state.scratch_buf, state.preview_ns, 0, -1)
           end
 
           -- Restore original window state
@@ -498,11 +499,11 @@ function impl.show_with_query(config, query, opts)
               state.original_win
               and state.original_pos
               and state.original_buf
-              and vim.api.nvim_win_is_valid(state.original_win)
-              and vim.api.nvim_buf_is_valid(state.original_buf)
+              and api.nvim_win_is_valid(state.original_win)
+              and api.nvim_buf_is_valid(state.original_buf)
             then
-              vim.api.nvim_win_set_buf(state.original_win, state.original_buf)
-              vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
+              api.nvim_win_set_buf(state.original_win, state.original_buf)
+              api.nvim_win_set_cursor(state.original_win, state.original_pos)
             end
           end
         end,
