@@ -1,13 +1,29 @@
 local ui = require("namu.namu_symbols.ui")
 local M = {}
 local notify_opts = { title = "Namu", icon = require("namu").config.icon }
+local api = vim.api
+
+local function get_lua_annotation_range(bufnr, start_line)
+  local annotation_start = start_line
+  -- Go backwards to find the start of the annotation block
+  for i = start_line, 1, -1 do
+    local line = api.nvim_buf_get_lines(bufnr, i - 1, i, false)[1]
+    if line:match("^---") then
+      annotation_start = i - 1
+    else
+      break
+    end
+  end
+
+  return annotation_start
+end
 
 ---Yank the symbol text to registers
 ---@param items table|table[] Single item or array of selected items
 ---@param state table The picker state
 ---@param with_line_numbers boolean|nil Whether to include buffer line numbers in the yanked text
 function M.yank_symbol_text(items, state, with_line_numbers)
-  if not state.original_buf or not vim.api.nvim_buf_is_valid(state.original_buf) then
+  if not state.original_buf or not api.nvim_buf_is_valid(state.original_buf) then
     vim.notify("Invalid buffer", vim.log.levels.ERROR, notify_opts)
     return
   end
@@ -22,7 +38,18 @@ function M.yank_symbol_text(items, state, with_line_numbers)
   for _, item in ipairs(symbols) do
     local symbol = item.value
     if symbol and symbol.lnum and symbol.end_lnum then
-      local lines = vim.api.nvim_buf_get_lines(state.original_buf, symbol.lnum - 1, symbol.end_lnum, false)
+      local lines = api.nvim_buf_get_lines(state.original_buf, symbol.lnum - 1, symbol.end_lnum, false)
+      local first_line = symbol.lnum - 1
+      local annotation_start = nil
+      -- Check for Lua annotations if it's a Lua file
+      local filetype = api.nvim_get_option_value("filetype", { buf = state.original_buf })
+      if filetype == "lua" then
+        annotation_start = get_lua_annotation_range(state.original_buf, first_line)
+        local annotation_lines = api.nvim_buf_get_lines(state.original_buf, annotation_start, first_line, false)
+        if #annotation_lines > 0 then
+          table.insert(all_text, table.concat(annotation_lines, "\n"))
+        end
+      end
       if #lines > 0 then
         if #lines == 1 then
           lines[1] = lines[1]:sub(symbol.col, symbol.end_col)
@@ -56,7 +83,7 @@ end
 ---@param items table|table[] Single item or array of selected items
 ---@param state table The picker state
 function M.delete_symbol_text(items, state)
-  if not state.original_buf or not vim.api.nvim_buf_is_valid(state.original_buf) then
+  if not state.original_buf or not api.nvim_buf_is_valid(state.original_buf) then
     vim.notify("Invalid buffer", vim.log.levels.ERROR, notify_opts)
     return
   end
@@ -83,8 +110,18 @@ function M.delete_symbol_text(items, state)
   for _, item in ipairs(symbols) do
     local symbol = item.value
     if symbol and symbol.lnum and symbol.end_lnum then
+      local first_line = symbol.lnum - 1
+      local last_line = symbol.end_lnum
+      local annotation_start = nil
+      -- Check for Lua annotations if it's a Lua file
+      local filetype = api.nvim_get_option_value("filetype", { buf = state.original_buf })
+      if filetype == "lua" then
+        annotation_start = get_lua_annotation_range(state.original_buf, first_line)
+      end
+      -- Delete the text and annotations (if any)
+      local delete_start = annotation_start or first_line
       -- Delete the text
-      vim.api.nvim_buf_set_lines(state.original_buf, symbol.lnum - 1, symbol.end_lnum, false, {})
+      api.nvim_buf_set_lines(state.original_buf, delete_start, last_line, false, {})
       deleted_count = deleted_count + 1
     else
       vim.notify("Invalid symbol found, skipping", vim.log.levels.WARN, notify_opts)
