@@ -535,30 +535,26 @@ function M.show(config, scope)
       end
     end,
     on_select = function(item)
-      if item and item.value then
-        vim.api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
-        -- Reset preview state when selecting
-        if
-          state.preview_state
-          and state.preview_state.scratch_buf
-          and vim.api.nvim_buf_is_valid(state.preview_state.scratch_buf)
-        then
-          vim.api.nvim_buf_clear_namespace(state.preview_state.scratch_buf, state.preview_ns, 0, -1)
-          vim.api.nvim_buf_delete(state.preview_state.scratch_buf, { force = true })
-          state.preview_state.scratch_buf = nil
-        end
-
-        -- Jump to diagnostic position
-        local value = item.value
-        local bufnr = value.bufnr
-
-        if vim.api.nvim_buf_is_valid(bufnr) then
-          vim.api.nvim_win_set_buf(state.original_win, bufnr)
-          vim.api.nvim_win_set_cursor(state.original_win, {
-            value.lnum + 1,
-            value.col,
-          })
-        end
+      vim.api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
+      if
+        state.preview_state
+        and state.preview_state.scratch_buf
+        and vim.api.nvim_buf_is_valid(state.preview_state.scratch_buf)
+      then
+        vim.api.nvim_buf_clear_namespace(state.preview_state.scratch_buf, state.preview_ns, 0, -1)
+      end
+      if
+        state.original_win
+        and state.original_pos
+        and state.original_buf
+        and vim.api.nvim_win_is_valid(state.original_win)
+        and vim.api.nvim_buf_is_valid(state.original_buf)
+      then
+        vim.api.nvim_win_call(state.original_win, function()
+          vim.api.nvim_win_set_buf(state.original_win, item.value.bufnr)
+          vim.api.nvim_win_set_cursor(state.original_win, { item.value.lnum + 1, item.value.col })
+          vim.cmd("normal! zz")
+        end)
       end
     end,
     on_cancel = function()
