@@ -386,10 +386,11 @@ local function calculate_window_size(items, opts, formatter, state_col)
     for _, item in ipairs(items) do
       local line = formatter(item)
       local width = vim.api.nvim_strwidth(line)
-      content_width = math.max(content_width, width)
+      if width > content_width then
+        content_width = width
+      end
     end
     content_width = content_width + padding
-
     content_width = math.min(math.max(content_width, min_width), max_width, max_available_width)
   else
     -- Use ratio-based width
@@ -400,7 +401,6 @@ local function calculate_window_size(items, opts, formatter, state_col)
   -- Calculate height based on number of items
   local max_available_height = calculate_max_available_height(position_info)
   local content_height = #items
-
   -- Constrain height between min and max values
   content_height = math.min(content_height, max_height)
   content_height = math.min(content_height, max_available_height)
