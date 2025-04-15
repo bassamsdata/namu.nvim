@@ -74,7 +74,6 @@ end
 
 -- Format diagnostic for display in the picker
 local function format_diagnostic_item(item, config)
-  logger.log("config for diagnostic item: " .. vim.inspect(config))
   -- Handle current highlight prefix padding
   local prefix_padding = ""
   if
@@ -279,6 +278,31 @@ local function apply_diagnostic_highlights(buf, filtered_items, config)
 
     ::continue::
   end
+end
+
+local function diagnostic_highlight_fn(bufnr, ns, item)
+  if not item or not item.value or not item.value.diagnostic then
+    return
+  end
+  local diag = item.value.diagnostic
+  local d_lnum = diag.lnum or 0
+  local d_col = diag.col or 0
+  local d_end_lnum = diag.end_lnum or d_lnum
+  local d_end_col = diag.end_col or (d_col + 1)
+  local severity = diag.severity
+  local severity_map = {
+    [1] = "DiagnosticVirtualTextError",
+    [2] = "DiagnosticVirtualTextWarn",
+    [3] = "DiagnosticVirtualTextInfo",
+    [4] = "DiagnosticVirtualTextHint",
+  }
+  local diag_hl = severity_map[severity] or "DiagnosticVirtualTextInfo"
+  pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, d_lnum, d_col, {
+    end_row = d_end_lnum,
+    end_col = d_end_col,
+    hl_group = diag_hl,
+    priority = 120,
+  })
 end
 
 -- Get diagnostics for a specific scope
@@ -531,7 +555,9 @@ function M.show(config, scope)
     },
     on_move = function(item)
       if item and item.value then
-        preview_utils.preview_symbol(item, state.original_win, state.preview_state)
+        preview_utils.preview_symbol(item, state.original_win, state.preview_state, {
+          highlight_fn = diagnostic_highlight_fn,
+        })
       end
     end,
     on_select = function(item)
@@ -558,31 +584,9 @@ function M.show(config, scope)
       end
     end,
     on_cancel = function()
-      -- Clear highlights across all buffers
       vim.api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
-      if
-        state.preview_state
-        and state.preview_state.scratch_buf
-        and vim.api.nvim_buf_is_valid(state.preview_state.scratch_buf)
-      then
-        vim.api.nvim_buf_clear_namespace(state.preview_state.scratch_buf, state.preview_ns, 0, -1)
-      end
-
-      -- Restore original window state
       if state.preview_state then
         preview_utils.restore_window_state(state.original_win, state.preview_state)
-      else
-        -- Fallback to basic restoration
-        if
-          state.original_win
-          and state.original_pos
-          and state.original_buf
-          and vim.api.nvim_win_is_valid(state.original_win)
-          and vim.api.nvim_buf_is_valid(state.original_buf)
-        then
-          vim.api.nvim_win_set_buf(state.original_win, state.original_buf)
-          vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
-        end
       end
     end,
   })

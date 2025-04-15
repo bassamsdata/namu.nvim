@@ -85,6 +85,35 @@ function M.get_buffer_for_path(path)
   return nil
 end
 
+local function apply_preview_to_window(bufnr, win_id, lnum, col, options, preview_state, item)
+  vim.api.nvim_win_call(win_id, function()
+    vim.api.nvim_win_set_buf(win_id, bufnr)
+    local cursor_line = lnum
+    if options.line_index_offset then
+      cursor_line = cursor_line + options.line_index_offset
+    else
+      cursor_line = cursor_line + 1
+    end
+    vim.api.nvim_win_set_cursor(win_id, { cursor_line, col })
+    vim.cmd("normal! zz")
+    vim.api.nvim_buf_clear_namespace(bufnr, preview_state.preview_ns, 0, -1)
+    local hl_group = options.highlight_group or "NamuPreview"
+    local highlight_line = lnum
+    if options.highlight_line_offset then
+      highlight_line = highlight_line + options.highlight_line_offset
+    end
+    pcall(vim.api.nvim_buf_set_extmark, bufnr, preview_state.preview_ns, highlight_line, 0, {
+      end_row = highlight_line + 1,
+      hl_eol = true,
+      hl_group = hl_group,
+      priority = 100,
+    })
+    if options.highlight_fn and type(options.highlight_fn) == "function" then
+      options.highlight_fn(bufnr, preview_state.preview_ns, item)
+    end
+  end)
+end
+
 function M.preview_symbol(item, win_id, preview_state, options)
   if not item or not item.value then
     logger.log("Invalid item for preview")
@@ -93,26 +122,31 @@ function M.preview_symbol(item, win_id, preview_state, options)
 
   local value = item.value
   local bufnr = value.bufnr
-  -- the second one for diagnostics
-  local file_path = value.file_path or vim.api.nvim_buf_get_name(bufnr)
+  local file_path = value.file_path or (bufnr and vim.api.nvim_buf_get_name(bufnr))
   if not file_path then
     logger.log("No file path in item")
     return
   end
 
-  -- Get line and column info, with proper validation
   local lnum = value.lnum or 0
   local col = value.col or 0
   local name = value.name or item.text
-  -- Make sure we have a valid scratch buffer
+  options = options or {}
+
+  local cache_eventignore = vim.o.eventignore
+  vim.o.eventignore = "all"
+  -- If buffer is valid and loaded, use it directly
+  if bufnr and vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_is_loaded(bufnr) then
+    apply_preview_to_window(bufnr, win_id, lnum, col, options, preview_state, item)
+    vim.o.eventignore = cache_eventignore
+    return
+  end
+
+  -- Otherwise, fallback to scratch buffer and async file read
   if not preview_state.scratch_buf or not vim.api.nvim_buf_is_valid(preview_state.scratch_buf) then
     preview_state.scratch_buf = M.create_scratch_buffer()
   end
 
-  local cache_eventignore = vim.o.eventignore
-  vim.o.eventignore = "BufEnter"
-
-  -- Read file content asynchronously
   M.readfile_async(file_path, function(ok, lines)
     if not ok or not lines then
       logger.log("Failed to read file: " .. file_path)
@@ -120,15 +154,10 @@ function M.preview_symbol(item, win_id, preview_state, options)
       return
     end
 
-    -- Set buffer content and options
     vim.api.nvim_buf_set_lines(preview_state.scratch_buf, 0, -1, false, lines)
-
-    -- Set filetype for syntax highlighting
     local ft = vim.filetype.match({ filename = file_path })
     if ft then
       vim.bo[preview_state.scratch_buf].filetype = ft
-
-      -- Try using treesitter if available
       if preview_state.scratch_buf and vim.api.nvim_buf_is_valid(preview_state.scratch_buf) then
         pcall(function()
           local has_parser, parser = pcall(vim.treesitter.get_parser, preview_state.scratch_buf, ft)
@@ -139,54 +168,7 @@ function M.preview_symbol(item, win_id, preview_state, options)
       end
     end
 
-    -- Set scratch buffer in window
-    vim.api.nvim_win_set_buf(win_id, preview_state.scratch_buf)
-
-    -- IMPORTANT: Determine cursor position correctly
-    -- For API calls like nvim_win_set_cursor, line numbers are 1-based
-    -- But for extmarks, line numbers are 0-based
-    local cursor_line = lnum
-    if type(cursor_line) == "number" then
-      -- Ensure the cursor line is 1-based for nvim_win_set_cursor
-      if options and options.line_index_offset then
-        cursor_line = cursor_line + options.line_index_offset
-      else
-        -- Default: assume lnum is 0-based and add 1 for API call
-        cursor_line = cursor_line + 1
-      end
-    end
-
-    vim.api.nvim_win_set_cursor(win_id, { cursor_line, col })
-    vim.api.nvim_win_call(win_id, function()
-      vim.cmd("normal! zz")
-    end)
-
-    -- Clear previous highlights
-    vim.api.nvim_buf_clear_namespace(preview_state.scratch_buf, preview_state.preview_ns, 0, -1)
-
-    -- Get highlight options
-    options = options or {}
-    local hl_group = options.highlight_group or "NamuPreview"
-
-    -- Calculate highlight line (0-based for extmark API)
-    local highlight_line = lnum
-    if options and options.highlight_line_offset then
-      highlight_line = highlight_line + options.highlight_line_offset
-    end
-
-    -- Always apply the main line highlight (0-based index for extmark API)
-    pcall(vim.api.nvim_buf_set_extmark, preview_state.scratch_buf, preview_state.preview_ns, highlight_line, 0, {
-      end_row = highlight_line + 1,
-      hl_eol = true,
-      hl_group = hl_group,
-      priority = 100,
-    })
-
-    -- If the module provides a highlight_fn, call it to add module-specific highlighting
-    if options.highlight_fn and type(options.highlight_fn) == "function" then
-      options.highlight_fn(preview_state.scratch_buf, preview_state.preview_ns, item)
-    end
-
+    apply_preview_to_window(preview_state.scratch_buf, win_id, lnum, col, options, preview_state, item)
     vim.o.eventignore = cache_eventignore
   end)
 end

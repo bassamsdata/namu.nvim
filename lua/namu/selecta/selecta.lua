@@ -2105,12 +2105,6 @@ function M.setup(opts)
   logger.setup(opts)
 end
 
----Open current buffer in a split and jump to the selected symbol's location
----@param item SelectaItem The LSP symbol item to jump to
----@param split_type? "vertical"|"horizontal" The type of split to create (defaults to horizontal)
----@param module_state NamuState The state from the calling module
----@return number|nil window_id The new window ID if successful
-
 -- Add to a core utility module (e.g., namu.core.split_utils)
 -- Function to find a loaded buffer by file path
 ---@param path string The file path to search for
@@ -2138,7 +2132,11 @@ local function find_buf_by_path(path)
   return nil
 end
 
--- Main split function
+---Open current buffer in a split and jump to the selected symbol's location
+---@param item SelectaItem The LSP symbol item to jump to
+---@param split_type? "vertical"|"horizontal" The type of split to create (defaults to horizontal)
+---@param module_state NamuState The state from the calling module
+---@return number|nil window_id The new window ID if successful
 function M.open_in_split(item, split_type, module_state)
   if not item or not item.value then
     return nil

@@ -129,10 +129,8 @@ local function calls_to_selecta_items(calls, direction, depth, parent_tree_state
   visited = visited or {}
   -- Use a map to collect unique items by signature
   local items_map = {}
-
   for i, call in ipairs(calls) do
     local is_last = (i == #calls)
-
     -- Create tree state based on parent's state
     local current_tree_state = {}
     if parent_tree_state then
@@ -141,13 +139,10 @@ local function calls_to_selecta_items(calls, direction, depth, parent_tree_state
         table.insert(current_tree_state, branch_info)
       end
     end
-
     -- Add the current level's branch info
     table.insert(current_tree_state, is_last)
-
     local item_data
     local call_type = direction
-
     if direction == CallDirection.INCOMING then
       -- For incoming calls, we want the "from" information
       item_data = call.from
@@ -155,18 +150,14 @@ local function calls_to_selecta_items(calls, direction, depth, parent_tree_state
       -- For outgoing calls, we want the "to" information
       item_data = call.to
     end
-
     if not item_data then
       goto continue
     end
-
     -- Get range information from the item
     local range = item_data.selectionRange or item_data.range
-
     if not range or not range.start then
       goto continue
     end
-
     -- Extract the file URI for this call
     local uri = item_data.uri
     local file_path = vim.uri_to_fname(uri)
