@@ -59,12 +59,22 @@ require('selecta').pick(items, {
 ---@field selected_count number Number of items currently selected
 ---@field async_co? thread Active coroutine for async fetching
 ---@field is_loading boolean Whether items are being loaded asynchronously
+---@field last_request_time number? Last request time
+---@field last_query string? Last query
+---@field filter_metadata table? Filter metadata
+---@field loading_extmark_id number? Loading extmark id
+---@field initial_index number? Initial index
 
 ---@class SelectaItem
 ---@field text string Display text
 ---@field value any Actual value to return
 ---@field icon? string Optional icon
 ---@field hl_group? string Optional highlight group for the icon/text
+---@field kind? string Optional kind
+---@field is_direct_match boolean? Is a direct match
+---@field match_score number? Match score
+---@field is_loading boolean? Is loading
+---@field bufnr? number? Buffer number
 
 ---@class SelectaKeymap
 ---@field key string The key sequence
@@ -124,11 +134,19 @@ require('selecta').pick(items, {
 ---@field pre_filter? fun(items: SelectaItem[], query: string): SelectaItem[], string Function to pre-filter items before matcher
 ---@field async_source? fun(query: string): function A function that returns a coroutine for async fetching
 ---@field loading_indicator? { text: string, icon: string } Custom loading indicator
+---@field prefix_highlighter? fun(buf: number, line_nr: number, item: SelectaItem, icon_end: number, ns_id: number)
+---@field parent_key? fun(item: SelectaItem): string
+---@field root_item_first? boolean
+---@field always_include_root? boolean
+---@field is_root_item? fun(item: SelectaItem): boolean
+---@field current_highlight? CurrentHighlightConfig
+---@field preserve_hierarchy? boolean
 
 ---@class SelectaHooks
 ---@field on_render? fun(buf: number, items: SelectaItem[], opts: SelectaOptions) Called after items are rendered
 ---@field on_window_create? fun(win_id: number, buf_id: number, opts: SelectaOptions) Called after window creation
 ---@field before_render? fun(items: SelectaItem[], opts: SelectaOptions) Called before rendering items
+---@field on_buffer_clear? fun()
 
 ---@class SelectaCustomAction
 ---@field keys string|string[] The key(s) for this action
@@ -156,6 +174,13 @@ require('selecta').pick(items, {
 
 ---@class CursorCache
 ---@field guicursor string|nil The cached guicursor value
+
+---@class PrefixInfo
+---@field text string The prefix text (icon or kind text)
+---@field width number Total width including padding
+---@field raw_width number Width without padding
+---@field padding number Padding after prefix
+---@field hl_group string Highlight group to use
 
 local M = {}
 local matcher = require("namu.selecta.matcher")
@@ -274,12 +299,6 @@ local function restore_cursor()
   end
 end
 
----@class PrefixInfo
----@field text string The prefix text (icon or kind text)
----@field width number Total width including padding
----@field raw_width number Width without padding
----@field padding number Padding after prefix
----@field hl_group string Highlight group to use
 local function get_prefix_info(item, max_prefix_width)
   local prefix_text = item.kind or ""
   local raw_width = vim.api.nvim_strwidth(prefix_text)
@@ -854,7 +873,7 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
     --   )
     -- )
     -- Calculate base offset for query highlights (icon + space)
-    local base_offset = item.icon and (vim.api.nvim_strwidth(item.icon) + 1) or 0
+    -- local base_offset = item.icon and (vim.api.nvim_strwidth(item.icon) + 1) or 0
 
     -- Highlight matches in the text using actual_query
     if actual_query ~= "" then
@@ -871,7 +890,7 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
           if match_in_display then
             local start_col = icon_end + match_in_display - 1
             local end_col = start_col + #match_text
-            local highlight_text = display_str:sub(start_col + 1, end_col)
+            -- local highlight_text = display_str:sub(start_col + 1, end_col)
 
             -- Debug log
             -- M.log(
@@ -949,13 +968,11 @@ local function update_cursor_position(state, opts)
 
     -- Check if we're in hierarchical mode and have direct matches
     local has_hierarchical_results = false
-    local first_direct_match_index = nil
 
     if opts.preserve_hierarchy then
       -- Find the first direct match in the filtered items
-      for i, item in ipairs(state.filtered_items) do
+      for _, item in ipairs(state.filtered_items) do
         if item.is_direct_match then
-          first_direct_match_index = i
           has_hierarchical_results = true
           break
         end
@@ -1233,7 +1250,7 @@ local loading_ns_id = vim.api.nvim_create_namespace("selecta_loading_indicator")
 ---@param callback function
 ---@return boolean started
 function M.start_async_fetch(state, query, opts, callback)
-  if state.last_request_time and (vim.loop.now() - state.last_request_time) < 10 then
+  if state.last_request_time and (vim.uv.now() - state.last_request_time) < 10 then
     logger.log("🚫 Debounced rapid request")
     return false
   end
@@ -1628,7 +1645,7 @@ local function delete_last_word(state)
   end
 
   -- Remove characters from word_start to last_char_pos
-  for i = word_start, last_char_pos do
+  for _ = word_start, last_char_pos do
     table.remove(state.query, word_start)
   end
 
@@ -1855,38 +1872,44 @@ local function handle_char(state, char, opts)
   local movement_keys = get_movement_keys(opts)
 
   -- Handle custom keymaps first
+
   if opts.custom_keymaps and type(opts.custom_keymaps) == "table" then
-    for action_name, action in pairs(opts.custom_keymaps) do
+    for _, action in pairs(opts.custom_keymaps) do
       -- Check if action is properly formatted
       if action and action.keys then
-        local keys = type(action.keys) == "string" and { action.keys } or action.keys
-        for _, key in ipairs(keys) do
-          if char_key == vim.api.nvim_replace_termcodes(key, true, true, true) then
-            local selected = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
-            if selected and action.handler then
-              if opts.multiselect and opts.multiselect.enabled and state.selected_count > 0 then
-                -- Handle multiselect case
-                local selected_items = {}
-                for _, item in ipairs(state.filtered_items) do
-                  if state.selected[get_item_id(item)] then
-                    table.insert(selected_items, item)
+        local keys = action.keys
+        if type(keys) == "string" then
+          keys = { keys } -- Convert to table if it's a single string
+        end
+        if type(keys) == "table" then
+          for _, key in ipairs(keys) do
+            if type(key) == "string" and char_key == vim.api.nvim_replace_termcodes(key, true, true, true) then
+              local selected = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
+              if selected and action.handler then
+                if opts.multiselect and opts.multiselect.enabled and state.selected_count > 0 then
+                  -- Handle multiselect case
+                  local selected_items = {}
+                  for _, item in ipairs(state.filtered_items) do
+                    if state.selected[get_item_id(item)] then
+                      table.insert(selected_items, item)
+                    end
+                  end
+                  local should_close = action.handler(selected_items, state)
+                  if should_close == false then
+                    M.close_picker(state)
+                    return nil
+                  end
+                else
+                  -- Handle single item case
+                  local should_close = action.handler(selected, state)
+                  if should_close == false then
+                    M.close_picker(state)
+                    return nil
                   end
                 end
-                local should_close = action.handler(selected_items, state)
-                if should_close == false then
-                  M.close_picker(state)
-                  return nil
-                end
-              else
-                -- Handle single item case
-                local should_close = action.handler(selected, state)
-                if should_close == false then
-                  M.close_picker(state)
-                  return nil
-                end
               end
+              return nil
             end
-            return nil
           end
         end
       end
@@ -1997,6 +2020,7 @@ end
 ---@param opts? SelectaOptions
 ---@return SelectaItem|nil
 function M.pick(items, opts)
+  opts = opts or {}
   logger.log("Picking item - first thing")
   -- Merge options with defaults
   opts = vim.tbl_deep_extend("force", {

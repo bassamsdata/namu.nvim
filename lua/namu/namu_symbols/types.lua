@@ -8,6 +8,7 @@
 ---@field range table<string, table> Symbol range in the document
 ---@field location? table<string, table>
 ---@field children? LSPSymbol[] Child symbols
+---@field bufnr number? Buffer number
 
 ---@class NamuSymbolType
 ---@field kinds string[] List of LSP symbol kinds that match this filter
