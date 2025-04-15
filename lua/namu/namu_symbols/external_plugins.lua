@@ -2,8 +2,9 @@ local M = {}
 ---Process and collect symbol text content
 ---@param items table[] Array of selected items
 ---@param bufnr number Buffer number
+---@param with_line_numbers boolean|nil Whether to include buffer line numbers in the output
 ---@return table|nil {text: string, symbols: table[], content: string[]} Processed content and metadata
-local function process_symbol_content(items, bufnr)
+local function process_symbol_content(items, bufnr, with_line_numbers)
   if not items or #items == 0 then
     vim.notify("No items received", vim.log.levels.WARN)
     return nil
@@ -12,7 +13,6 @@ local function process_symbol_content(items, bufnr)
   local sorted_symbols = {}
   local all_content = {}
 
-  -- First pass: collect and sort symbols by line number
   for _, item in ipairs(items) do
     table.insert(sorted_symbols, item.value)
   end
@@ -20,12 +20,15 @@ local function process_symbol_content(items, bufnr)
     return a.lnum < b.lnum
   end)
 
-  -- Second pass: collect content with no duplicates
   local last_end_lnum = -1
   for _, symbol in ipairs(sorted_symbols) do
-    -- Only add if this section doesn't overlap with the previous one
     if symbol.lnum > last_end_lnum then
       local lines = vim.api.nvim_buf_get_lines(bufnr, symbol.lnum - 1, symbol.end_lnum, false)
+      if with_line_numbers then
+        for i, line in ipairs(lines) do
+          lines[i] = string.format("%4d | %s", symbol.lnum - 1 + i, line)
+        end
+      end
       table.insert(all_content, table.concat(lines, "\n"))
       last_end_lnum = symbol.end_lnum
     end
@@ -41,20 +44,19 @@ end
 ---Add symbol text to CodeCompanion chat buffer
 ---@param items table[] Array of selected items from selecta
 ---@param bufnr number The buffer number of the original buffer
-function M.add_symbol_to_codecompanion(items, bufnr)
-  -- Check if the 'codecompanion' module is available
+---@param with_line_numbers boolean|nil Whether to include buffer line numbers in the output
+function M.add_symbol_to_codecompanion(items, bufnr, with_line_numbers)
   local status, codecompanion = pcall(require, "codecompanion")
   if not status then
     return
   end
 
-  local result = process_symbol_content(items, bufnr)
+  local result = process_symbol_content(items, bufnr, with_line_numbers)
   if not result then
     return
   end
 
   local chat = codecompanion.last_chat()
-
   if not chat then
     chat = codecompanion.chat()
     if not chat then
@@ -115,10 +117,10 @@ end
 
 function M.codecompanion_handler(items_or_item, original_buf)
   if type(items_or_item) == "table" and items_or_item[1] then
-    M.add_symbol_to_codecompanion(items_or_item, original_buf)
+    M.add_symbol_to_codecompanion(items_or_item, original_buf, true)
   else
     -- Single item case
-    M.add_symbol_to_codecompanion({ items_or_item }, original_buf)
+    M.add_symbol_to_codecompanion({ items_or_item }, original_buf, true)
   end
 end
 

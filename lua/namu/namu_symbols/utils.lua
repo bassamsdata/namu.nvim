@@ -5,17 +5,16 @@ local notify_opts = { title = "Namu", icon = require("namu").config.icon }
 ---Yank the symbol text to registers
 ---@param items table|table[] Single item or array of selected items
 ---@param state table The picker state
-function M.yank_symbol_text(items, state)
+---@param with_line_numbers boolean|nil Whether to include buffer line numbers in the yanked text
+function M.yank_symbol_text(items, state, with_line_numbers)
   if not state.original_buf or not vim.api.nvim_buf_is_valid(state.original_buf) then
     vim.notify("Invalid buffer", vim.log.levels.ERROR, notify_opts)
     return
   end
 
-  -- Convert single item to array for consistent handling
   local symbols = type(items) == "table" and items[1] and items or { items }
   local all_text = {}
 
-  -- Sort symbols by line number to maintain order
   table.sort(symbols, function(a, b)
     return a.value.lnum < b.value.lnum
   end)
@@ -23,17 +22,18 @@ function M.yank_symbol_text(items, state)
   for _, item in ipairs(symbols) do
     local symbol = item.value
     if symbol and symbol.lnum and symbol.end_lnum then
-      -- Get the text content
       local lines = vim.api.nvim_buf_get_lines(state.original_buf, symbol.lnum - 1, symbol.end_lnum, false)
-
       if #lines > 0 then
-        -- Handle single line case
         if #lines == 1 then
           lines[1] = lines[1]:sub(symbol.col, symbol.end_col)
         else
-          -- Handle multi-line case
           lines[1] = lines[1]:sub(symbol.col)
           lines[#lines] = lines[#lines]:sub(1, symbol.end_col)
+        end
+        if with_line_numbers then
+          for i, line in ipairs(lines) do
+            lines[i] = string.format("%4d | %s", symbol.lnum - 1 + i, line)
+          end
         end
         table.insert(all_text, table.concat(lines, "\n"))
       end
@@ -44,8 +44,8 @@ function M.yank_symbol_text(items, state)
 
   if #all_text > 0 then
     local final_text = table.concat(all_text, "\n\n")
-    vim.fn.setreg('"', final_text) -- Set to unnamed register
-    vim.fn.setreg("+", final_text) -- Set to system clipboard if unnamed register is not supported
+    vim.fn.setreg('"', final_text)
+    vim.fn.setreg("+", final_text)
     vim.notify(string.format("Yanked %d symbol(s) to clipboard", #symbols), vim.log.levels.INFO, notify_opts)
     return true
   end

@@ -6,7 +6,7 @@ It is loaded only when required to improve startup performance.
 -- Dependencies are only loaded when the module is actually used
 local selecta = require("namu.selecta.selecta")
 local preview_utils = require("namu.core.preview_utils")
-local logger = require("namu.utils.logger")
+local api = vim.api
 local M = {}
 
 -- Store original window and position for preview
@@ -14,7 +14,7 @@ local state = {
   original_win = nil,
   original_buf = nil,
   original_pos = nil,
-  preview_ns = vim.api.nvim_create_namespace("diagnostic_preview"),
+  preview_ns = api.nvim_create_namespace("diagnostic_preview"),
   preview_state = nil,
 }
 -- We need to store the config when passed in to be used by local functions
@@ -33,6 +33,9 @@ local function get_severity_info(severity)
   return severities[severity] or "Unknown"
 end
 
+---@param query string
+---@param config table
+---@return table|nil
 local function parse_diagnostic_filter(query, config)
   -- Similar to parse_symbol_filter but for diagnostics
   if #query >= 3 and query:sub(1, 1) == "/" then
@@ -57,6 +60,9 @@ local function parse_diagnostic_filter(query, config)
 end
 
 -- Format diagnostic with optional file name prefix
+---@param diagnostic table
+---@param file_prefix string|nil
+---@return string
 local function format_diagnostic(diagnostic, file_prefix)
   local message = diagnostic.message:gsub("\n", " ")
   local source = diagnostic.source and (" (" .. diagnostic.source .. ")") or ""
@@ -82,7 +88,7 @@ local function format_diagnostic_item(item, config)
     and config.current_highlight.prefix_icon
     and #config.current_highlight.prefix_icon > 0
   then
-    prefix_padding = string.rep(" ", vim.api.nvim_strwidth(config.current_highlight.prefix_icon))
+    prefix_padding = string.rep(" ", api.nvim_strwidth(config.current_highlight.prefix_icon))
   end
 
   local value = item.value
@@ -108,7 +114,7 @@ local function format_diagnostic_item(item, config)
   local location = string.format("[%d:%d]", value.lnum + 1, value.col + 1)
   local file_info = ""
   if value.bufnr then
-    local bufname = vim.api.nvim_buf_get_name(value.bufnr)
+    local bufname = api.nvim_buf_get_name(value.bufnr)
     if bufname and bufname ~= "" then
       file_info = " [" .. vim.fn.fnamemodify(bufname, ":t") .. "]"
     end
@@ -121,17 +127,16 @@ end
 ---@param bufnr number
 ---@param diagnostic table
 ---@return string|nil
-local function get_node_text(bufnr, diagnostic)
+local function get_node_text(bufnr, diagnostic, with_line_numbers)
   local node = vim.treesitter.get_node({
     bufnr = bufnr,
     pos = { diagnostic.lnum, diagnostic.col },
   })
-
   if not node then
     return nil
   end
 
-  -- Try to find meaningful parent node
+  -- Find meaningful parent node
   local current = node
   while current:parent() and current:parent():type() ~= "chunk" do
     current = current:parent()
@@ -151,7 +156,17 @@ local function get_node_text(bufnr, diagnostic)
     end
   end
 
-  return vim.treesitter.get_node_text(current, bufnr)
+  if with_line_numbers then
+    local start_row, _, end_row, _ = current:range()
+    local lines = vim.api.nvim_buf_get_lines(bufnr, start_row, end_row + 1, false)
+    local numbered = {}
+    for i, line in ipairs(lines) do
+      table.insert(numbered, string.format("%4d | %s", start_row + i, line))
+    end
+    return table.concat(numbered, "\n")
+  else
+    return vim.treesitter.get_node_text(current, bufnr)
+  end
 end
 
 ---Convert diagnostics to selecta items
@@ -190,7 +205,7 @@ local function diagnostics_to_selecta_items(diagnostics, buffer_info, config)
         end_lnum = diagnostic.end_lnum or diagnostic.lnum,
         end_col = diagnostic.end_col or diagnostic.col + 1,
         bufnr = diag_bufnr,
-        context = get_node_text(diag_bufnr, diagnostic),
+        context = get_node_text(diag_bufnr, diagnostic, true),
       },
       icon = config.icons[severity],
       kind = severity,
@@ -215,9 +230,12 @@ local function diagnostics_to_selecta_items(diagnostics, buffer_info, config)
 end
 
 -- Apply severity-based highlights in the picker UI
+---@param buf number
+---@param filtered_items table[]
+---@param config table
 local function apply_diagnostic_highlights(buf, filtered_items, config)
-  local ns_id = vim.api.nvim_create_namespace("namu_diagnostics_picker")
-  vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
+  local ns_id = api.nvim_create_namespace("namu_diagnostics_picker")
+  api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
 
   for idx, item in ipairs(filtered_items) do
     local line = idx - 1
@@ -226,7 +244,7 @@ local function apply_diagnostic_highlights(buf, filtered_items, config)
     local hl_group = config.highlights[severity]
 
     -- Get the line from buffer
-    local lines = vim.api.nvim_buf_get_lines(buf, line, line + 1, false)
+    local lines = api.nvim_buf_get_lines(buf, line, line + 1, false)
     if #lines == 0 then
       goto continue
     end
@@ -239,7 +257,7 @@ local function apply_diagnostic_highlights(buf, filtered_items, config)
 
     if location_start then
       -- Highlight the icon and message with severity color
-      vim.api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
+      api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
         end_row = line,
         end_col = location_start - 1,
         hl_group = hl_group,
@@ -248,7 +266,7 @@ local function apply_diagnostic_highlights(buf, filtered_items, config)
 
       -- Highlight the location info
       local location_text = line_text:match(location_pattern)
-      vim.api.nvim_buf_set_extmark(buf, ns_id, line, location_start - 1, {
+      api.nvim_buf_set_extmark(buf, ns_id, line, location_start - 1, {
         end_row = line,
         end_col = location_start - 1 + #location_text,
         hl_group = "Directory",
@@ -259,7 +277,7 @@ local function apply_diagnostic_highlights(buf, filtered_items, config)
       local source_pattern = " %(.-%)$"
       local source_start = line_text:find(source_pattern)
       if source_start then
-        vim.api.nvim_buf_set_extmark(buf, ns_id, line, source_start - 1, {
+        api.nvim_buf_set_extmark(buf, ns_id, line, source_start - 1, {
           end_row = line,
           end_col = #line_text,
           hl_group = "Comment",
@@ -268,7 +286,7 @@ local function apply_diagnostic_highlights(buf, filtered_items, config)
       end
     else
       -- Fallback: highlight entire line
-      vim.api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
+      api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
         end_row = line,
         end_col = #line_text,
         hl_group = hl_group,
@@ -280,7 +298,10 @@ local function apply_diagnostic_highlights(buf, filtered_items, config)
   end
 end
 
-local function diagnostic_highlight_fn(bufnr, ns, item)
+---@param bufnr number
+---@param ns number
+---@param item table
+local function preview_highlight_fn(bufnr, ns, item)
   if not item or not item.value or not item.value.diagnostic then
     return
   end
@@ -291,13 +312,14 @@ local function diagnostic_highlight_fn(bufnr, ns, item)
   local d_end_col = diag.end_col or (d_col + 1)
   local severity = diag.severity
   local severity_map = {
+    -- TODO: make this configurable with namu highlights
     [1] = "DiagnosticVirtualTextError",
     [2] = "DiagnosticVirtualTextWarn",
     [3] = "DiagnosticVirtualTextInfo",
     [4] = "DiagnosticVirtualTextHint",
   }
-  local diag_hl = severity_map[severity] or "DiagnosticVirtualTextInfo"
-  pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, d_lnum, d_col, {
+  local diag_hl = severity_map[severity] or "DiagnosticVirtualTextOk"
+  pcall(api.nvim_buf_set_extmark, bufnr, ns, d_lnum, d_col, {
     end_row = d_end_lnum,
     end_col = d_end_col,
     hl_group = diag_hl,
@@ -306,25 +328,28 @@ local function diagnostic_highlight_fn(bufnr, ns, item)
 end
 
 -- Get diagnostics for a specific scope
+---@param scope string
+---@param opts table|nil
+---@return table, table|nil
 local function get_diagnostics_for_scope(scope, opts)
   opts = opts or {}
 
   if scope == "current" then
     -- Current buffer diagnostics
-    local bufnr = vim.api.nvim_get_current_buf()
+    local bufnr = api.nvim_get_current_buf()
     return vim.diagnostic.get(bufnr, opts), bufnr
   elseif scope == "buffers" then
     -- All open buffers diagnostics
     local all_diagnostics = {}
     local buffer_info = {}
 
-    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-      if vim.api.nvim_buf_is_loaded(bufnr) then
+    for _, bufnr in ipairs(api.nvim_list_bufs()) do
+      if api.nvim_buf_is_loaded(bufnr) then
         local buf_diagnostics = vim.diagnostic.get(bufnr, opts)
         for _, diag in ipairs(buf_diagnostics) do
           diag.bufnr = bufnr -- Ensure bufnr is set
           table.insert(all_diagnostics, diag)
-          buffer_info[bufnr] = buffer_info[bufnr] or vim.api.nvim_buf_get_name(bufnr)
+          buffer_info[bufnr] = buffer_info[bufnr] or api.nvim_buf_get_name(bufnr)
         end
       end
     end
@@ -334,12 +359,12 @@ local function get_diagnostics_for_scope(scope, opts)
     local all_diagnostics = {}
     local buffer_info = {}
 
-    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    for _, bufnr in ipairs(api.nvim_list_bufs()) do
       local buf_diagnostics = vim.diagnostic.get(bufnr, opts)
       for _, diag in ipairs(buf_diagnostics) do
         diag.bufnr = bufnr -- Ensure bufnr is set
         table.insert(all_diagnostics, diag)
-        buffer_info[bufnr] = buffer_info[bufnr] or vim.api.nvim_buf_get_name(bufnr)
+        buffer_info[bufnr] = buffer_info[bufnr] or api.nvim_buf_get_name(bufnr)
       end
     end
     return all_diagnostics, buffer_info
@@ -349,8 +374,10 @@ local function get_diagnostics_for_scope(scope, opts)
 end
 
 ---@return number|nil
+---@param items table[]
+---@return number|nil
 local function find_current_diagnostic_index(items)
-  local cursor = vim.api.nvim_win_get_cursor(0)
+  local cursor = api.nvim_win_get_cursor(0)
   local cursor_line = cursor[1] - 1 -- Convert to 0-based
 
   if M.config.debug then
@@ -386,6 +413,16 @@ local function find_current_diagnostic_index(items)
   end
 
   return closest_idx
+end
+
+-- Helper to get numbered context lines
+local function get_numbered_context(bufnr, lnum, end_lnum)
+  local lines = vim.api.nvim_buf_get_lines(bufnr, lnum, (end_lnum or lnum) + 1, false)
+  local numbered = {}
+  for i, line in ipairs(lines) do
+    table.insert(numbered, string.format("%4d | %s", lnum + i, line))
+  end
+  return table.concat(numbered, "\n")
 end
 
 ---Yank diagnostic with its context
@@ -434,10 +471,12 @@ function M.add_to_codecompanion(config, items_or_item, state)
 
   for _, item in ipairs(items) do
     local value = item.value
+    local source = value.diagnostic.source or "N/A"
     local text = string.format(
       [[
 Diagnostic: %s
 Severity: %s
+Source: %s
 Location: Line %d, Column %d
 Context:
 ```%s
@@ -445,6 +484,7 @@ Context:
 ```]],
       value.diagnostic.message,
       value.severity,
+      source,
       value.lnum + 1,
       value.col + 1,
       vim.bo[value.bufnr].filetype,
@@ -492,9 +532,9 @@ function M.show(config, scope)
   M.config = config
 
   -- Store current window info
-  state.original_win = vim.api.nvim_get_current_win()
-  state.original_buf = vim.api.nvim_get_current_buf()
-  state.original_pos = vim.api.nvim_win_get_cursor(state.original_win)
+  state.original_win = api.nvim_get_current_win()
+  state.original_buf = api.nvim_get_current_buf()
+  state.original_pos = api.nvim_win_get_cursor(state.original_win)
 
   -- Save window state for potential restoration
   if not state.preview_state then
@@ -556,35 +596,35 @@ function M.show(config, scope)
     on_move = function(item)
       if item and item.value then
         preview_utils.preview_symbol(item, state.original_win, state.preview_state, {
-          highlight_fn = diagnostic_highlight_fn,
+          highlight_fn = preview_highlight_fn,
         })
       end
     end,
     on_select = function(item)
-      vim.api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
+      api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
       if
         state.preview_state
         and state.preview_state.scratch_buf
-        and vim.api.nvim_buf_is_valid(state.preview_state.scratch_buf)
+        and api.nvim_buf_is_valid(state.preview_state.scratch_buf)
       then
-        vim.api.nvim_buf_clear_namespace(state.preview_state.scratch_buf, state.preview_ns, 0, -1)
+        api.nvim_buf_clear_namespace(state.preview_state.scratch_buf, state.preview_ns, 0, -1)
       end
       if
         state.original_win
         and state.original_pos
         and state.original_buf
-        and vim.api.nvim_win_is_valid(state.original_win)
-        and vim.api.nvim_buf_is_valid(state.original_buf)
+        and api.nvim_win_is_valid(state.original_win)
+        and api.nvim_buf_is_valid(state.original_buf)
       then
-        vim.api.nvim_win_call(state.original_win, function()
-          vim.api.nvim_win_set_buf(state.original_win, item.value.bufnr)
-          vim.api.nvim_win_set_cursor(state.original_win, { item.value.lnum + 1, item.value.col })
+        api.nvim_win_call(state.original_win, function()
+          api.nvim_win_set_buf(state.original_win, item.value.bufnr)
+          api.nvim_win_set_cursor(state.original_win, { item.value.lnum + 1, item.value.col })
           vim.cmd("normal! zz")
         end)
       end
     end,
     on_cancel = function()
-      vim.api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
+      api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
       if state.preview_state then
         preview_utils.restore_window_state(state.original_win, state.preview_state)
       end
