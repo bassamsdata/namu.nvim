@@ -157,19 +157,18 @@ function M.get_match_positions(text, query)
   -- Smart-case: check if query has any uppercase
   local has_uppercase = query:match("[A-Z]") ~= nil
 
-  -- Helper function for smart-case comparison
-  local function smart_compare(a, b)
-    if has_uppercase then
-      return a == b -- Case-sensitive if query has uppercase
-    else
-      return a:lower() == b:lower() -- Case-insensitive otherwise
-    end
+  local lower_text, lower_query
+  if not has_uppercase then
+    lower_text = text:lower()
+    lower_query = query:lower()
   end
 
-  -- Check for prefix match
+  -- Prefix match
   local is_prefix = true
   for i = 1, #query do
-    if not smart_compare(text:sub(i, i), query:sub(i, i)) then
+    local tc = has_uppercase and text:sub(i, i) or lower_text:sub(i, i)
+    local qc = has_uppercase and query:sub(i, i) or lower_query:sub(i, i)
+    if tc ~= qc then
       is_prefix = false
       break
     end
@@ -206,25 +205,19 @@ function M.get_match_positions(text, query)
 
   -- Enhanced substring match with word boundary detection
   local function find_best_substring_match()
-    local best_start = nil
-    local best_score = -1
-    local curr_pos = 1
-
+    local best_start, best_score, curr_pos = nil, -1, 1
     while true do
       local start_idx
       if has_uppercase then
         start_idx = text:find(query, curr_pos, true) -- Case-sensitive
       else
-        start_idx = text:lower():find(query:lower(), curr_pos, true) -- Case-insensitive
+        start_idx = lower_text:find(lower_query, curr_pos, true)
       end
-
       if not start_idx then
         break
       end
-
       -- Calculate score for this match position
       local curr_score = MATCH_SCORES.contains
-
       -- Add exact match bonus
       if #query > 1 then -- Only for queries longer than 1 char
         curr_score = curr_score + SCORE_ADJUSTMENTS.exact_match_bonus
