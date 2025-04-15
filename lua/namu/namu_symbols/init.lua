@@ -165,6 +165,7 @@ local function symbols_to_selecta_items(raw_symbols)
       },
       -- PERF: we need this for matcher.
       text = clean_name,
+      bufnr = bufnr,
       icon = M.config.kindIcons[kind] or M.config.icon,
       kind = kind,
       depth = depth,
