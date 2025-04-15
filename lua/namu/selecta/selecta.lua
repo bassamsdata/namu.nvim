@@ -2148,8 +2148,9 @@ function M.open_in_split(item, split_type, module_state)
   local original_win = module_state.original_win or vim.api.nvim_get_current_win()
   local original_buf = module_state.original_buf or vim.api.nvim_get_current_buf()
   local original_pos = module_state.original_pos or vim.api.nvim_win_get_cursor(original_win)
+
   -- Get target info
-  local target_bufnr = item.value.bufnr or item.bufnr or original_buf -- fallback hierarchy: buffer_symbols -> item bufnr -> original buf
+  local target_bufnr = item.value.bufnr or item.bufnr -- fallback hierarchy: buffer_symbols -> item bufnr -> original buf
   local target_path = nil
   -- Try to get path from multiple possible sources
   if item.value.file_path then
@@ -2172,11 +2173,13 @@ function M.open_in_split(item, split_type, module_state)
     noautocmd = true, -- Performance optimization
   }
   -- Create split window
-  local new_win = vim.api.nvim_open_win(0, true, split_config)
+  local new_win
+  vim.api.nvim_win_call(original_win, function()
+    new_win = vim.api.nvim_open_win(0, true, split_config)
+  end)
   if not new_win then
     return nil
   end
-
   -- Set up buffer in the new window
   if target_bufnr and vim.api.nvim_buf_is_valid(target_bufnr) then
     -- Use existing buffer
@@ -2186,20 +2189,19 @@ function M.open_in_split(item, split_type, module_state)
     local buf_id = vim.fn.bufadd(target_path)
     vim.bo[buf_id].buflisted = true
     vim.api.nvim_win_set_buf(new_win, buf_id)
-
     -- Ensure the buffer is loaded (important for LSP features)
     if not vim.api.nvim_buf_is_loaded(buf_id) then
       vim.fn.bufload(buf_id)
     end
   end
-
   -- Set cursor position and center
   if target_lnum then
     -- Handle different indexing conventions (0-based vs 1-based)
     local line = type(target_lnum) == "number" and target_lnum or tonumber(target_lnum)
     if line then
       -- Adjust for 1-based line numbers if needed
-      if vim.api.nvim_get_option_value("buftype", { win = vim.api.nvim_win_get_buf(new_win) }) ~= "terminal" then
+      local buf_type = vim.api.nvim_get_option_value("buftype", { buf = vim.api.nvim_win_get_buf(new_win) })
+      if buf_type ~= "terminal" then
         line = line > 0 and line or 1
       end
       local col = (type(target_col) == "number" and target_col >= 0) and target_col or 0
@@ -2210,14 +2212,20 @@ function M.open_in_split(item, split_type, module_state)
       end)
     end
   end
-
+  local function is_valid_win(win_id)
+    return win_id and vim.api.nvim_win_is_valid(win_id)
+  end
+  local function is_valid_buf(buf_id)
+    return buf_id and vim.api.nvim_buf_is_valid(buf_id)
+  end
   -- Restore original window
-  vim.api.nvim_win_call(original_win, function()
-    vim.api.nvim_win_set_buf(original_win, original_buf)
+  if is_valid_win(original_win) and is_valid_buf(original_buf) then
+    pcall(vim.api.nvim_win_set_buf, original_win, original_buf)
     pcall(vim.api.nvim_win_set_cursor, original_win, original_pos)
-  end)
+  end
   -- Focus new window
-  vim.api.nvim_set_current_win(new_win)
+  pcall(vim.api.nvim_set_current_win, new_win)
+
   return new_win
 end
 
