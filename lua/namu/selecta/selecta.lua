@@ -1380,7 +1380,6 @@ function M.close_picker(state)
   end
   state.active = false
   -- No need to explicitly terminate coroutines - just mark as inactive
-  -- TODO: why not close the coroutines
   state.async_co = nil
   state.is_loading = false
   -- Clear loading indicator if exists
