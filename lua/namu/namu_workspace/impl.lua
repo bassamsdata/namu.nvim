@@ -11,6 +11,7 @@ local function load_deps()
   impl.logger = require("namu.utils.logger")
   impl.format_utils = require("namu.core.format_utils")
   impl.highlights = require("namu.core.highlights")
+  impl.utils = require("namu.core.utils")
 end
 
 -- Create state for storing data between functions
@@ -44,46 +45,6 @@ function impl.open_in_horizontal_split(config, items_or_item, module_state)
   return false
 end
 
--- Get file icon for the file path
-local function get_file_icon(file_path)
-  -- Extract the file name from the path
-  local filename = vim.fs.basename(file_path)
-  local extension = filename:match("%.([^%.]+)$")
-
-  -- Try to get icon from mini.icons
-  local icon, icon_hl, is_default
-  local mini_icons_ok, mini_icons = pcall(require, "mini.icons")
-  if mini_icons_ok then
-    -- First try with exact filename
-    icon, icon_hl, is_default = mini_icons.get("file", filename)
-
-    -- If it's a default icon and we have an extension, try by extension
-    if is_default and extension then
-      local ext_icon, ext_hl, ext_is_default = mini_icons.get("extension", extension)
-      if not ext_is_default then
-        icon, icon_hl = ext_icon, ext_hl
-      end
-    end
-  else
-    -- Fall back to nvim-web-devicons
-    local devicons_ok, devicons = pcall(require, "nvim-web-devicons")
-    if devicons_ok then
-      local dev_icon, dev_hl = devicons.get_icon(filename, extension, { default = true })
-      if dev_icon then
-        icon, icon_hl = dev_icon, dev_hl
-      end
-    end
-  end
-
-  -- If we still don't have an icon, provide a safe default
-  if not icon then
-    icon = "󰈔" -- Default file icon
-    icon_hl = "Normal"
-  end
-
-  return icon, icon_hl
-end
-
 -- Format symbol text for display
 local function format_symbol_text(symbol, file_path)
   local name = symbol.name
@@ -102,7 +63,7 @@ local function format_symbol_text(symbol, file_path)
     rel_path = vim.fn.fnamemodify(file_path, ":t")
   end
   -- Get file icon for the path
-  local file_icon, _ = get_file_icon(file_path)
+  local file_icon, _ = impl.utils.get_file_icon(file_path)
   local icon_str = file_icon and (file_icon .. " ") or ""
   -- Use the relative path in the formatted string with icon
   return string.format("%s [%s] - %s%s:%d", name, kind, icon_str, rel_path, line)

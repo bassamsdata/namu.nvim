@@ -1,6 +1,7 @@
 local M = {}
 local logger = require("namu.utils.logger")
 local format_utils = require("namu.core.format_utils")
+local api = vim.api
 
 -- Factory function to create a state object for a particular module
 function M.create_state(namespace)
@@ -9,7 +10,7 @@ function M.create_state(namespace)
     original_buf = nil,
     original_pos = nil,
     original_ft = nil,
-    preview_ns = vim.api.nvim_create_namespace(namespace or "namu_preview"),
+    preview_ns = api.nvim_create_namespace(namespace or "namu_preview"),
     current_request = nil,
   }
 end
@@ -19,7 +20,7 @@ end
 ---@return table|nil symbol The nearest symbol if found within threshold
 function M.find_nearest_symbol(items)
   -- Cache cursor position
-  local cursor_pos = vim.api.nvim_win_get_cursor(0)
+  local cursor_pos = api.nvim_win_get_cursor(0)
   local cursor_line = cursor_pos[1]
   -- Early exit if no items
   if #items == 0 then
@@ -62,12 +63,24 @@ end
 ---@return table|nil symbol The nearest symbol if found within threshold
 function M.find_containing_symbol(items)
   -- Cache cursor position
-  local cursor_pos = vim.api.nvim_win_get_cursor(0)
+  local cursor_pos = api.nvim_win_get_cursor(0)
   local cursor_line, cursor_col = cursor_pos[1], cursor_pos[2] + 1
 
   -- Early exit if no items
   if #items == 0 then
     logger.log("find_containing_symbol() - No items to search")
+    return nil
+  end
+
+  -- Filter out root/buffer items before binary search to avoid nil errors
+  local symbol_items = {}
+  for _, item in ipairs(items) do
+    if not item.is_root and item.value and item.value.lnum and item.value.end_lnum then
+      table.insert(symbol_items, item)
+    end
+  end
+  -- If no valid symbol items, return nil
+  if #symbol_items == 0 then
     return nil
   end
 
@@ -79,7 +92,11 @@ function M.find_containing_symbol(items)
       local mid = math.floor((left + right) / 2)
       local symbol = items[mid].value
 
-      if symbol.lnum <= target_line and symbol.end_lnum >= target_line then
+      -- Safety check
+      if not symbol or not symbol.lnum or not symbol.end_lnum then
+        -- Skip this item
+        left = mid + 1
+      elseif symbol.lnum <= target_line and symbol.end_lnum >= target_line then
         return mid
       elseif symbol.lnum > target_line then
         right = mid - 1
@@ -163,7 +180,7 @@ end
 ---@param state table State object containing original_win
 function M.jump_to_symbol(symbol, state)
   vim.cmd.normal({ "m`", bang = true }) -- set jump mark
-  vim.api.nvim_win_set_cursor(state.original_win, { symbol.lnum, symbol.col - 1 })
+  api.nvim_win_set_cursor(state.original_win, { symbol.lnum, symbol.col - 1 })
 end
 
 ---Parse symbol filter from query string
@@ -221,6 +238,10 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
     custom_keymaps = vim.tbl_deep_extend("force", config.custom_keymaps, {}),
     debug = config.debug,
     preserve_hierarchy = config.preserve_hierarchy or false,
+    root_item_first = true,
+    is_root_item = function(item)
+      return item.is_root == true
+    end,
     parent_key = function(item)
       return item.value and item.value.parent_signature
     end,
@@ -354,8 +375,8 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
       end,
       on_buffer_clear = function()
         ui.clear_preview_highlight(state.original_win, state.preview_ns)
-        if state.original_win and state.original_pos and vim.api.nvim_win_is_valid(state.original_win) then
-          vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
+        if state.original_win and state.original_pos and api.nvim_win_is_valid(state.original_win) then
+          api.nvim_win_set_cursor(state.original_win, state.original_pos)
         end
         state.original_buf = nil
         state.original_pos = nil
@@ -369,7 +390,7 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
         if config.preview.highlight_mode == "select" then
           ui.clear_preview_highlight(state.original_win, state.preview_ns)
           if type(selected_items) == "table" and selected_items[1] then
-            ui.preview_symbol(selected_items[1].value, state.original_win, state.preview_ns, state)
+            ui.preview_symbol(selected_items[1].value, state.original_win, state.preview_ns, state, config.highlight)
           end
         end
         if type(selected_items) == "table" and selected_items[1] then
@@ -389,16 +410,25 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
       ui.clear_preview_highlight(state.original_win, state.preview_ns)
       M.jump_to_symbol(item.value, state)
     end,
+    -- TODO: Refactor please
     on_cancel = function()
       ui.clear_preview_highlight(state.original_win, state.preview_ns)
-      if state.original_win and state.original_pos and vim.api.nvim_win_is_valid(state.original_win) then
-        vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
+      if state.original_win and state.original_pos and api.nvim_win_is_valid(state.original_win) then
+        local current_bufnr = api.nvim_win_get_buf(state.original_win)
+        local need_buffer_switch = state.original_buf
+          and state.original_buf ~= current_bufnr
+          and api.nvim_buf_is_valid(state.original_buf)
+        if need_buffer_switch then
+          pcall(api.nvim_win_set_buf, state.original_win, state.original_buf)
+        end
+        api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
+        api.nvim_win_set_cursor(state.original_win, state.original_pos)
       end
     end,
     on_move = function(item)
       if config.preview.highlight_on_move and config.preview.highlight_mode == "always" then
         if item then
-          ui.preview_symbol(item.value, state.original_win, state.preview_ns)
+          ui.preview_symbol(item, state.original_win, state.preview_ns, state, config.highlight)
         end
       end
     end,
@@ -408,7 +438,7 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
   --   picker_opts.prefix_highlighter = function(buf, line_nr, item, icon_end, ns_id)
   --     local kind_hl = config.kinds.highlights[item.kind]
   --     if kind_hl then
-  --       vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, 0, {
+  --       api.nvim_buf_set_extmark(buf, ns_id, line_nr, 0, {
   --         end_col = icon_end,
   --         hl_group = kind_hl,
   --         priority = 100,
@@ -422,13 +452,13 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
 
   -- Add cleanup autocmd after picker is created
   if picker_win then
-    local augroup = vim.api.nvim_create_augroup("NamuCleanup", { clear = true })
-    vim.api.nvim_create_autocmd("WinClosed", {
+    local augroup = api.nvim_create_augroup("NamuCleanup", { clear = true })
+    api.nvim_create_autocmd("WinClosed", {
       group = augroup,
       pattern = tostring(picker_win),
       callback = function()
         ui.clear_preview_highlight(state.original_win, state.preview_ns)
-        vim.api.nvim_del_augroup_by_name("NamuCleanup")
+        api.nvim_del_augroup_by_name("NamuCleanup")
       end,
       once = true,
     })
