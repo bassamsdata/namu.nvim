@@ -4,11 +4,12 @@ M.config = {
   namu_symbols = { enable = true, options = {} },
   namu_ctags = { enable = false, options = {} },
   selecta = { enable = true, options = {} },
-  colorscheme = { enable = false, options = {} },
-  ui_select = { enable = false, options = {} },
   callhierarchy = { enable = true, options = {} },
   workspace = { enable = true, options = {} },
   diagnostics = { enable = true, options = {} },
+  active = { enable = true, options = {} },
+  colorscheme = { enable = false, options = {} },
+  ui_select = { enable = false, options = {} },
 }
 
 M.setup = function(opts)
@@ -32,6 +33,10 @@ M.setup = function(opts)
 
   if M.config.workspace.enable then
     require("namu.namu_workspace").setup(M.config.workspace.options)
+  end
+
+  if M.config.active.enable then
+    require("namu.namu_active").setup(M.config.active.options)
   end
 
   if M.config.diagnostics.enable then

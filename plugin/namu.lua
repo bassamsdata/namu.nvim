@@ -13,6 +13,7 @@ local command_descriptions = {
   call = "Show call hierarchy (use 'call in', 'call out', or 'call both')",
   workspace = "Search workspace symbols with LSP",
   diagnostics = "Show diagnostics for current buffer (use 'diagnostics workspace' for workspace diagnostics)",
+  active = "Show symbols from all active buffers",
   help = "Show help information (use 'help symbols' or 'help analysis' for detailed views)",
 }
 -- Argument validators
@@ -74,6 +75,9 @@ local command_validators = {
       return false, "invalid diagnostics type. Valid type: workspace"
     end
     return true
+  end,
+  active = function(args)
+    return #args == 0, "active command doesn't accept arguments"
   end,
   help = function(args)
     if #args > 1 then
@@ -146,6 +150,9 @@ local registry = {
     else
       require("namu.namu_diagnostics").show("workspace")
     end
+  end,
+  active = function(args)
+    require("namu.namu_active").show()
   end,
   help = function(args)
     if #args == 0 then
