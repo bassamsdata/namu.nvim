@@ -26,6 +26,10 @@ local state = nil
 local function initialize_state()
   if state and state.original_win and state.preview_ns then
     ui.clear_preview_highlight(state.original_win, state.preview_ns)
+    state.original_win = nil
+    state.original_buf = nil
+    state.original_ft = nil
+    state.original_pos = nil
   end
 
   state = symbol_utils.create_state("namu_active_symbols_preview")

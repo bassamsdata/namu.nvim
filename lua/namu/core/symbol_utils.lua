@@ -871,6 +871,7 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
         end
       end,
     },
+    -- FIX: with active module, not working great
     initial_index = config.focus_current_symbol
         and current_symbol
         and ui.find_symbol_index(
