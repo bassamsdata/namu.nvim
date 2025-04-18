@@ -80,3 +80,4 @@
 ---@field original_pos table|nil Original cursor position
 ---@field preview_ns number|nil Preview namespace
 ---@field current_request table|nil Current LSP request ID
+---@field last_highlighted_bufnr number|nil Last buffer where highlights were applied
