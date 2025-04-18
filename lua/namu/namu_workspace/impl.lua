@@ -234,7 +234,7 @@ local function apply_workspace_highlights(buf, filtered_items, config)
 
     -- Only consider it an icon if it's reasonably short (icons are typically 1-2 chars)
     if icon_match and vim.fn.strwidth(icon_match) <= 2 then
-      local _, icon_hl = get_file_icon(value.file_path)
+      local _, icon_hl = impl.utils.get_file_icon(value.file_path)
       -- Highlight the icon with icon_hl (use the same highlight as the symbol)
       api.nvim_buf_set_extmark(buf, ns_id, line_idx, file_start - 1, {
         end_row = line_idx,
