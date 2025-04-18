@@ -1,6 +1,6 @@
 ---@diagnostic disable: need-check-nil, param-type-mismatch
 local h = require("tests.helpers")
-local namu = require("namu.namu_symbols")
+local namu = require("namu.namu_symbols.symbols")
 local lsp = require("namu.namu_symbols.lsp")
 local format_utils = require("namu.core.format_utils")
 ---@diagnostic disable-next-line: undefined-global

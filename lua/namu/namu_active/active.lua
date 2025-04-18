@@ -3,6 +3,7 @@ This file contains the actual implementation for displaying symbols from active 
 It is loaded only when required to improve startup performance.
 ]]
 
+---@diagnostic disable: unused-local
 local async_module = require("namu.core.async")
 ---@diagnostic disable-next-line: missing-fields
 local Async = async_module.Async.new({ max_concurrent = 5, default_timeout = 15 })
@@ -12,7 +13,9 @@ local ui = require("namu.namu_symbols.ui")
 local selecta = require("namu.selecta.selecta")
 local symbol_utils = require("namu.core.symbol_utils")
 local format_utils = require("namu.core.format_utils")
+local treesitter_symbols = require("namu.core.treesitter_symbols")
 local utils = require("namu.core.utils")
+local logger = require("namu.utils.logger")
 local api = vim.api
 
 local M = {}
@@ -67,6 +70,7 @@ end
 local function symbols_to_selecta_items(raw_symbols, source, bufnr, config_values)
   local items = {}
   local buffer_filetype = api.nvim_get_option_value("filetype", { buf = bufnr })
+
   local function generate_signature(symbol, depth)
     local range = symbol.range or (symbol.location and symbol.location.range)
     if not range then
@@ -77,17 +81,18 @@ local function symbols_to_selecta_items(raw_symbols, source, bufnr, config_value
 
   local function process_symbol_result(result, depth, parent_stack)
     if not result or not result.name then
+      logger.log("Active: Skipping symbol with no name")
       return
     end
+
     local range = result.range or (result.location and result.location.range)
     if not range or not range.start or not range["end"] then
-      vim.notify("Symbol '" .. result.name .. "' has invalid structure", vim.log.levels.WARN)
       return
     end
     local signature = generate_signature(result, depth)
 
-    -- FIXED: Pass config_values directly (not config_values.values)
-    if not lsp.should_include_symbol(result, config_values, buffer_filetype) then
+    -- Only do filtering for LSP symbols - TreeSitter symbols are already filtered
+    if source == "lsp" and not lsp.should_include_symbol(result, config_values, buffer_filetype) then
       if result.children then
         for _, child in ipairs(result.children) do
           process_symbol_result(child, depth, parent_stack)
@@ -96,19 +101,27 @@ local function symbols_to_selecta_items(raw_symbols, source, bufnr, config_value
       return
     end
 
-    local parent_signature = depth > 0 and parent_stack[depth] or nil
+    local parent_signature = depth > 0 and parent_stack[depth] or "buffer:" .. bufnr
     local clean_name = result.name:match("^([^%s%(]+)") or result.name
     clean_name = state.original_ft == "markdown" and result.name or clean_name
     local style = tonumber(config_values.display.style) or 2
     local prefix = ui.get_prefix(depth, style)
     local display_text = prefix .. clean_name
 
-    local kind = lsp.symbol_kind(result.kind)
+    -- For TreeSitter, we need to map the kind string to a number
+    local kind
+    if source == "treesitter" then
+      kind = lsp.symbol_kind_to_number(result.kind)
+    else
+      kind = result.kind
+    end
+    local kind_name = lsp.symbol_kind(kind)
+
     local item = {
       value = {
         text = clean_name,
         name = clean_name,
-        kind = kind,
+        kind = kind_name,
         lnum = range.start.line + 1,
         col = range.start.character + 1,
         end_lnum = range["end"].line + 1,
@@ -116,22 +129,21 @@ local function symbols_to_selecta_items(raw_symbols, source, bufnr, config_value
         signature = signature,
         parent_signature = parent_signature,
       },
-      icon = config_values.kindIcons[kind] or config_values.icon,
+      icon = config_values.kindIcons[kind_name] or config_values.icon,
       bufnr = bufnr,
-      kind = kind,
+      kind = kind_name,
       depth = depth,
       source = source,
       text = display_text,
     }
-
     table.insert(items, item)
     parent_stack[depth + 1] = signature
+    -- Process children
     if result.children then
       for _, child in ipairs(result.children) do
         process_symbol_result(child, depth + 1, parent_stack)
       end
     end
-
     parent_stack[depth + 1] = nil
   end
 
@@ -142,11 +154,26 @@ local function symbols_to_selecta_items(raw_symbols, source, bufnr, config_value
     items = format_utils.add_tree_state_to_items(items)
   end
 
-  for _, item in ipairs(items) do
-    item.text = (source == "lsp" and " " or " ") .. format_utils.format_item_for_display(item, config_values)
-  end
+  -- for _, item in ipairs(items) do
+  --   -- Add visual indicator of the source (LSP or TreeSitter)
+  --   local source_prefix = source == "lsp" and " " or " "
+  --   item.text = source_prefix .. format_utils.format_item_for_display(item, config_values)
+  -- end
 
+  logger.log("Active: Converted to " .. #items .. " items for display")
   return items
+end
+
+-- Function to process buffer with TreeSitter
+local function process_with_treesitter(bufnr, config, promise)
+  local ts_symbols = treesitter_symbols.get_symbols(bufnr)
+  if ts_symbols and #ts_symbols > 0 then
+    logger.log("Active: Got " .. #ts_symbols .. " TreeSitter symbols for buffer " .. bufnr)
+    promise:resolve(symbols_to_selecta_items(ts_symbols, "treesitter", bufnr, config))
+  else
+    logger.log("Active: No TreeSitter symbols for buffer " .. bufnr)
+    promise:resolve({}, "No symbols available")
+  end
 end
 
 --- Process a single buffer to get symbols (LSP Only)
@@ -155,7 +182,7 @@ end
 ---@return Promise<SelectaItem[], string?>
 local function process_buffer(bufnr, config)
   local promise = Promise.new()
-
+  logger.log("Active: Processing buffer " .. bufnr)
   if
     not vim.fn.getbufvar(bufnr, "&buflisted") == 1
     or vim.bo[bufnr].buftype ~= ""
@@ -165,19 +192,30 @@ local function process_buffer(bufnr, config)
     promise:resolve({}, "Buffer invalid or not loaded")
     return promise
   end
-
   local method = "textDocument/documentSymbol"
   local params = lsp.make_params(bufnr, method)
-
-  Async:lsp_request(bufnr, method, params):and_then(function(lsp_symbols)
-    if lsp_symbols and #lsp_symbols > 0 then
-      promise:resolve(symbols_to_selecta_items(lsp_symbols, "lsp", bufnr, config))
-    else
-      promise:resolve({}, "No LSP symbols found")
-    end
-  end, function(err)
-    promise:reject("LSP error: " .. err)
-  end)
+  -- Check if we have an LSP client with the documentSymbol method
+  local lsp_client = lsp.get_client_with_method(bufnr, method)
+  local has_lsp = lsp_client ~= nil
+  if has_lsp then
+    -- Use LSP if available
+    logger.log("Active: Requesting LSP symbols for buffer " .. bufnr)
+    Async:lsp_request(bufnr, method, params):and_then(function(lsp_symbols)
+      if lsp_symbols and #lsp_symbols > 0 then
+        logger.log("Active: Got " .. #lsp_symbols .. " LSP symbols for buffer " .. bufnr)
+        promise:resolve(symbols_to_selecta_items(lsp_symbols, "lsp", bufnr, config))
+      else
+        process_with_treesitter(bufnr, config, promise)
+      end
+    end, function(err)
+      -- LSP error, try TreeSitter
+      process_with_treesitter(bufnr, config, promise)
+    end)
+  else
+    -- No LSP, directly use TreeSitter
+    logger.log("Active: No LSP for buffer " .. bufnr .. ", trying TreeSitter")
+    process_with_treesitter(bufnr, config, promise)
+  end
 
   return promise
 end
@@ -214,6 +252,7 @@ function M.show(config)
         end
       end
       -- Track buffer positions when building the item list
+      -- TODO: those for future navigations between buffers
       local buffer_positions = {}
       local current_buffer_index = 1
       local buffer_count = 0
@@ -241,18 +280,23 @@ function M.show(config)
           if buf_name and buf_name ~= "" then
             icon, icon_hl = utils.get_file_icon(buf_name)
           end
+          local source_indicator = ""
+          if #items > 0 then
+            source_indicator = " [" .. (items[1].source == "lsp" and "󰿘 " or " ") .. "]"
+            logger.log("Active: Buffer " .. bufnr .. " using " .. items[1].source .. " symbols")
+          end
           local buffer_item = {
-            text = display_name,
+            text = display_name .. source_indicator,
             icon = icon,
             icon_hl = icon_hl,
             kind = "buffer",
-            is_root = true, -- Explicitly mark as root
-            depth = 0, -- Required for tree guides
+            is_root = true, -- TODO: need to remove later, if no use in navigation
+            depth = 0,
             value = {
               bufnr = bufnr,
-              name = display_name,
+              name = display_name .. source_indicator,
               full_path = buf_name,
-              signature = "buffer:" .. bufnr, -- Unique signature for this buffer
+              signature = "buffer:" .. bufnr,
               lnum = 0,
               end_lnum = math.huge,
               col = 0,
@@ -265,42 +309,18 @@ function M.show(config)
           end
           -- Add buffer header
           table.insert(all_items, buffer_item)
-          -- Add its symbols
           for _, item in ipairs(items) do
-            item.value.parent_signature = "buffer:" .. bufnr
             table.insert(all_items, item)
           end
         end
       end
-
       if #all_items == 0 then
         vim.notify("No LSP symbols found in active buffers", vim.log.levels.WARN, { title = "Namu" })
       else
-        -- Create a copy of the config with overrides
-        local picker_config = vim.tbl_deep_extend("force", config, {
-          preserve_hierarchy = true,
-          parent_key = function(item)
-            return item.value and item.value.parent_signature
-          end,
-          is_root_item = function(item)
-            return item.is_root == true
-          end,
-          root_item_first = true,
-        })
-
-        symbol_utils.show_picker(
-          all_items,
-          state,
-          picker_config,
-          ui,
-          selecta,
-          "Active Symbols (LSP)",
-          { title = "Namu" }
-        )
+        symbol_utils.show_picker(all_items, state, config, ui, selecta, "Active Symbols (LSP)", { title = "Namu" })
       end
     end
   end
-
   if total_bufs == 0 then
     vim.notify("No active buffers found", vim.log.levels.WARN, { title = "Namu" })
     return

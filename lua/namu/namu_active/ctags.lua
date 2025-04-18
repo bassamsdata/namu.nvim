@@ -13,6 +13,10 @@ local utils = require("namu.core.utils")
 local M = {}
 M.config = config.values
 M.config = vim.tbl_deep_extend("force", M.config, {
+  window = {
+    min_width = 35,
+    max_width = 120,
+  },
   display = {
     format = "tree_guides",
   },

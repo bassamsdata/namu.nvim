@@ -109,7 +109,7 @@ M.defaults = {
   hierarchical_mode = false,
   current_highlight = {
     enabled = false, -- Enable custom selection highlight
-    hl_group = "CursorLine", -- Default highlight group (could also create a custom one)
+    hl_group = "NamuCurrentItem", -- Default highlight group (could also create a custom one)
     -- Please keep space after the icon for better viewing
     prefix_icon = " ", --icon for current selection, some other example ▎ 󰇙 ┆
   },

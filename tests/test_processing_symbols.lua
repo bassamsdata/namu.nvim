@@ -1,7 +1,7 @@
 -- test_symbol_processing.lua
 ---@diagnostic disable: need-check-nil, param-type-mismatch
 local h = require("tests.helpers")
-local namu_symbols = require("namu.namu_symbols")
+local namu_symbols = require("namu.namu_symbols.symbols")
 local namu_ctags = require("namu.namu_ctags")
 local format_utils = require("namu.core.format_utils")
 local lsp = require("namu.namu_symbols.lsp")

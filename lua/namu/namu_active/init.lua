@@ -15,7 +15,7 @@ M.config = vim.tbl_deep_extend("force", M.config, {
   current_highlight = {
     enabled = true,
     hl_group = "NamuCurrentItem",
-    prefix_icon = " ",
+    prefix_icon = " ",
   },
   custom_keymaps = {
     yank = {
@@ -45,15 +45,19 @@ M.config = vim.tbl_deep_extend("force", M.config, {
       desc = "Open in vertical split",
       handler = function(items_or_item, state)
         local impl = M.get_impl()
-        return impl.open_in_vertical_split(M.config, items_or_item, state)
+        if impl then
+          return impl.open_in_vertical_split(M.config, items_or_item, state)
+        end
       end,
     },
     horizontal_split = {
-      keys = { "<C-s>", "<C-x>" },
+      keys = { "<C-s>", "<C-h>" },
       desc = "Open in horizontal split",
       handler = function(items_or_item, state)
         local impl = M.get_impl()
-        return impl.open_in_horizontal_split(M.config, items_or_item, state)
+        if impl then
+          return impl.open_in_horizontal_split(M.config, items_or_item, state)
+        end
       end,
     },
   },

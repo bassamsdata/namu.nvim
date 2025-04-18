@@ -41,6 +41,8 @@ local function process_symbol_content(items, bufnr, with_line_numbers)
   }
 end
 
+-- TODO: No need for this as it's in the utils module but just
+-- needs to insure there is no infinte loop before deleting it
 local function get_lua_annotation_range(bufnr, start_line)
   local annotation_start = start_line
   -- Go backwards to find the start of the annotation block
