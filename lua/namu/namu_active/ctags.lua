@@ -190,13 +190,13 @@ local function symbols_to_selecta_items(raw_symbols, bufnr)
         end_col = 100,
         signature = signature,
         parent_signature = parent_signature,
-        bufnr = bufnr, -- Store buffer number in the value
+        bufnr = bufnr,
       },
       icon = M.config.kindIcons[kind] or M.config.icon,
       kind = kind,
       depth = depth,
       source = "ctags",
-      bufnr = bufnr, -- Also store buffer number directly on item
+      bufnr = bufnr,
     }
 
     table.insert(items, item)

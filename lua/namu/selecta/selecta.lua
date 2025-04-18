@@ -1419,9 +1419,6 @@ local function create_picker(items, opts)
   -- vim.api.nvim_buf_set_name(state.buf, "Namu_items")
   -- vim.api.nvim_buf_set_option(state.buf, "filetype", "match")
 
-  -- First update the display
-  -- update_display(state, opts)
-
   -- Handle initial cursor position if specified
   if opts.initial_index and opts.initial_index <= #items then
     local target_pos = math.min(opts.initial_index, #state.filtered_items)
