@@ -874,22 +874,32 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
     -- FIX: with active module, not working great
     initial_index = config.focus_current_symbol
         and current_symbol
-        and ui.find_symbol_index(
-          selectaItems,
-          current_symbol,
-          is_ctags -- Pass the is_ctags flag here
-        )
+        and ui.find_symbol_index(selectaItems, current_symbol, is_ctags)
       or nil,
     on_select = function(item)
       ui.clear_preview_highlight(state.original_win, state.preview_ns)
       M.jump_to_symbol(item.value, state)
     end,
+    -- FIX: we need to move the oroiginal buffer first for active symbols
+    -- check preview_symbol first if we're doing that there first, but don't think so
     on_cancel = function()
       ui.clear_preview_highlight(state.original_win, state.preview_ns)
+      local buf = api.nvim_get_current_buf()
+      if buf ~= state.original_buf then
+        api.nvim_win_call(state.original_win, function()
+          api.nvim_win_set_buf(state.original_win, state.original_buf)
+        end)
+      end
       if state.original_win and state.original_pos and api.nvim_win_is_valid(state.original_win) then
-        api.nvim_win_set_cursor(state.original_win, state.original_pos)
+        vim.schedule(function()
+          api.nvim_win_set_cursor(state.original_win, state.original_pos)
+        end)
       end
     end,
+    -- BUG: cursor position outside
+    -- Error /namu.nvim/lua/namu/core/symbol_utils.lua:889: Cursor position outside buffer
+    -- it looks like if we're moving very fast, and pressed esc to _on_cancel then I have the error:
+    -- not sure if we wrapped on_cancel fucntion with vim.schedule will affect performance
     on_move = function(item)
       if config.preview.highlight_on_move and config.preview.highlight_mode == "always" then
         if item then

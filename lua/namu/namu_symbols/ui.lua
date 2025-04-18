@@ -81,6 +81,8 @@ end
 ---@param items SelectaItem[] The filtered items list
 ---@param symbol SelectaItem table The symbol to find
 ---@return number|nil index The index of the symbol if found
+---FIX : we need i think to make sure we are in buffer number and then seach index
+---in that buffer for `Active` module
 function M.find_symbol_index(items, symbol, is_ctags)
   if is_ctags then
     -- TODO: make it more robust
