@@ -9,6 +9,7 @@ local api = vim.api
 ---@type table<string, string>
 local command_descriptions = {
   symbols = "Jump to location using namu functionality",
+  ctags = "Show ctags symbols (use 'ctags active' for symbols from all active buffers)",
   colorscheme = "Select and apply colorscheme",
   call = "Show call hierarchy (use 'call in', 'call out', or 'call both')",
   workspace = "Search workspace symbols with LSP",
@@ -76,6 +77,15 @@ local command_validators = {
     end
     return true
   end,
+  ctags = function(args)
+    if #args > 1 then
+      return false, "ctags command accepts only one optional argument (active)"
+    end
+    if #args == 1 and args[1]:lower() ~= "active" then
+      return false, "invalid ctags type. Valid type: active"
+    end
+    return true
+  end,
   active = function(args)
     return #args == 0, "active command doesn't accept arguments"
   end,
@@ -124,8 +134,12 @@ local registry = {
       require("namu.namu_symbols").show({ filter_kind = symbol_type })
     end
   end,
-  ctags = function(opts)
-    require("namu.namu_ctags").show()
+  ctags = function(args)
+    if #args == 0 then
+      require("namu.namu_ctags").show()
+    else
+      require("namu.namu_active.ctags").show()
+    end
   end,
   colorscheme = function(opts)
     require("namu.colorscheme").show()
@@ -282,6 +296,13 @@ local function command_complete(_, line, col)
     return vim.tbl_filter(function(type)
       return vim.startswith(type, prefix:lower())
     end, call_types)
+  end
+  if words[2] == "ctags" then
+    local ctags_types = { "active" }
+    local prefix = words[3] or ""
+    return vim.tbl_filter(function(type)
+      return vim.startswith(type, prefix:lower())
+    end, ctags_types)
   end
   if words[2] == "help" then
     -- BUG: after modulize the plugin request_symbol is not working with those.
