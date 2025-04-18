@@ -1,0 +1,143 @@
+---@class SelectaState
+---@field buf number Buffer handle
+---@field win number Window handle
+---@field prompt_buf number? Prompt buffer handle
+---@field prompt_win number? Prompt window handle
+---@field query string[] Current search query
+---@field cursor_pos number Cursor position in query
+---@field items SelectaItem[] All items
+---@field filtered_items SelectaItem[] Filtered items
+---@field active boolean Whether picker is active
+---@field initial_open boolean First open flag
+---@field best_match_index number? Index of best match
+---@field cursor_moved boolean Whether cursor has moved
+---@field row number Window row position
+---@field col number Window column position
+---@field width number Window width
+---@field height number Window height
+---@field selected table<string, boolean> Map of selected item ids
+---@field selected_count number Number of items currently selected
+---@field async_co? thread Active coroutine for async fetching
+---@field is_loading boolean Whether items are being loaded asynchronously
+---@field last_request_time number? Last request time
+---@field last_query string? Last query
+---@field filter_metadata table? Filter metadata
+---@field loading_extmark_id number? Loading extmark id
+---@field initial_index number? Initial index
+
+---@class SelectaItem
+---@field text string Display text
+---@field value any Actual value to return
+---@field icon? string Optional icon
+---@field hl_group? string Optional highlight group for the icon/text
+---@field kind? string Optional kind
+---@field is_direct_match boolean? Is a direct match
+---@field match_score number? Match score
+---@field is_loading boolean? Is loading
+---@field bufnr? number? Buffer number
+
+---@class SelectaKeymap
+---@field key string The key sequence
+---@field handler fun(item: SelectaItem, state: SelectaState, close_fn: fun(state: SelectaState)): boolean? The handler function
+---@field desc? string Optional description of what the keymap does
+
+---@class SelectaWindowConfig
+---@field relative? string
+---@field border? string|table
+---@field style? string
+---@field title_prefix? string
+---@field width_ratio? number
+---@field height_ratio? number
+---@field auto_size? boolean
+---@field min_width? number
+---@field max_width? number
+---@field max_height? number
+---@field min_height? number
+---@field padding? number
+---@field override? table
+---@field show_footer? boolean
+---@field auto_resize? boolean
+---@field footer_pos? "left"|"center"|"right"
+---@field title_pos? "left"|string
+
+---@class SelectaMovementConfig
+---@field next string|string[] Key(s) for moving to next item
+---@field previous string|string[] Key(s) for moving to previous item
+---@field close string|string[] Key(s) for closing picker
+---@field select string|string[] Key(s) for selecting item
+---@field alternative_next? string @deprecated Use next array instead
+---@field alternative_previous? string @deprecated Use previous array instead
+
+---@class SelectaOptions
+---@field title? string
+---@field formatter? fun(item: SelectaItem): string
+---@field filter? fun(item: SelectaItem, query: string): boolean
+---@field sorter? fun(items: SelectaItem[], query: string): SelectaItem[]
+---@field on_select? fun(item: SelectaItem)
+---@field on_cancel? fun()
+---@field on_move? fun(item: SelectaItem)
+---@field fuzzy? boolean
+---@field window? SelectaWindowConfig
+---@field preserve_order? boolean
+---@field keymaps? SelectaKeymap[]
+---@field auto_select? boolean
+---@field row_position? "center"|"top10"
+---@field multiselect? SelectaMultiselect
+---@field display? SelectaDisplay
+---@field offset? number
+---@field hooks? SelectaHooks
+---@field initially_hidden? boolean
+---@field initial_index? number
+---@field debug? boolean
+---@field movement? SelectaMovementConfig
+---@field custom_keymaps? table<string, SelectaCustomAction> Custom actions
+---@field pre_filter? fun(items: SelectaItem[], query: string): SelectaItem[], string Function to pre-filter items before matcher
+---@field async_source? fun(query: string): function A function that returns a coroutine for async fetching
+---@field loading_indicator? { text: string, icon: string } Custom loading indicator
+---@field prefix_highlighter? fun(buf: number, line_nr: number, item: SelectaItem, icon_end: number, ns_id: number)
+---@field parent_key? fun(item: SelectaItem): string
+---@field root_item_first? boolean
+---@field always_include_root? boolean
+---@field is_root_item? fun(item: SelectaItem): boolean
+---@field current_highlight? CurrentHighlightConfig
+---@field preserve_hierarchy? boolean
+
+---@class SelectaHooks
+---@field on_render? fun(buf: number, items: SelectaItem[], opts: SelectaOptions) Called after items are rendered
+---@field on_window_create? fun(win_id: number, buf_id: number, opts: SelectaOptions) Called after window creation
+---@field before_render? fun(items: SelectaItem[], opts: SelectaOptions) Called before rendering items
+---@field on_buffer_clear? fun()
+
+---@class SelectaCustomAction
+---@field keys string|string[] The key(s) for this action
+---@field handler fun(item: SelectaItem|SelectaItem[], state: SelectaState): boolean? The handler function
+---@field desc? string Optional description
+
+---@class SelectaMultiselect
+---@field enabled boolean Whether multiselect is enabled
+---@field indicator string Character to show for selected items
+---@field on_select fun(items: SelectaItem[]) Callback for multiselect completion
+---@field max_items? number|nil Maximum number of items that can be selected
+---@field keymaps? table<string, string> Custom keymaps for multiselect operations
+
+---@class SelectaDisplay
+---@field mode? "icon"|"text"|"raw" -- Mode of display
+---@field padding? number -- Padding after prefix
+---@field prefix_width? number -- Fixed width for prefixes
+
+---@class MatchResult
+---@field positions number[][] Match positions
+---@field score number Priority score (higher is better)
+---@field type string "prefix"|"contains"|"fuzzy"
+---@field matched_chars number Number of matched characters
+---@field gaps number Number of gaps in fuzzy match
+
+---@class CursorCache
+---@field guicursor string|nil The cached guicursor value
+
+---@class PrefixInfo
+---@field text string The prefix text (icon or kind text)
+---@field width number Total width including padding
+---@field raw_width number Width without padding
+---@field padding number Padding after prefix
+---@field hl_group string Highlight group to use
