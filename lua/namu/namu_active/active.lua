@@ -288,7 +288,6 @@ function M.show(config)
           local source_indicator = ""
           if #items > 0 then
             source_indicator = " [" .. (items[1].source == "lsp" and "󰿘 " or " ") .. "]"
-            logger.log("Active: Buffer " .. bufnr .. " using " .. items[1].source .. " symbols")
           end
           local buffer_item = {
             text = display_name .. source_indicator,
@@ -323,13 +322,12 @@ function M.show(config)
         vim.notify("No LSP symbols found in active buffers", vim.log.levels.WARN, { title = "Namu" })
       else
         -- Count buffer items
-        local buffer_count = 0
+        buffer_count = 0
         for _, item in ipairs(all_items) do
           if item.kind == "buffer" then
             buffer_count = buffer_count + 1
           end
         end
-        logger.log("buffer_count: " .. tostring(buffer_count))
         local prompt_info = nil
         if buffer_count > 0 then
           local suffix = buffer_count == 1 and "buffer" or "buffers"
