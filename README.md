@@ -2,6 +2,7 @@
 
 🌿 Jump to symbols in your code with live preview, built-in fuzzy finding, and other modules.
 Inspired by Zed, it preserves symbol order while guiding you through your codebase.
+Supports LSP, Treesitter, ctags, and works across buffers and workspaces.
 
 “Namu” means “tree🌳” in Korean—just like how it helps you navigate the structure of your code.
 
@@ -10,8 +11,16 @@ Inspired by Zed, it preserves symbol order while guiding you through your codeba
 
 https://github.com/user-attachments/assets/a28a43d9-a477-4b92-89f3-c40479c7801b
 
+## 🧩 Other Built-in Modules
 
-
+| Module         | Description                                      |
+|----------------|--------------------------------------------------|
+| symbols        | LSP symbols for current buffer                   |
+| workspace      | LSP workspace symbols, interactive, live preview |
+| all_buffers    | Symbols from all open buffers (LSP or Treesitter)|
+| diagnostics    | Diagnostics for buffer or workspace, live filter |
+| call_hierarchy | Call hierarchy (in/out/both) for symbol          |
+| ctags          | ctags-based symbols (buffer or all_buffers)      |
 
 
 ## What Makes It Special
@@ -21,8 +30,8 @@ https://github.com/user-attachments/assets/a28a43d9-a477-4b92-89f3-c40479c7801b
 - 📐 **Smart Auto-resize**: Window adapts to your content in real-time as you type and filter, no need for a big window with only a couple of items
 - 🚀 **Zero Dependencies**: Works with any LSP-supported language out of the box
 - 🎯 **Context Aware**: Always shows your current location in the codebase
-- 🌑 **Initially Hidden Mode**: Start with an empty list and populate it dynamically as you type, just like the command palette in Zed and VS Code
 - ⚡ **Powerful Filtering**:
+  - Live filtering through `/xx` such as `/fn` for fcuntions or `/bf:` for buffer names if all_buffers module.
   - Built-in fuzzy finding that understands code structure
   - Filter by symbol types (functions, classes, methods)
   - Use regex patterns (e.g., `^__` to filter out Python's `__init__` methods)
@@ -33,18 +42,13 @@ https://github.com/user-attachments/assets/a28a43d9-a477-4b92-89f3-c40479c7801b
 - ✂️  **Multi-Action Workflow**: Perform multiple operations while Namu is open (or close it after, you choose!):
   - Delete, yank, and add to CodeCompanion chat (more plugins coming soon)
   - Works with both single and multiple selected symbols
+- 🌑 **Initially Hidden Mode**: Start with an empty list and populate it dynamically as you type, just like the command palette in Zed and VS Code
 
-## 🧩 Other Built-in Modules
-
-Namu is powered by Selecta, a minimal and flexible fuzzy finder that's also used by:
-- 🎨 **Colorscheme Picker**: Live preview with your code and switch themes with persistence
-- 🔄 **vim.ui.select**: Enhanced wrapper for Vim's built-in selector
-- 📦 More modules coming soon, including buffers and diagnostics!
 
 ## ⚡ Requirements
-- Neovim >= 0.10.0
-- Configured LSP server for your language (Treesitter fallback coming soon)
-- Treesitter (for live preview functionality)
+- LSP server for your language (Treesitter fallback for some modules)
+- Treesitter (for live preview)
+- [ctags](https://ctags.io) (for ctags module, optional)
 
 ## Installation
 
@@ -63,22 +67,14 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
       },
       -- Optional: Enable other modules if needed
       ui_select = { enable = false }, -- vim.ui.select() wrapper
-      colorscheme = {
-        enable = false,
-        options = {
-          -- NOTE: if you activate persist, then please remove any vim.cmd("colorscheme ...") in your config, no needed anymore
-          persist = true, -- very efficient mechanism to Remember selected colorscheme
-          write_shada = false, -- If you open multiple nvim instances, then probably you need to enable this
-        },
-      },
     })
     -- === Suggested Keymaps: ===
     vim.keymap.set("n", "<leader>ss",":Namu symbols<cr>" , {
       desc = "Jump to LSP symbol",
       silent = true,
     })
-    vim.keymap.set("n", "<leader>th", ":Namu colorscheme<cr>", {
-      desc = "Colorscheme Picker",
+    vim.keymap.set("n", "<leader>sw", ":Namu workspace<cr>", {
+      desc = "LSP Symbols - Workspace",
       silent = true,
     })
   end,
@@ -105,40 +101,43 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 </details>
 
+
+## Features
+
+- Live fuzzy filtering for all symbol modules (`/fn`, `/me`, etc.)
+- Filter by buffer name in all_buffers: `/bf:buffer_name`
+- Combine filters: `/bf:name:fn` (buffer and function)
+- Diagnostics filtering: `/er` (errors), `/wa` (warnings), `/hi` (hints), `/in` (info)
+- Two display styles: `tree_guides` or `indent`
+- Configurable prefix icon for current item
+- All operations are asynchronous (non-blocking)
+- No dependencies except Neovim, LSP, and optional ctags
+
+
 ### Keymaps
 
 <details>
 <summary>Default keymaps are:</summary>
 
-#### Navigation Keymaps
-| Key | Action |
-|-----|--------|
-| `<CR>` | Select item |
-| `<Esc>` | Close picker |
-| `<C-n>` | Next item |
-| `<Down>` | Next item |
-| `<C-p>` | Previous item |
-| `<Up>` | Previous item |
-| `q` | Close help |
+## Keymaps
 
+<details>
+<summary>Show keymaps</summary>
 
-
-#### Multiselect
-| Key | Action |
-|-----|--------|
-| `<Tab>` | Toggle |
-| `<C-a>` | Select all |
-| `<C-l>` | Clear all |
-| `<S-Tab>` | Untoggle |
-
-#### Custom Actions
-| Key | Action |
-|-----|--------|
-| `<C-y>` | Yank symbol/concatenate selected symbols and yank |
-| `<C-d>` | Delete symbol/concatenate selected symbols and delete |
-| `<C-v>` | Open symbol buffer on vertical split |
-| `<C-h>` | Open symbol buffer on horizontal split |
-| `<C-o>` | Add symbol/concatenate selected symbols and add them to codecompanion chat buffer |
+| Key         | Action                                 |
+|-------------|----------------------------------------|
+| `<CR>`      | Select item                            |
+| `<Esc>`     | Close picker                           |
+| `<C-n>`     | Next item                              |
+| `<C-p>`     | Previous item                          |
+| `<Tab>`     | Toggle multiselect                     |
+| `<C-a>`     | Select all                             |
+| `<C-l>`     | Clear all                              |
+| `<C-y>`     | Yank symbol(s)                         |
+| `<C-d>`     | Delete symbol(s)                       |
+| `<C-v>`     | Open symbol in vertical split          |
+| `<C-h>`     | Open symbol in horizontal split        |
+| `<C-o>`     | Add symbol(s) to CodeCompanion chat    |
 
 </details>
 
@@ -194,17 +193,16 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ## Commands
 
-The `Namu` command provides several subcommands with autocomplete:
-
-- **symbols**: Symbols Navigator
-- **colorscheme**: Select and apply a colorscheme.
-- **help**: Display help for all commands.
-
-To use the `Namu` command, enter the following in command mode:
-
-```lua
-:Namu <subcommand>
-```
+| Command                | Arguments         | Description                                 |
+|------------------------|------------------|---------------------------------------------|
+| :Namu symbols    | function, class… | Show buffer symbols, filter by kind         |
+| :Namu workspace | text             | Search workspace symbols                    |
+| :Namu all_buffers      |                  | Symbols from all open buffers               |
+| :Namu diagnostics  | workspace        | Diagnostics for buffer or workspace         |
+| :Namu call in/out/both | in/out/both      | Call hierarchy for symbol                   |
+| :Namu ctags [active]   | active           | ctags symbols (buffer or all_buffers)       |
+| :Namu help [topic]     | symbols/analysis | Show help                                   |
+| :Namu colorscheme      |                  | Colorscheme picker                          |
 
 ## Make It Yours
 
@@ -452,33 +450,103 @@ Maintains symbol order as they appear in your code, even after filtering
 https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
 
 
-</details>
-
 <details>
-  <summary>🌑 Initially Hidden Mode</summary>
-Start with an empty list and populate it dynamically as you type, just like the command palette in Zed and VS Code
+<summary>symbols</summary>
 
+- Shows LSP symbols for current buffer.
+- Filter by kind: `:Namu symbols function`
+- Live preview as you move.
 
-https://github.com/user-attachments/assets/e279b785-5fcf-4c2c-8cb5-b0467d850dd0
-
-
-</details>
-
-<details>
-  <summary>🔍 Live Preview & Context Aware</summary>
-focus on the current location in the codebase when open so you know where you are in the code
-
-https://github.com/user-attachments/assets/292a94f3-264a-4ffa-9203-407bd101e35c
-
+<!-- Demo video here (folded) -->
 
 </details>
 
+
 <details>
-  <summary>⚡ Auto-select</summary>
-if only one match remains, automatically select it. In the video I didn't press enter, yet the jump was done automatically.
+<summary>workspace</summary>
 
-https://github.com/user-attachments/assets/a8768aae-e190-4707-989a-0ee909380a5d
+- Interactive workspace symbol search (LSP).
+- Start typing to see results, live preview.
 
+<!-- Demo video here (folded) -->
+
+</details>
+
+
+<details>
+<summary>all_buffers</summary>
+
+- Shows symbols from all open buffers (LSP or Treesitter fallback).
+- Filter by buffer: `/bf:buffer_name`
+- Combine with kind: `/bf:name:fn`
+
+<!-- Demo video here (folded) -->
+
+</details>
+
+
+<details>
+<summary>diagnostics</summary>
+
+- Shows diagnostics for buffer or workspace.
+- Filter by severity: `/er`, `/wa`, `/hi`, `/in`
+- Live preview and navigation.
+
+<!-- Demo video here (folded) -->
+
+</details>
+
+<details>
+<summary>call_hierarchy</summary>
+
+- Show incoming, outgoing, or both calls for a symbol.
+- Usage: `:Namu call in`, `:Namu call out`, `:Namu call both`
+
+<!-- Demo video here (folded) -->
+
+</details>
+
+<details>
+<summary>ctags</summary>
+
+- Show ctags-based symbols for buffer or all_buffers.
+- Requires ctags installed.
+- Usage: `:Namu ctags`, `:Namu ctags active`
+
+<!-- Demo video here (folded) -->
+</details>
+
+## Display Styles
+
+<details>
+<summary>Show display style examples</summary>
+
+- `options.display.format = "tree_guides"`:
+  (image here)
+
+- `options.display.format = "indent"`:
+  (image here)
+
+</details>
+
+## Highlights
+
+<details>
+<summary>Show highlight groups</summary>
+
+| Group               | Description                        |
+|---------------------|------------------------------------|
+| NamuCursor          | Cursor highlight                   |
+| NamuPrefix          | Prefix highlight                   |
+| NamuMatch           | Matched characters                 |
+| NamuFilter          | Filter prompt                      |
+| NamuPrompt          | Prompt window                      |
+| NamuSelected        | Selected item                      |
+| NamuFooter          | Footer text                        |
+| NamuCurrentItem     | Current item highlight             |
+| NamuPrefixSymbol    | Symbol prefix                      |
+| NamuSymbolFunction  | Function symbol                    |
+| ...                 | ...                                |
 
 </details>
 
@@ -493,6 +561,7 @@ Any suggestions to improve and integrate with other plugins are also welcome.
 - [Zed](https://zed.dev) editor for the idea.
 - [Mini.pick](https://github.com/echasnovski/mini.nvim) @echasnovski for the idea of `getchar()`, without which this plugin wouldn't exist.
 - Magnet module (couldn’t find it anymore on GitHub, sorry!), which intrigued me a lot.
-- @folke for handling multiple versions of Neovim LSP requests in [Snacks.nvim](https://github.com/folke/snacks.nvim).
+- @folke for handling multiple versions of Neovim LSP requests and treesitter "locals" in [Snacks.nvim](https://github.com/folke/snacks.nvim).
 - tests and ci structure, thanks to @Oli [CodeCompanion](https://github.com/olimorris/codecompanion.nvim)
 - A simple mechanism to persist the colorscheme, thanks to this [Reddit comment](https://www.reddit.com/r/neovim/comments/1edwhk8/comment/lfb1m2f/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button).
+- [Aerial.nvim](https://github.com/stevearc/aerial.nvim) and @Stevearc for borroing some treesitter queries.
