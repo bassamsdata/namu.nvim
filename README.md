@@ -15,12 +15,13 @@ https://github.com/user-attachments/assets/a28a43d9-a477-4b92-89f3-c40479c7801b
 
 | Module         | Description                                      |
 |----------------|--------------------------------------------------|
-| symbols        | LSP symbols for current buffer                   |
-| workspace      | LSP workspace symbols, interactive, live preview |
-| all_buffers    | Symbols from all open buffers (LSP or Treesitter)|
-| diagnostics    | Diagnostics for buffer or workspace, live filter |
-| call_hierarchy | Call hierarchy (in/out/both) for symbol          |
-| ctags          | ctags-based symbols (buffer or all_buffers)      |
+| 󰊕 symbols        | LSP symbols for current buffer                      |
+| 󰌌 workspace      | LSP workspace symbols, interactive, live preview    |
+| 󰈙 all_buffers    | Symbols from all open buffers (LSP or Treesitter)   |
+| 󰒡 diagnostics    | Diagnostics for buffer or workspace, live filter    |
+| 󰆧 call_hierarchy | Call hierarchy (in/out/both) for symbol             |
+|  ctags           | ctags-based symbols (buffer or all_buffers)         |
+| 󰒓 ui_select      | Wrapper for `vim.ui.select` with enhanced UI        |
 
 
 ## What Makes It Special
