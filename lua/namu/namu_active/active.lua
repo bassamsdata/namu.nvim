@@ -332,8 +332,8 @@ function M.show(config)
         logger.log("buffer_count: " .. tostring(buffer_count))
         local prompt_info = nil
         if buffer_count > 0 then
-          prompt_info = { text = "(" .. buffer_count .. " buffers)", hl_group = "Comment" }
-          logger.log("prompt_info: " .. vim.inspect(prompt_info))
+          local suffix = buffer_count == 1 and "buffer" or "buffers"
+          prompt_info = { text = "(" .. buffer_count .. " " .. suffix .. ")", hl_group = "Comment" }
         end
         symbol_utils.show_picker(
           all_items,
