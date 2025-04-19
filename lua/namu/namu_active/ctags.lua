@@ -414,7 +414,10 @@ function M.show()
           ui,
           selecta,
           "Active Symbols (ctags)",
-          { title = "Namu" }
+          { title = "Namu" },
+          -- TODO: make one for ctags
+          false,
+          "active"
         )
       end
     end

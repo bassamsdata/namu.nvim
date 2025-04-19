@@ -335,6 +335,18 @@ function M.show(config)
           prompt_info = { text = "(" .. buffer_count .. " buffers)", hl_group = "Comment" }
           logger.log("prompt_info: " .. vim.inspect(prompt_info))
         end
+        symbol_utils.show_picker(
+          all_items,
+          state,
+          config,
+          ui,
+          selecta,
+          "Active Symbols (LSP)",
+          { title = "Namu" },
+          false,
+          "active",
+          prompt_info
+        )
       end
     end
   end

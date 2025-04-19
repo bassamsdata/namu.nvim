@@ -78,27 +78,36 @@ end
 
 ---Finds index of symbol at current cursor position when inital open picker
 ---for initial_index varibale
----@param items SelectaItem[] The filtered items list
----@param symbol SelectaItem table The symbol to find
+---@param items SelectaItem[] The full items list
+---@param symbol SelectaItem table The symbol to find (should be from original buffer context)
+---@param is_ctags? boolean Whether the symbol is from CTags
+---@param context? string Context identifier ("buffer" or "active") - Used mainly for logging/debugging now
+---@param state? table State object - Used mainly for logging/debugging now
 ---@return number|nil index The index of the symbol if found
----FIX : we need i think to make sure we are in buffer number and then seach index
----in that buffer for `Active` module
-function M.find_symbol_index(items, symbol, is_ctags)
+function M.find_symbol_index(items, symbol, is_ctags, context, state)
+  context = context or "buffer" -- Keep for logging clarity
+
+  if not symbol or not symbol.value then
+    logger.log("find_symbol_index() - Invalid target symbol provided")
+    return nil
+  end
+
+  -- Target signature for comparison
+  local target_signature = symbol.value.signature
+
   if is_ctags then
-    -- TODO: make it more robust
-    -- For CTags, just match by name and line number (ignore column)
+    -- CTags logic remains the same
+    -- ... (existing CTags logic from lines 88-108) ...
     for i, item in ipairs(items) do
       if item.value.lnum == symbol.value.lnum and item.value.name == symbol.value.name then
         return i
       end
     end
-    -- If no exact match, try matching just by line number
     for i, item in ipairs(items) do
       if item.value.lnum == symbol.value.lnum then
         return i
       end
     end
-    -- If still no match, try matching just by name
     for i, item in ipairs(items) do
       if item.value.name == symbol.value.name then
         return i
@@ -110,15 +119,62 @@ function M.find_symbol_index(items, symbol, is_ctags)
 
   -- Standard matching for LSP symbols
   for i, item in ipairs(items) do
-    if
-      item.value.lnum == symbol.value.lnum
+    -- Skip items without value
+    if not item.value then
+      goto continue_lsp_find
+    end
+
+    local match = false
+    -- Primary check: Compare signatures if both exist
+    if target_signature and item.value.signature then
+      if item.value.signature == target_signature then
+        match = true
+      end
+    -- Fallback check: Compare properties if signatures are missing
+    elseif
+      item.value.lnum
+      and symbol.value.lnum
+      and item.value.lnum == symbol.value.lnum
+      and item.value.col
+      and symbol.value.col
       and item.value.col == symbol.value.col
+      and item.value.name
+      and symbol.value.name
       and item.value.name == symbol.value.name
     then
-      return i
+      match = true
+    -- Deep fallback: Direct table reference comparison (less reliable if tables were recreated)
+    elseif item == symbol then
+      match = true
     end
+
+    if match then
+      -- Optional: Add a debug log here to confirm which buffer the matched item belongs to
+      local item_bufnr = item.bufnr or item.value.bufnr
+      local original_buf = state and state.original_buf
+      logger.log(
+        "find_symbol_index() - Matched item "
+          .. i
+          .. " with signature "
+          .. (item.value.signature or "nil")
+          .. " in buffer "
+          .. (item_bufnr or "unknown")
+          .. " with original buffer "
+          .. original_buf
+      )
+      return i -- Found the matching item
+    end
+
+    ::continue_lsp_find::
   end
-  return nil
+
+  logger.log(
+    "find_symbol_index() - No matching LSP symbol found for target: "
+      .. vim.inspect(symbol.value)
+      .. " in context "
+      .. context
+  )
+  return nil -- Symbol not found
 end
 
 ---Traverses syntax tree to find significant nodes for better symbol context

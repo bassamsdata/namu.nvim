@@ -77,7 +77,9 @@ function M.find_containing_symbol(items, state)
   -- Filter out root/buffer items before binary search to avoid nil errors
   local symbol_items = {}
   for _, item in ipairs(items) do
-    if not item.is_root and item.value and item.value.lnum and item.value.end_lnum then
+    local item_bufnr = item.bufnr or (item.value and item.value.bufnr)
+    local is_correct_buffer = not state or not state.original_buf or (item_bufnr and item_bufnr == state.original_buf)
+    if not item.is_root and item.value and item.value.lnum and item.value.end_lnum and is_correct_buffer then
       table.insert(symbol_items, item)
     end
   end
@@ -110,12 +112,12 @@ function M.find_containing_symbol(items, state)
   end
 
   -- Find approximate position using binary search
-  local start_index = binary_search_range(items, cursor_line)
+  local start_index = binary_search_range(symbol_items, cursor_line)
 
   -- Search window size
   local WINDOW_SIZE = 10
   local start_pos = math.max(1, start_index - WINDOW_SIZE)
-  local end_pos = math.min(#items, start_index + WINDOW_SIZE)
+  local end_pos = math.min(#symbol_items, start_index + WINDOW_SIZE)
 
   -- Find the most specific symbol within the window
   local matching_symbol = nil
@@ -581,12 +583,13 @@ function M.show_picker(
     vim.notify("Current `kindFilter` doesn't match any symbols.", nil, notify_opts)
     return
   end
+  context = context or "buffer"
   -- Find containing symbol for current cursor position
   local current_symbol
   if is_ctags then
     current_symbol = M.find_nearest_symbol(selectaItems)
   else
-    current_symbol = M.find_containing_symbol(selectaItems)
+    current_symbol = M.find_containing_symbol(selectaItems, state)
   end
 
   local picker_opts = {
@@ -636,226 +639,6 @@ function M.show_picker(
 
       return items, query
     end,
-    -- TODO: refactor please to be maintainble and readable
-    -- pre_filter = function(items, query)
-    --   -- First check if there's a filter
-    --   local filter = M.parse_symbol_filter(query, config)
-    --
-    --   -- If no filter, return items unchanged
-    --   if not filter then
-    --     return items, query
-    --   end
-    --
-    --   local metadata = {
-    --     is_symbol_filter = true,
-    --     remaining = filter.remaining,
-    --   }
-    --
-    --   -- Handle buffer filtering
-    --
-    --   if filter.buffer_filter then
-    --     local buffer_filtered = {}
-    --     local direct_match_count = 0
-    --     local matching_buffers = {} -- Track matching buffer IDs
-    --
-    --     logger.log("Buffer filtering for pattern: " .. filter.buffer_pattern)
-    --
-    --     -- First pass: Find all matching buffers
-    --     for _, item in ipairs(items) do
-    --       -- Get buffer information from the item
-    --       local item_bufnr = item.bufnr or (item.value and item.value.bufnr)
-    --       if not item_bufnr then
-    --         goto continue_buffer_first_pass
-    --       end
-    --
-    --       local buf_name = vim.api.nvim_buf_is_valid(item_bufnr) and vim.api.nvim_buf_get_name(item_bufnr) or ""
-    --       local short_name = buf_name ~= "" and vim.fn.fnamemodify(buf_name, ":t") or ""
-    --
-    --       -- Only process buffer-type items in first pass
-    --       if item.kind ~= "buffer" then
-    --         goto continue_buffer_first_pass
-    --       end
-    --
-    --       -- Match logic for buffer filters - only match the short name by default
-    --       local matches = false
-    --
-    --       if filter.buffer_pattern == "current" and item_bufnr == filter.current_buffer then
-    --         matches = true
-    --         logger.log("Matched current buffer")
-    --       elseif short_name:lower():find(filter.buffer_pattern:lower(), 1, true) then
-    --         -- Direct match on filename (short name)
-    --         matches = true
-    --         logger.log("Matched short name: " .. short_name)
-    --       end
-    --
-    --       if matches then
-    --         -- Mark this buffer as a direct match
-    --         matching_buffers[tostring(item_bufnr)] = true
-    --
-    --         -- Add the buffer item to results
-    --         item.is_direct_match = true
-    --         direct_match_count = direct_match_count + 1
-    --         table.insert(buffer_filtered, item)
-    --         logger.log("Added buffer item to results: " .. item.text)
-    --       end
-    --
-    --       ::continue_buffer_first_pass::
-    --     end
-    --
-    --     logger.log("Matching buffers found: " .. vim.inspect(matching_buffers))
-    --
-    --     -- Second pass: Include all items from matching buffers
-    --     for _, item in ipairs(items) do
-    --       -- Skip buffer items (already processed)
-    --       if item.kind == "buffer" then
-    --         goto continue_buffer_second_pass
-    --       end
-    --
-    --       -- Get buffer information from the item
-    --       local item_bufnr = item.bufnr or (item.value and item.value.bufnr)
-    --       if not item_bufnr then
-    --         goto continue_buffer_second_pass
-    --       end
-    --
-    --       -- If this item belongs to a matching buffer, include it
-    --       local buffer_key = tostring(item_bufnr)
-    --       if matching_buffers[buffer_key] then
-    --         table.insert(buffer_filtered, item)
-    --         logger.log("Including item from matching buffer: " .. buffer_key)
-    --       end
-    --
-    --       ::continue_buffer_second_pass::
-    --     end
-    --
-    --     -- Update metadata for buffer filtering
-    --     metadata.filter_type = "Buffer: " .. filter.buffer_pattern
-    --     metadata.description = filter.description
-    --     metadata.direct_match_count = direct_match_count
-    --
-    --     logger.log("Final filtered items count: " .. #buffer_filtered)
-    --     return buffer_filtered, filter.remaining, metadata
-    --   end
-    --
-    --   -- Handle symbol type filtering
-    --   if filter.kinds then
-    --     -- Create a lookup table for faster kind matching
-    --     local kinds_lookup = {}
-    --     for _, kind in ipairs(filter.kinds) do
-    --       kinds_lookup[string.lower(kind)] = true
-    --     end
-    --
-    --     -- If not preserving hierarchy, use a simple optimized filter
-    --     if not config.preserve_hierarchy then
-    --       local filtered = {}
-    --       local count = 0
-    --       for _, item in ipairs(items) do
-    --         if item.kind and kinds_lookup[string.lower(item.kind)] then
-    --           count = count + 1
-    --           filtered[count] = item
-    --           item.is_direct_match = true
-    --         end
-    --       end
-    --
-    --       return filtered,
-    --         filter.remaining,
-    --         {
-    --           is_symbol_filter = true,
-    --           filter_type = filter.filter_type,
-    --           description = filter.description,
-    --           direct_match_count = count,
-    --           remaining = filter.remaining,
-    --         }
-    --     end
-    --
-    --     -- For preserving hierarchy, optimize the multiple passes
-    --
-    --     -- First identify direct matches
-    --     local direct_match_indices = {}
-    --     local direct_match_count = 0
-    --
-    --     for i, item in ipairs(items) do
-    --       item.is_direct_match = nil -- Reset
-    --       if item.kind and kinds_lookup[string.lower(item.kind)] then
-    --         item.is_direct_match = true
-    --         direct_match_count = direct_match_count + 1
-    --         direct_match_indices[direct_match_count] = i
-    --       end
-    --     end
-    --
-    --     -- Build a map of all items by signature - only once
-    --     local item_map = {}
-    --     for i, item in ipairs(items) do
-    --       if item.value and item.value.signature then
-    --         item_map[item.value.signature] = { index = i, item = item }
-    --       end
-    --     end
-    --
-    --     -- Build the include set with direct matches and parents
-    --     local include_indices = {}
-    --     local parent_count = 0
-    --
-    --     for i = 1, direct_match_count do
-    --       local idx = direct_match_indices[i]
-    --       local item = items[idx]
-    --       include_indices[idx] = true
-    --
-    --       -- Trace parents
-    --       local current = item
-    --       local visited = { [idx] = true }
-    --
-    --       while current and current.value and current.value.parent_signature do
-    --         local parent_key = current.value.parent_signature
-    --         local parent_entry = item_map[parent_key]
-    --
-    --         if parent_entry and not visited[parent_entry.index] then
-    --           include_indices[parent_entry.index] = true
-    --           visited[parent_entry.index] = true
-    --           parent_entry.item.is_direct_match = false
-    --           current = parent_entry.item
-    --           parent_count = parent_count + 1
-    --         else
-    --           break
-    --         end
-    --       end
-    --     end
-    --
-    --     -- Build result list while preserving order
-    --     local result_count = 0
-    --     local result_items = {}
-    --
-    --     for i, item in ipairs(items) do
-    --       if include_indices[i] then
-    --         result_count = result_count + 1
-    --         result_items[result_count] = item
-    --       end
-    --     end
-    --
-    --     -- Conditionally log only when debugging is enabled
-    --     if config.debug then
-    --       logger.log(
-    --         string.format(
-    --           "Filter results: %d items (%d direct + %d parents)",
-    --           result_count,
-    --           direct_match_count,
-    --           parent_count
-    --         )
-    --       )
-    --     end
-    --
-    --     return result_items,
-    --       filter.remaining,
-    --       {
-    --         is_symbol_filter = true,
-    --         filter_type = filter.filter_type,
-    --         description = filter.description,
-    --         direct_match_count = direct_match_count,
-    --         parent_count = parent_count,
-    --         remaining = filter.remaining,
-    --       }
-    --   end
-    --
-    --   return items, query
-    -- end,
     hooks = {
       on_render = function(buf, filtered_items)
         ui.apply_highlights(buf, filtered_items, config)
@@ -885,10 +668,9 @@ function M.show_picker(
         end
       end,
     },
-    -- FIX: with active module, not working great
     initial_index = config.focus_current_symbol
         and current_symbol
-        and ui.find_symbol_index(selectaItems, current_symbol, is_ctags)
+        and ui.find_symbol_index(selectaItems, current_symbol, is_ctags, context, state)
       or nil,
     initial_prompt_info = initial_prompt_info,
     on_select = function(item)

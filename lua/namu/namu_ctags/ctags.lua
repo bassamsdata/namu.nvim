@@ -192,9 +192,9 @@ local function symbols_to_selecta_items(raw_symbols)
   end
   -- PERF: why we need this if we are still doing it inside
   -- the formatter in show_picker, intersting :).
-  for _, item in ipairs(items) do
-    item.text = format_utils.format_item_for_display(item, impl.config)
-  end
+  -- for _, item in ipairs(items) do
+  --   item.text = format_utils.format_item_for_display(item, impl.config)
+  -- end
   symbol_cache = { key = cache_key, items = items }
   symbol_utils.update_symbol_ranges_cache(items, symbol_range_cache)
 
@@ -279,7 +279,7 @@ function impl.show(config, opts)
         return item.kind == opts.filter_kind
       end, items)
     end
-    symbol_utils.show_picker(items, state, config, ui, selecta, "Ctags", notify_opts, true)
+    symbol_utils.show_picker(items, state, config, ui, selecta, "Ctags", notify_opts, true, "buffer")
     return
   end
 
@@ -318,7 +318,7 @@ function impl.show(config, opts)
       end, selectaItems)
     end
 
-    symbol_utils.show_picker(selectaItems, state, config, ui, selecta, "Ctags", notify_opts, true)
+    symbol_utils.show_picker(selectaItems, state, config, ui, selecta, "Ctags", notify_opts, true, "buffer")
   end)
 end
 

@@ -183,7 +183,7 @@ function M.show(config, opts)
         return item.kind == opts.filter_kind
       end, items)
     end
-    symbol_utils.show_picker(items, state, config, ui, selecta, "LSP Symbols", notify_opts)
+    symbol_utils.show_picker(items, state, config, ui, selecta, "LSP Symbols", notify_opts, false, "buffer")
     return
   end
 
@@ -214,7 +214,7 @@ function M.show(config, opts)
       end, selectaItems)
     end
 
-    symbol_utils.show_picker(selectaItems, state, config, ui, selecta, "LSP Symbols", notify_opts)
+    symbol_utils.show_picker(selectaItems, state, config, ui, selecta, "LSP Symbols", notify_opts, false, "buffer")
   end)
 end
 
