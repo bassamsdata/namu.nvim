@@ -81,13 +81,14 @@
 ---@field preserve_order? boolean
 ---@field keymaps? SelectaKeymap[]
 ---@field auto_select? boolean
----@field row_position? "center"|"top10"
+---@field row_position? "center"|"top10"|"top10_right"|"center_right"|"bottom" -- Added more options
 ---@field multiselect? SelectaMultiselect
 ---@field display? SelectaDisplay
 ---@field offset? number
 ---@field hooks? SelectaHooks
 ---@field initially_hidden? boolean
 ---@field initial_index? number
+---@field initial_prompt_info? {text: string, hl_group: string} Optional info for the prompt when empty
 ---@field debug? boolean
 ---@field movement? SelectaMovementConfig
 ---@field custom_keymaps? table<string, SelectaCustomAction> Custom actions

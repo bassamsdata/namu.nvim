@@ -61,8 +61,9 @@ end
 
 ---Locates the symbol that contains the current cursor position
 ---@param items table[] Selecta items list
+---@param state? table Optional state object containing original_buf (for multi-buffer context)
 ---@return table|nil symbol The nearest symbol if found within threshold
-function M.find_containing_symbol(items)
+function M.find_containing_symbol(items, state)
   -- Cache cursor position
   local cursor_pos = api.nvim_win_get_cursor(0)
   local cursor_line, cursor_col = cursor_pos[1], cursor_pos[2] + 1
@@ -562,7 +563,20 @@ end
 ---@param selecta table Selecta module
 ---@param title string Title for the picker
 ---@param notify_opts? table Notification options
-function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_opts, is_ctags)
+---@param context? string Context identifier ("buffer" or "active")
+---@param initial_prompt_info? {text: string, hl_group: string} Optional info for the prompt
+function M.show_picker(
+  selectaItems,
+  state,
+  config,
+  ui,
+  selecta,
+  title,
+  notify_opts,
+  is_ctags,
+  context,
+  initial_prompt_info
+)
   if #selectaItems == 0 then
     vim.notify("Current `kindFilter` doesn't match any symbols.", nil, notify_opts)
     return
@@ -876,6 +890,7 @@ function M.show_picker(selectaItems, state, config, ui, selecta, title, notify_o
         and current_symbol
         and ui.find_symbol_index(selectaItems, current_symbol, is_ctags)
       or nil,
+    initial_prompt_info = initial_prompt_info,
     on_select = function(item)
       ui.clear_preview_highlight(state.original_win, state.preview_ns)
       M.jump_to_symbol(item.value, state)

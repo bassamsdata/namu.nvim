@@ -322,7 +322,19 @@ function M.show(config)
       if #all_items == 0 then
         vim.notify("No LSP symbols found in active buffers", vim.log.levels.WARN, { title = "Namu" })
       else
-        symbol_utils.show_picker(all_items, state, config, ui, selecta, "Active Symbols (LSP)", { title = "Namu" })
+        -- Count buffer items
+        local buffer_count = 0
+        for _, item in ipairs(all_items) do
+          if item.kind == "buffer" then
+            buffer_count = buffer_count + 1
+          end
+        end
+        logger.log("buffer_count: " .. tostring(buffer_count))
+        local prompt_info = nil
+        if buffer_count > 0 then
+          prompt_info = { text = "(" .. buffer_count .. " buffers)", hl_group = "Comment" }
+          logger.log("prompt_info: " .. vim.inspect(prompt_info))
+        end
       end
     end
   end

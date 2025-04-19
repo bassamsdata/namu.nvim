@@ -139,7 +139,7 @@ T["SymbolUtils.picker"]["handles empty items list"] = function()
     end
   end
 
-  symbol_utils.show_picker({}, {}, {}, {}, {}, "Test", {})
+  symbol_utils.show_picker({}, {}, {}, {}, {}, "Test", {}, false, "active")
   h.eq(notified, true)
 
   vim.notify = _original_notify

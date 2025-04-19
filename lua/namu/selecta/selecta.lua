@@ -971,6 +971,24 @@ local function update_filter_info(state, filter_metadata)
   end
 end
 
+local prompt_info_ns = vim.api.nvim_create_namespace("selecta_prompt_info")
+---@param state SelectaState
+---@param opts SelectaOptions
+---@param show_info boolean Whether to show the info
+local function update_prompt_info(state, opts, show_info)
+  if not state.prompt_buf or not vim.api.nvim_buf_is_valid(state.prompt_buf) then
+    return
+  end
+  vim.api.nvim_buf_clear_namespace(state.prompt_buf, prompt_info_ns, 0, -1)
+  if show_info and opts.initial_prompt_info and opts.initial_prompt_info.text then
+    vim.api.nvim_buf_set_extmark(state.prompt_buf, prompt_info_ns, 0, 0, {
+      virt_text = { { opts.initial_prompt_info.text, opts.initial_prompt_info.hl_group or "Comment" } },
+      virt_text_pos = "right_align",
+      priority = 201,
+    })
+  end
+end
+
 -- Main update_display function using the split functions
 ---@param state SelectaState
 ---@param opts SelectaOptions
@@ -980,6 +998,7 @@ function M.update_display(state, opts)
   end
   local query = table.concat(state.query)
   update_prompt(state, opts)
+  update_prompt_info(state, opts, #query == 0) -- Show only if query is empty
   -- Special handling for loading state
   if state.is_loading and #state.filtered_items == 1 and state.filtered_items[1].is_loading then
     if vim.api.nvim_buf_is_valid(state.buf) then
@@ -1069,6 +1088,7 @@ function M.update_display(state, opts)
         opts.hooks.on_buffer_clear()
       end
     end
+    update_prompt_info(state, opts, #state.query == 0)
 
     -- Resize window to minimum dimensions using resize_window function
     if opts.window.auto_resize then
@@ -1089,7 +1109,7 @@ local loading_ns_id = vim.api.nvim_create_namespace("selecta_loading_indicator")
 ---@param callback function
 ---@return boolean started
 function M.start_async_fetch(state, query, opts, callback)
-  if state.last_request_time and (vim.uv.now() - state.last_request_time) < 10 then
+  if state.last_request_time and (vim.uv.now() - state.last_request_time) < 5 then
     logger.log("🚫 Debounced rapid request")
     return false
   end
@@ -1225,6 +1245,7 @@ function M.close_picker(state)
   if state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) and state.loading_extmark_id then
     vim.api.nvim_buf_clear_namespace(state.prompt_buf, loading_ns_id, 0, -1)
     state.loading_extmark_id = nil
+    vim.api.nvim_buf_clear_namespace(state.prompt_buf, prompt_info_ns, 0, -1)
   end
   if state.prompt_win and vim.api.nvim_win_is_valid(state.prompt_win) then
     vim.api.nvim_win_close(state.prompt_win, true)
@@ -1409,6 +1430,7 @@ local function create_picker(items, opts)
   end
 
   create_prompt_window(state, opts)
+  update_prompt_info(state, opts, true)
 
   vim.wo[state.win].cursorline = true
   vim.wo[state.win].cursorlineopt = "both"
