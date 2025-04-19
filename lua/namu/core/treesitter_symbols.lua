@@ -135,13 +135,11 @@ local function contains(range_a, range_b)
   local a_end = range_a["end"]
   local b_start = range_b.start
   local b_end = range_b["end"]
-
   -- Check start line/char
   local starts_after = b_start.line > a_start.line
     or (b_start.line == a_start.line and b_start.character >= a_start.character)
   -- Check end line/char
   local ends_before = b_end.line < a_end.line or (b_end.line == a_end.line and b_end.character <= a_end.character)
-
   return starts_after and ends_before
 end
 

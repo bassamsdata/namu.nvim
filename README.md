@@ -11,7 +11,7 @@ Supports LSP, Treesitter, ctags, and works across buffers and workspaces.
 
 https://github.com/user-attachments/assets/a28a43d9-a477-4b92-89f3-c40479c7801b
 
-## 🧩 Other Built-in Modules
+## 🧩 Built-in Modules
 
 | Module         | Description                                      |
 |----------------|--------------------------------------------------|
@@ -446,6 +446,7 @@ Maintains symbol order as they appear in your code, even after filtering
 
 https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
 
+</details>
 
 <details>
 <summary>symbols</summary>
@@ -531,19 +532,35 @@ https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
 <details>
 <summary>Show highlight groups</summary>
 
-| Group               | Description                        |
-|---------------------|------------------------------------|
-| NamuCursor          | Cursor highlight                   |
-| NamuPrefix          | Prefix highlight                   |
-| NamuMatch           | Matched characters                 |
-| NamuFilter          | Filter prompt                      |
-| NamuPrompt          | Prompt window                      |
-| NamuSelected        | Selected item                      |
-| NamuFooter          | Footer text                        |
-| NamuCurrentItem     | Current item highlight             |
-| NamuPrefixSymbol    | Symbol prefix                      |
-| NamuSymbolFunction  | Function symbol                    |
-| ...                 | ...                                |
+| Group                | Description                                 |
+|----------------------|---------------------------------------------|
+| NamuPrefix           | Prefix highlight                            |
+| NamuMatch            | Matched characters in search                |
+| NamuFilter           | Filter prompt                               |
+| NamuPrompt           | Prompt window                               |
+| NamuSelected         | Selected item in multiselect                |
+| NamuFooter           | Footer text                                 |
+| NamuCurrentItem      | Current item highlight                      |
+| NamuPrefixSymbol     | Symbol prefix                               |
+| **LSP KINDS HIGHLIGHTS** | -----------------|
+| NamuSymbolFunction   | Function symbol                             |
+| NamuSymbolMethod     | Method symbol                               |
+| NamuSymbolClass      | Class symbol                                |
+| NamuSymbolInterface  | Interface symbol                            |
+| NamuSymbolVariable   | Variable symbol                             |
+| NamuSymbolConstant   | Constant symbol                             |
+| NamuSymbolProperty   | Property symbol                             |
+| NamuSymbolField      | Field symbol                                |
+| NamuSymbolEnum       | Enum symbol                                 |
+| NamuSymbolModule     | Module symbol                               |
+| **Some Other Styles**    | --------------------|
+| NamuTreeGuides       | Tree guide lines                            |
+| NamuFileInfo         | File info text                              |
+| NamuPreview          | Preview window highlight                    |
+| NamuParent           | Parent item highlight                       |
+| NamuNested           | Nested item highlight                       |
+| NamuStyle            | Style elements highlight                    |
+| NamuCursor           | Cursor highlight during Picker active
 
 </details>
 

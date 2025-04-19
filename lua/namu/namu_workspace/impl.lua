@@ -167,9 +167,6 @@ local function apply_workspace_highlights(buf, filtered_items, config)
   if last_visible >= first_visible then
     visible_lines = api.nvim_buf_get_lines(buf, first_visible, last_visible + 1, false)
   end
-  impl.logger.log(
-    string.format("Highlighting %d visible lines from %d to %d", #visible_lines, first_visible, last_visible)
-  )
   -- Process only the visible lines
   for i, line_text in ipairs(visible_lines) do
     local line_idx = first_visible + i - 1
@@ -281,12 +278,8 @@ end
 
 local function create_async_symbol_source(original_buf, config)
   return function(query)
-    impl.logger.log("📬 Creating async source for query: '" .. query .. "'")
-
     -- Return a function that will handle the async processing
     local process_fn = function(callback)
-      impl.logger.log("📡 Making LSP request for query: " .. query)
-
       -- Make the LSP request directly
       impl.lsp.request_symbols(original_buf, "workspace/symbol", function(err, symbols, ctx)
         if err then
@@ -294,24 +287,17 @@ local function create_async_symbol_source(original_buf, config)
           callback({}) -- Empty results on error
           return
         end
-
         if not symbols or #symbols == 0 then
           impl.logger.log("⚠️ No symbols returned from LSP")
           callback({}) -- Empty results when no symbols
           return
         end
-
-        impl.logger.log("📦 Got " .. #symbols .. " symbols from LSP")
-
         -- Process the symbols into selecta items
         local items = symbols_to_selecta_items(symbols, config)
-        impl.logger.log("✅ Processed " .. #items .. " items from symbols")
-
         -- Return the processed items via callback
         callback(items)
       end, { query = query or "" })
     end
-
     return process_fn
   end
 end
@@ -356,8 +342,6 @@ function impl.show_with_query(config, query, opts)
       -- If we got actual symbols, use them
       initial_items = symbols_to_selecta_items(symbols, config)
     else
-      -- Some LSPs require a query - no need for notification here
-      -- logger.log("No initial workspace symbols found - LSP may require a query")
     end
 
     -- Always show picker, even with placeholder items
@@ -366,9 +350,7 @@ function impl.show_with_query(config, query, opts)
       vim.tbl_deep_extend("force", config, {
         title = "Workspace Symbols ",
         config,
-        -- Add coroutine-based async source
         async_source = create_async_symbol_source(state.original_buf, config),
-        -- Rest of options remain the same as before
         pre_filter = function(items, input_query)
           local filter = impl.symbol_utils.parse_symbol_filter(input_query, config)
           if filter then
@@ -379,9 +361,6 @@ function impl.show_with_query(config, query, opts)
           end
           return items, input_query
         end,
-
-        -- formatter = function(item)
-        -- end,
 
         hooks = {
           on_render = function(buf, filtered_items)
