@@ -1,6 +1,7 @@
 deps/
 TODO.md
 CLAUDE.md
+codecompanion-workspace.json
 
 # MacOS
 .DS_Store
