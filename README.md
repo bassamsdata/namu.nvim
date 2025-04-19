@@ -115,10 +115,6 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 - No dependencies except Neovim, LSP, and optional ctags
 
 
-### Keymaps
-
-<details>
-<summary>Default keymaps are:</summary>
 
 ## Keymaps
 
