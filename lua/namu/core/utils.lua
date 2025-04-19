@@ -43,19 +43,16 @@ end
 --- Determines if a buffer is considered "big" based on size thresholds
 --- @param bufnr number|nil Buffer number (uses current buffer if nil)
 --- @return boolean Whether the buffer is considered big
-function M.is_big_buffer(bufnr)
+function M.is_big_buffer(bufnr, line_threshold, byte_threshold)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
-
   -- Size thresholds
-  local line_threshold = 10000 -- Lines above which a file is considered big
-  local byte_threshold = 1000000 -- ~1MB
-
+  line_threshold = line_threshold or 10000 -- Lines above which a file is considered big
+  byte_threshold = byte_threshold or 1000000 -- ~1MB
   -- Check line count first (faster)
   local line_count = vim.api.nvim_buf_line_count(bufnr)
   if line_count > line_threshold then
     return true
   end
-
   -- Check file size if available
   local filepath = vim.api.nvim_buf_get_name(bufnr)
   if filepath and filepath ~= "" then
@@ -64,8 +61,7 @@ function M.is_big_buffer(bufnr)
       return true
     end
   end
-
-  -- Additional heuristics (optional)
+  -- Additional heuristics
   -- Check if the buffer has very long lines
   local sample_lines = vim.api.nvim_buf_get_lines(bufnr, 0, math.min(100, line_count), false)
   for _, line in ipairs(sample_lines) do
@@ -73,7 +69,6 @@ function M.is_big_buffer(bufnr)
       return true
     end
   end
-
   return false
 end
 

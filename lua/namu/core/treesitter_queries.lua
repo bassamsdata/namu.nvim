@@ -187,6 +187,26 @@ M.vimdoc = [[
   (#set! "kind" "Interface")) @symbol
 ]]
 
+M.json = [[
+; Capture pairs where the value is an object or array (structural view)
+(pair
+  key: (string) @name
+  value: [(object) (array)] @value
+  (#set! "kind" "Object") ; Kind for structural elements
+) @symbol
+
+; Capture primitive pairs ONLY at the top level (direct children of root object)
+(document
+  (object
+    (pair
+      key: (string) @name
+      value: [(string) (number) (true) (false) (null)] @value
+      (#set! "kind" "Property") ; Kind for top-level primitive properties
+    ) @symbol
+  )
+)
+]]
+
 -- Get the appropriate query for a filetype
 function M.get_query_for_filetype(filetype)
   return M[filetype]

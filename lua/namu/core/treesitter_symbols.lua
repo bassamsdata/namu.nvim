@@ -29,7 +29,8 @@ local default_kind = "Variable"
 local special_filetypes = {
   typescript = true,
   javascript = true,
-  org = true,
+  json = true,
+  -- org = true,
   vimdoc = true,
   markdown = true,
 }
@@ -129,36 +130,51 @@ local function collect_symbols_from_query(query, root_node, bufnr)
   return symbols
 end
 
+local function contains(range_a, range_b)
+  local a_start = range_a.start
+  local a_end = range_a["end"]
+  local b_start = range_b.start
+  local b_end = range_b["end"]
+
+  -- Check start line/char
+  local starts_after = b_start.line > a_start.line
+    or (b_start.line == a_start.line and b_start.character >= a_start.character)
+  -- Check end line/char
+  local ends_before = b_end.line < a_end.line or (b_end.line == a_end.line and b_end.character <= a_end.character)
+
+  return starts_after and ends_before
+end
+
 -- Build hierarchy from flat list of symbols
 local function build_hierarchy_from_symbols(symbols)
-  local root_symbols = {}
-  local used_symbols = {}
-  -- Check each symbol against others to find containment
-  for _, symbol in ipairs(symbols) do
-    local found_parent = false
-    for _, parent_sym in ipairs(symbols) do
-      if symbol.id ~= parent_sym.id then
-        local s_start = symbol.range.start
-        local s_end = symbol.range["end"]
-        local p_start = parent_sym.range.start
-        local p_end = parent_sym.range["end"]
-        -- Is this symbol contained within the parent?
-        if
-          (s_start.line > p_start.line or (s_start.line == p_start.line and s_start.character >= p_start.character))
-          and (s_end.line < p_end.line or (s_end.line == p_end.line and s_end.character <= p_end.character))
-        then
-          table.insert(parent_sym.children, symbol)
-          used_symbols[symbol.id] = true
-          found_parent = true
-          break
-        end
-      end
+  if not symbols or #symbols == 0 then
+    return {}
+  end
+  -- Sort symbols by start position (line, then character)
+  table.sort(symbols, function(a, b)
+    if a.range.start.line == b.range.start.line then
+      return a.range.start.character < b.range.start.character
     end
-    -- If no parent found, this is a root symbol
-    if not found_parent then
+    return a.range.start.line < b.range.start.line
+  end)
+  local root_symbols = {}
+  local stack = {} -- Stack to keep track of potential parent symbols
+  for _, symbol in ipairs(symbols) do
+    -- Pop symbols from stack that cannot contain the current symbol
+    while #stack > 0 and not contains(stack[#stack].range, symbol.range) do
+      table.remove(stack)
+    end
+    if #stack > 0 then
+      -- Top of stack is the parent
+      local parent = stack[#stack]
+      table.insert(parent.children, symbol)
+    else
+      -- No containing parent found on stack, it's a root symbol
       table.insert(root_symbols, symbol)
     end
+    table.insert(stack, symbol)
   end
+
   return root_symbols
 end
 
