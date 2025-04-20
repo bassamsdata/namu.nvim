@@ -1,6 +1,6 @@
 local M = {}
 local request_symbols = require("namu.namu_symbols.lsp").request_symbols
-local filter_symbol_types = require("namu.namu_symbols.symbols").config.filter_symbol_types
+local filter_symbol_types = require("namu.namu_symbols").config.filter_symbol_types
 
 -- Shared constants and utilities
 ---@enum LSPSymbolKinds
