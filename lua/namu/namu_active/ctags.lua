@@ -11,6 +11,7 @@ local format_utils = require("namu.core.format_utils")
 local utils = require("namu.core.utils")
 
 local M = {}
+local api = vim.api
 M.config = config.values
 M.config = vim.tbl_deep_extend("force", M.config, {
   window = {
@@ -41,10 +42,10 @@ local function initialize_state()
   end
 
   state = symbol_utils.create_state("namu_active_ctags_preview")
-  state.original_win = vim.api.nvim_get_current_win()
-  state.original_buf = vim.api.nvim_get_current_buf()
+  state.original_win = api.nvim_get_current_win()
+  state.original_buf = api.nvim_get_current_buf()
   state.original_ft = vim.bo.filetype
-  state.original_pos = vim.api.nvim_win_get_cursor(state.original_win)
+  state.original_pos = api.nvim_win_get_cursor(state.original_win)
 end
 
 --- Convert ctags symbols to selecta items, adding source information
@@ -269,13 +270,18 @@ end
 ---@return Promise<SelectaItem[], string?>
 local function process_buffer(bufnr)
   local promise = Promise.new()
-
-  if not vim.api.nvim_buf_is_valid(bufnr) or not vim.api.nvim_buf_is_loaded(bufnr) or vim.bo[bufnr].buftype ~= "" then
+  if
+    not vim.fn.getbufvar(bufnr, "&buflisted") == 1
+    or vim.bo[bufnr].buftype ~= ""
+    or not api.nvim_buf_is_valid(bufnr)
+    or not api.nvim_buf_is_loaded(bufnr)
+    or utils.is_big_buffer(bufnr, false, 5000000) -- TODO: make this configurable so the user have control
+  then
     promise:resolve({}, "Buffer invalid or not loaded")
     return promise
   end
 
-  local path = vim.api.nvim_buf_get_name(bufnr)
+  local path = api.nvim_buf_get_name(bufnr)
   if path == "" then
     promise:resolve({}, "Buffer has no file path")
     return promise
@@ -298,8 +304,8 @@ end
 function M.show()
   initialize_state()
 
-  local bufs = vim.api.nvim_list_bufs()
-  local current_bufnr = vim.api.nvim_get_current_buf()
+  local bufs = api.nvim_list_bufs()
+  local current_bufnr = api.nvim_get_current_buf()
   local buffer_results = {}
   local num_processed = 0
   local total_bufs = #bufs

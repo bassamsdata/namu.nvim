@@ -186,7 +186,6 @@ end
 ---@return Promise<SelectaItem[], string?>
 local function process_buffer(bufnr, config)
   local promise = Promise.new()
-  logger.log("Active: Processing buffer " .. bufnr)
   if
     not vim.fn.getbufvar(bufnr, "&buflisted") == 1
     or vim.bo[bufnr].buftype ~= ""
@@ -204,7 +203,6 @@ local function process_buffer(bufnr, config)
   local has_lsp = lsp_client ~= nil
   if has_lsp then
     -- Use LSP if available
-    logger.log("Active: Requesting LSP symbols for buffer " .. bufnr)
     Async:lsp_request(bufnr, method, params):and_then(function(lsp_symbols)
       if lsp_symbols and #lsp_symbols > 0 then
         logger.log("Active: Got " .. #lsp_symbols .. " LSP symbols for buffer " .. bufnr)
