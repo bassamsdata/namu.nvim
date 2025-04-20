@@ -125,11 +125,11 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ## Features
 
-- Live kind filtering for all symbol modules (`/fn`, `/me`, etc.) and then start type like `/fnmain` to filter more [see demo](#symbols)
-- Filter by buffer name in watchtower: `/bf:buffer_name` [see demo](#watchtower)
-- Combine filters: `/bf:name:fn` (buffer and function) [see demo](#watchtower)
-- Diagnostics filtering: `/er` (errors), `/wa` (warnings), `/hi` (hints), `/in` (info) [see demo](#diagnostics)
-- Two display styles: `tree_guides` or `indent` [see pictures](#display-styles)
+- Live kind filtering for all symbol modules (`/fn`, `/me`, etc.) and then start type like `/fnmain` to filter more [see demo](#feature-demos)
+- Filter by buffer name in watchtower: `/bf:buffer_name` [see demo](#feature-demos)
+- Combine filters: `/bf:name:fn` (buffer and function) [see demo](#feature-demos)
+- Diagnostics filtering: `/er` (errors), `/wa` (warnings), `/hi` (hints), `/in` (info) [see demo](#feature-demos)
+- Two display styles: `tree_guides` or `indent` [see pictures](## Display Styles)
 - Configurable prefix icon for current item
 - All operations are asynchronous (non-blocking)
 - No dependencies except Neovim, LSP, and optional ctags
