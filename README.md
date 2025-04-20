@@ -9,7 +9,11 @@ Supports LSP, Treesitter, ctags, and works across buffers and workspaces.
 > [!WARNING]
 > 🚧 **Beta Status**: This plugin is currently in beta. While it's functional, you may encounter breaking changes as we improve and refine the architecture. Your feedback and contributions are welcome!
 
-https://github.com/user-attachments/assets/a28a43d9-a477-4b92-89f3-c40479c7801b
+
+
+https://github.com/user-attachments/assets/a97ff3b1-8b25-4da1-b276-f623e37d0368
+
+
 
 ## 🧩 Built-in Modules
 
@@ -462,7 +466,11 @@ https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
 - Live kind filtering: `/fn` for fucntion , `/me` for methods, etc.
 - Live preview as you move.
 
-<!-- Demo video here (folded) -->
+
+
+https://github.com/user-attachments/assets/bb2a14da-cba0-4ae7-b826-4ceb1c828b79
+
+
 
 </details>
 
@@ -473,7 +481,11 @@ https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
 - Interactive workspace symbol search (LSP).
 - Start typing to see results, live preview.
 
-<!-- Demo video here (folded) -->
+
+
+https://github.com/user-attachments/assets/e548c3ea-6cdb-4f20-9569-175c57b31039
+
+
 
 </details>
 
@@ -485,7 +497,11 @@ https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
 - Filter by buffer: `/bf:buffer_name`
 - Combine with kind: `/bf:name:fn`
 
-<!-- Demo video here (folded) -->
+
+https://github.com/user-attachments/assets/76c637d2-30d3-4f54-9290-510a51dcbe7e
+
+
+
 
 </details>
 
@@ -497,7 +513,11 @@ https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
 - Filter by severity: `/er`, `/wa`, `/hi`, `/in`
 - Live preview and navigation.
 
-<!-- Demo video here (folded) -->
+
+
+https://github.com/user-attachments/assets/02dc0ce5-c87a-445f-a477-ac4f411c6592
+
+
 
 </details>
 
@@ -507,7 +527,7 @@ https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
 - Show incoming, outgoing, or both calls for a symbol.
 - Usage: `:Namu call in`, `:Namu call out`, `:Namu call both`
 
-<!-- Demo video here (folded) -->
+https://github.com/user-attachments/assets/5d30214a-a5d8-46e3-89d4-be71203501e7
 
 </details>
 
@@ -518,7 +538,11 @@ https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
 - Requires ctags installed.
 - Usage: `:Namu ctags`, `:Namu ctags watchtower`
 
-<!-- Demo video here (folded) -->
+
+https://github.com/user-attachments/assets/09ccc178-c067-45bb-8f86-3f8aa183e69d
+
+
+
 </details>
 
 ## Display Styles
@@ -527,10 +551,12 @@ https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
 <summary>Show display style examples</summary>
 
 - `options.display.format = "tree_guides"`:
-  (image here)
+![tree_guides](https://github.com/user-attachments/assets/5be3180c-87b8-4a06-9cd1-e65e5fe08b81)
+
 
 - `options.display.format = "indent"`:
-  (image here)
+![indent](https://github.com/user-attachments/assets/8d78aa5d-27d9-4331-9898-01d18e3bd23a)
+
 
 </details>
 
