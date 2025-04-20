@@ -301,9 +301,9 @@ function M.show(config)
               name = display_name .. source_indicator,
               full_path = buf_name,
               signature = "buffer:" .. bufnr,
-              lnum = 0,
+              lnum = 1,
               end_lnum = math.huge,
-              col = 0,
+              col = 1,
               end_col = math.huge,
             },
           }
