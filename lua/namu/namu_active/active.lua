@@ -192,7 +192,7 @@ local function process_buffer(bufnr, config)
     or vim.bo[bufnr].buftype ~= ""
     or not api.nvim_buf_is_valid(bufnr)
     or not api.nvim_buf_is_loaded(bufnr)
-    -- or utils.is_big_buffer(bufnr)
+    or utils.is_big_buffer(bufnr, 50000, false) -- TODO: make this configurable so the user have control
   then
     promise:resolve({}, "Buffer invalid or not loaded")
     return promise

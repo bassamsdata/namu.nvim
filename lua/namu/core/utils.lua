@@ -42,33 +42,39 @@ end
 
 --- Determines if a buffer is considered "big" based on size thresholds
 --- @param bufnr number|nil Buffer number (uses current buffer if nil)
+--- @param line_threshold number|boolean Line threshold or false to skip check
+--- @param byte_threshold number|boolean Byte threshold or false to skip check
 --- @return boolean Whether the buffer is considered big
 function M.is_big_buffer(bufnr, line_threshold, byte_threshold)
   bufnr = bufnr or vim.api.nvim_get_current_buf()
-  -- Size thresholds
-  line_threshold = line_threshold or 10000 -- Lines above which a file is considered big
-  byte_threshold = byte_threshold or 1000000 -- ~1MB
-  -- Check line count first (faster)
-  local line_count = vim.api.nvim_buf_line_count(bufnr)
-  if line_count > line_threshold then
-    return true
-  end
-  -- Check file size if available
-  local filepath = vim.api.nvim_buf_get_name(bufnr)
-  if filepath and filepath ~= "" then
-    local stat = vim.loop.fs_stat(filepath)
-    if stat and stat.size > byte_threshold then
+
+  -- Check line count if enabled
+  if line_threshold ~= false then
+    line_threshold = line_threshold or 10000
+    local line_count = vim.api.nvim_buf_line_count(bufnr)
+    if line_count > line_threshold then
       return true
     end
   end
-  -- Additional heuristics
-  -- Check if the buffer has very long lines
-  local sample_lines = vim.api.nvim_buf_get_lines(bufnr, 0, math.min(100, line_count), false)
+  -- Check file size if enabled
+  if byte_threshold ~= false then
+    byte_threshold = byte_threshold or 1000000 -- ~1MB
+    local filepath = vim.api.nvim_buf_get_name(bufnr)
+    if filepath and filepath ~= "" then
+      local stat = vim.loop.fs_stat(filepath)
+      if stat and stat.size > byte_threshold then
+        return true
+      end
+    end
+  end
+  -- Check for long lines (could also make this optional)
+  local sample_lines = vim.api.nvim_buf_get_lines(bufnr, 0, math.min(100, vim.api.nvim_buf_line_count(bufnr)), false)
   for _, line in ipairs(sample_lines) do
     if #line > 1000 then -- Very long line detected
       return true
     end
   end
+
   return false
 end
 
