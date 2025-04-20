@@ -7,7 +7,7 @@ M.config = {
   callhierarchy = { enable = true, options = {} },
   workspace = { enable = true, options = {} },
   diagnostics = { enable = true, options = {} },
-  active = { enable = true, options = {} },
+  watchtower = { enable = true, options = {} },
   colorscheme = { enable = false, options = {} },
   ui_select = { enable = false, options = {} },
 }
@@ -35,8 +35,8 @@ M.setup = function(opts)
     require("namu.namu_workspace").setup(M.config.workspace.options)
   end
 
-  if M.config.active.enable then
-    require("namu.namu_active").setup(M.config.active.options)
+  if M.config.watchtower.enable then
+    require("namu.namu_watchtower").setup(M.config.watchtower.options)
   end
 
   if M.config.diagnostics.enable then

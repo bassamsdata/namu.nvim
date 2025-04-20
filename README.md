@@ -17,10 +17,10 @@ https://github.com/user-attachments/assets/a28a43d9-a477-4b92-89f3-c40479c7801b
 |----------------|--------------------------------------------------|
 | 🏷️ symbols        | LSP symbols for current buffer                      |
 | 🌐 workspace      | LSP workspace symbols, interactive, live preview    |
-| 📂 all_buffers    | Symbols from all open buffers (LSP or Treesitter)   |
+| 📂 watchtower    | Symbols from all open buffers (LSP or Treesitter)   |
 | 🩺 diagnostics    | Diagnostics for buffer or workspace, live filter    |
 | 🔗 call_hierarchy | Call hierarchy (in/out/both) for symbol             |
-| 🏷️ ctags          | ctags-based symbols (buffer or all_buffers)         |
+| 🏷️ ctags          | ctags-based symbols (buffer or watchtower)         |
 | 🪟 ui_select      | Wrapper for `vim.ui.select` with enhanced UI        |
 
 
@@ -28,11 +28,12 @@ https://github.com/user-attachments/assets/a28a43d9-a477-4b92-89f3-c40479c7801b
 
 - 🔍 **Live Preview**: See exactly where you'll land before you jump
 - 🌳 **Order Preservation**: Maintains symbol order as they appear in your code, even after filtering
+- 🗂️ **Hierarchy Preservation**: Keeps the parent-child structure of your code symbols intact, so you always see context.
 - 📐 **Smart Auto-resize**: Window adapts to your content in real-time as you type and filter, no need for a big window with only a couple of items
 - 🚀 **Zero Dependencies**: Works with any LSP-supported language out of the box
 - 🎯 **Context Aware**: Always shows your current location in the codebase
 - ⚡ **Powerful Filtering**:
-  - Live filtering through `/xx` such as `/fn` for fcuntions or `/bf:` for buffer names if all_buffers module.
+  - Live filtering through `/xx` such as `/fn` for fcuntions or `/bf:` for buffer names if watchtower module.
   - Built-in fuzzy finding that understands code structure
   - Filter by symbol types (functions, classes, methods)
   - Use regex patterns (e.g., `^__` to filter out Python's `__init__` methods)
@@ -45,6 +46,21 @@ https://github.com/user-attachments/assets/a28a43d9-a477-4b92-89f3-c40479c7801b
   - Works with both single and multiple selected symbols
 - 🌑 **Initially Hidden Mode**: Start with an empty list and populate it dynamically as you type, just like the command palette in Zed and VS Code
 
+## Table of Contents
+
+- [Requirements](#-requirements)
+- [Installation](#installation)
+- [Features](#features)
+- [Keymaps](#keymaps)
+- [Commands](#commands)
+- [Make It Yours](#make-it-yours)
+- [Tips](#tips)
+- [Feature Demos](#feature-demos)
+- [Display Styles](#display-styles)
+- [Highlights](#highlights)
+- [Contributing](#contributing)
+- [Credits & Acknowledgements](#credits--acknowledgements)
+- [Demo](#demo)
 
 ## ⚡ Requirements
 - LSP server for your language (Treesitter fallback for some modules)
@@ -105,14 +121,15 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ## Features
 
-- Live fuzzy filtering for all symbol modules (`/fn`, `/me`, etc.)
-- Filter by buffer name in all_buffers: `/bf:buffer_name`
-- Combine filters: `/bf:name:fn` (buffer and function)
-- Diagnostics filtering: `/er` (errors), `/wa` (warnings), `/hi` (hints), `/in` (info)
-- Two display styles: `tree_guides` or `indent`
+- Live kind filtering for all symbol modules (`/fn`, `/me`, etc.) and then start type like `/fnmain` to filter more [see demo](#symbols)
+- Filter by buffer name in watchtower: `/bf:buffer_name` [see demo](#watchtower)
+- Combine filters: `/bf:name:fn` (buffer and function) [see demo](#watchtower)
+- Diagnostics filtering: `/er` (errors), `/wa` (warnings), `/hi` (hints), `/in` (info) [see demo](#diagnostics)
+- Two display styles: `tree_guides` or `indent` [see pictures](#display-styles)
 - Configurable prefix icon for current item
 - All operations are asynchronous (non-blocking)
 - No dependencies except Neovim, LSP, and optional ctags
+-  Hierarchy Preservation: Keeps the parent-child structure of your code symbols intact, so you always see context.
 
 
 
@@ -192,14 +209,13 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 | Command                | Arguments         | Description                                 |
 |------------------------|------------------|---------------------------------------------|
-| :Namu symbols    | function, class… | Show buffer symbols, filter by kind         |
-| :Namu workspace | text             | Search workspace symbols                    |
-| :Namu all_buffers      |                  | Symbols from all open buffers               |
+| :Namu symbols    | function, class, method… | Show buffer symbols, filter by kind         |
+| :Namu workspace | | Search workspace symbols                    |
+| :Namu watchtower      |                  | Symbols from all open buffers, it fallbacks to treesitter               |
 | :Namu diagnostics  | workspace        | Diagnostics for buffer or workspace         |
 | :Namu call in/out/both | in/out/both      | Call hierarchy for symbol                   |
-| :Namu ctags [active]   | active           | ctags symbols (buffer or all_buffers)       |
+| :Namu ctags [watchtower]   | watchtower           | ctags symbols (buffer or watchtower)       |
 | :Namu help [topic]     | symbols/analysis | Show help                                   |
-| :Namu colorscheme      |                  | Colorscheme picker                          |
 
 ## Make It Yours
 
@@ -412,16 +428,6 @@ You can check the [configuration documentation](https://github.com/bassamsdata/n
           },
         }
       }
-      colorscheme = {
-        enable = false,
-        options = {
-          -- NOTE: if you activate persist, then please remove any vim.cmd("colorscheme ...") in your config, no needed anymore
-          persist = true, -- very efficient mechanism to Remember selected colorscheme
-          write_shada = false, -- If you open multiple nvim instances, then probably you need to enable this
-          excluded_schemes = {}, -- exclude any colorscheme from the list
-          -- it accept the same row_position and movement keys as the one in namy symbols
-        },
-      },
       ui_select = { enable = false }, -- vim.ui.select() wrapper
     })
   end,
@@ -453,6 +459,7 @@ https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
 
 - Shows LSP symbols for current buffer.
 - Filter by kind: `:Namu symbols function`
+- Live kind filtering: `/fn` for fucntion , `/me` for methods, etc.
 - Live preview as you move.
 
 <!-- Demo video here (folded) -->
@@ -472,7 +479,7 @@ https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
 
 
 <details>
-<summary>all_buffers</summary>
+<summary>watchtower</summary>
 
 - Shows symbols from all open buffers (LSP or Treesitter fallback).
 - Filter by buffer: `/bf:buffer_name`
@@ -507,9 +514,9 @@ https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
 <details>
 <summary>ctags</summary>
 
-- Show ctags-based symbols for buffer or all_buffers.
+- Show ctags-based symbols for buffer or watchtower.
 - Requires ctags installed.
-- Usage: `:Namu ctags`, `:Namu ctags active`
+- Usage: `:Namu ctags`, `:Namu ctags watchtower`
 
 <!-- Demo video here (folded) -->
 </details>

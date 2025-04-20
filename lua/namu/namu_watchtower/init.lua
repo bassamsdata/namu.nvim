@@ -1,5 +1,5 @@
---[[ Namu Active Buffers
-Displays symbols from all active buffers in a picker with preview.
+--[[ Namu Watchtower Buffers
+Displays symbols from all open/valid buffers in a picker with preview.
 Integrates with selecta for fuzzy finding and LSP for symbol handling.
 ]]
 
@@ -73,7 +73,7 @@ local function load_impl()
     return
   end
   -- Load the actual implementation
-  impl = require("namu.namu_active.active")
+  impl = require("namu.namu_watchtower.watchtower")
   impl_loaded = true
 end
 

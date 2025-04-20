@@ -565,7 +565,7 @@ end
 ---@param selecta table Selecta module
 ---@param title string Title for the picker
 ---@param notify_opts? table Notification options
----@param context? string Context identifier ("buffer" or "active")
+---@param context? string Context identifier ("buffer" or "watchtower")
 ---@param initial_prompt_info? {text: string, hl_group: string} Optional info for the prompt
 function M.show_picker(
   selectaItems,
@@ -677,7 +677,7 @@ function M.show_picker(
       ui.clear_preview_highlight(state.original_win, state.preview_ns)
       M.jump_to_symbol(item.value, state)
     end,
-    -- FIX: we need to move the oroiginal buffer first for active symbols
+    -- FIX: we need to move the oroiginal buffer first for watchtower symbols
     -- check preview_symbol first if we're doing that there first, but don't think so
     on_cancel = function()
       ui.clear_preview_highlight(state.original_win, state.preview_ns)

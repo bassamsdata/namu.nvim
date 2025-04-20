@@ -729,7 +729,7 @@ function M.show_call_picker(selectaItems, notify_opts)
     custom_keymaps = M.config.custom_keymaps,
     formatter = formatter,
     -- Enable hierarchical filtering
-    preserve_hierarchy = true,
+    preserve_hierarchy = M.config.preserve_hierarchy,
     -- Define how to find an item's parent
     parent_key = function(item)
       -- Return the parent signature or "root" if this is the top level

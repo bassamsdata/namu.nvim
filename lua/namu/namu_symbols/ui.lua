@@ -81,7 +81,7 @@ end
 ---@param items SelectaItem[] The full items list
 ---@param symbol SelectaItem table The symbol to find (should be from original buffer context)
 ---@param is_ctags? boolean Whether the symbol is from CTags
----@param context? string Context identifier ("buffer" or "active") - Used mainly for logging/debugging now
+---@param context? string Context identifier ("buffer" or "watchtower") - Used mainly for logging/debugging now
 ---@param state? table State object - Used mainly for logging/debugging now
 ---@return number|nil index The index of the symbol if found
 function M.find_symbol_index(items, symbol, is_ctags, context, state)

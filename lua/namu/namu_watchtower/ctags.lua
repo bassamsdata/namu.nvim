@@ -41,7 +41,7 @@ local function initialize_state()
     state.original_pos = nil
   end
 
-  state = symbol_utils.create_state("namu_active_ctags_preview")
+  state = symbol_utils.create_state("namu_watchtower_ctags_preview")
   state.original_win = api.nvim_get_current_win()
   state.original_buf = api.nvim_get_current_buf()
   state.original_ft = vim.bo.filetype
@@ -300,7 +300,7 @@ local function process_buffer(bufnr)
   return promise
 end
 
---- Main function to show active buffer symbols
+--- Main function to show open buffer symbols
 function M.show()
   initialize_state()
 
@@ -383,7 +383,7 @@ function M.show()
       end
 
       if #all_items == 0 then
-        vim.notify("No ctags symbols found in active buffers", vim.log.levels.WARN, { title = "Namu" })
+        vim.notify("No ctags symbols found in open buffers", vim.log.levels.WARN, { title = "Namu" })
       else
         -- Create config with hierarchy settings
         local picker_config = vim.tbl_deep_extend("force", M.config, {
@@ -419,18 +419,18 @@ function M.show()
           picker_config,
           ui,
           selecta,
-          "Active Symbols (ctags)",
+          "Watchtower Symbols (ctags)",
           { title = "Namu" },
           -- TODO: make one for ctags
           false,
-          "active"
+          "open"
         )
       end
     end
   end
 
   if total_bufs == 0 then
-    vim.notify("No active buffers found", vim.log.levels.WARN, { title = "Namu" })
+    vim.notify("No open buffers found", vim.log.levels.WARN, { title = "Namu" })
     return
   end
 

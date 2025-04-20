@@ -1,5 +1,5 @@
---[[ Namu Active Buffers Implementation
-This file contains the actual implementation for displaying symbols from active buffers.
+--[[ Namu Watchtower Buffers Implementation
+This file contains the actual implementation for displaying symbols from open buffers.
 It is loaded only when required to improve startup performance.
 ]]
 
@@ -32,7 +32,7 @@ local function initialize_state()
     state.original_pos = nil
   end
 
-  state = symbol_utils.create_state("namu_active_symbols_preview")
+  state = symbol_utils.create_state("namu_watchtower_symbols_preview")
   state.original_win = api.nvim_get_current_win()
   state.original_buf = api.nvim_get_current_buf()
   state.original_ft = vim.bo.filetype
@@ -85,7 +85,7 @@ local function symbols_to_selecta_items(raw_symbols, source, bufnr, config_value
 
   local function process_symbol_result(result, depth, parent_stack)
     if not result or not result.name then
-      logger.log("Active: Skipping symbol with no name")
+      logger.log("Watchtower: Skipping symbol with no name")
       return
     end
 
@@ -164,7 +164,7 @@ local function symbols_to_selecta_items(raw_symbols, source, bufnr, config_value
   --   item.text = source_prefix .. format_utils.format_item_for_display(item, config_values)
   -- end
 
-  logger.log("Active: Converted to " .. #items .. " items for display")
+  logger.log("Watchtower: Converted to " .. #items .. " items for display")
   return items
 end
 
@@ -172,10 +172,10 @@ end
 local function process_with_treesitter(bufnr, config, promise)
   local ts_symbols = treesitter_symbols.get_symbols(bufnr)
   if ts_symbols and #ts_symbols > 0 then
-    logger.log("Active: Got " .. #ts_symbols .. " TreeSitter symbols for buffer " .. bufnr)
+    logger.log("Watchtower: Got " .. #ts_symbols .. " TreeSitter symbols for buffer " .. bufnr)
     promise:resolve(symbols_to_selecta_items(ts_symbols, "treesitter", bufnr, config))
   else
-    logger.log("Active: No TreeSitter symbols for buffer " .. bufnr)
+    logger.log("Watchtower: No TreeSitter symbols for buffer " .. bufnr)
     promise:resolve({}, "No symbols available")
   end
 end
@@ -205,7 +205,7 @@ local function process_buffer(bufnr, config)
     -- Use LSP if available
     Async:lsp_request(bufnr, method, params):and_then(function(lsp_symbols)
       if lsp_symbols and #lsp_symbols > 0 then
-        logger.log("Active: Got " .. #lsp_symbols .. " LSP symbols for buffer " .. bufnr)
+        logger.log("Watchtower: Got " .. #lsp_symbols .. " LSP symbols for buffer " .. bufnr)
         promise:resolve(symbols_to_selecta_items(lsp_symbols, "lsp", bufnr, config))
       else
         process_with_treesitter(bufnr, config, promise)
@@ -216,14 +216,14 @@ local function process_buffer(bufnr, config)
     end)
   else
     -- No LSP, directly use TreeSitter
-    logger.log("Active: No LSP for buffer " .. bufnr .. ", trying TreeSitter")
+    logger.log("Watchtower: No LSP for buffer " .. bufnr .. ", trying TreeSitter")
     process_with_treesitter(bufnr, config, promise)
   end
 
   return promise
 end
 
---- Main function to show active buffer symbols
+--- Main function to show open buffer symbols
 ---@param config table
 function M.show(config)
   initialize_state()
@@ -317,7 +317,7 @@ function M.show(config)
         end
       end
       if #all_items == 0 then
-        vim.notify("No LSP symbols found in active buffers", vim.log.levels.WARN, { title = "Namu" })
+        vim.notify("No LSP symbols found in open buffers", vim.log.levels.WARN, { title = "Namu" })
       else
         -- Count buffer items
         buffer_count = 0
@@ -337,17 +337,17 @@ function M.show(config)
           config,
           ui,
           selecta,
-          "Active Symbols (LSP)",
+          "Watchtower Symbols (LSP)",
           { title = "Namu" },
           false,
-          "active",
+          "open",
           prompt_info
         )
       end
     end
   end
   if total_bufs == 0 then
-    vim.notify("No active buffers found", vim.log.levels.WARN, { title = "Namu" })
+    vim.notify("No open buffers found", vim.log.levels.WARN, { title = "Namu" })
     return
   end
 

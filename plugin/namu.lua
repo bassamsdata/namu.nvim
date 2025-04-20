@@ -9,12 +9,12 @@ local api = vim.api
 ---@type table<string, string>
 local command_descriptions = {
   symbols = "Jump to location using namu functionality",
-  ctags = "Show ctags symbols (use 'ctags active' for symbols from all active buffers)",
+  ctags = "Show ctags symbols (use 'ctags open' for symbols from all open buffers)",
   colorscheme = "Select and apply colorscheme",
   call = "Show call hierarchy (use 'call in', 'call out', or 'call both')",
   workspace = "Search workspace symbols with LSP",
   diagnostics = "Show diagnostics for current buffer (use 'diagnostics workspace' for workspace diagnostics)",
-  active = "Show symbols from all active buffers",
+  open = "Show symbols from all open buffers",
   help = "Show help information (use 'help symbols' or 'help analysis' for detailed views)",
 }
 -- Argument validators
@@ -79,15 +79,15 @@ local command_validators = {
   end,
   ctags = function(args)
     if #args > 1 then
-      return false, "ctags command accepts only one optional argument (active)"
+      return false, "ctags command accepts only one optional argument (watchtower)"
     end
-    if #args == 1 and args[1]:lower() ~= "active" then
-      return false, "invalid ctags type. Valid type: active"
+    if #args == 1 and args[1]:lower() ~= "watchtower" then
+      return false, "invalid ctags type. Valid type: watchtower"
     end
     return true
   end,
-  active = function(args)
-    return #args == 0, "active command doesn't accept arguments"
+  watchtower = function(args)
+    return #args == 0, "watchtower command doesn't accept arguments"
   end,
   help = function(args)
     if #args > 1 then
@@ -138,7 +138,7 @@ local registry = {
     if #args == 0 then
       require("namu.namu_ctags").show()
     else
-      require("namu.namu_active.ctags").show()
+      require("namu.namu_watchtower.ctags").show()
     end
   end,
   colorscheme = function(opts)
@@ -165,8 +165,8 @@ local registry = {
       require("namu.namu_diagnostics").show("workspace")
     end
   end,
-  active = function(args)
-    require("namu.namu_active").show()
+  watchtower = function(args)
+    require("namu.namu_watchtower").show()
   end,
   help = function(args)
     if #args == 0 then
@@ -298,7 +298,7 @@ local function command_complete(_, line, col)
     end, call_types)
   end
   if words[2] == "ctags" then
-    local ctags_types = { "active" }
+    local ctags_types = { "watchtower" }
     local prefix = words[3] or ""
     return vim.tbl_filter(function(type)
       return vim.startswith(type, prefix:lower())
