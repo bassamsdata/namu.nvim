@@ -233,13 +233,17 @@ local registry = {
 local function command_callback(input)
   local subcommand = input.fargs[1]
   if not subcommand or subcommand == "" then
-    vim.notify("Usage: Namu <subcommand> [args]\nTry 'Namu help' for more information", vim.log.levels.WARN)
+    vim.notify(
+      "Usage: Namu <subcommand> [args]\nTry 'Namu help' for more information",
+      vim.log.levels.WARN,
+      { title = "Namu" }
+    )
     return
   end
 
   local cmd = registry[subcommand]
   if not cmd then
-    vim.notify("Invalid subcommand: " .. subcommand, vim.log.levels.ERROR)
+    vim.notify("Invalid subcommand: " .. subcommand, vim.log.levels.ERROR, { title = "Namu" })
     return
   end
 
@@ -251,14 +255,14 @@ local function command_callback(input)
   if command_validators[subcommand] then
     local is_valid, error_msg = command_validators[subcommand](args)
     if not is_valid then
-      vim.notify("Invalid arguments for " .. subcommand .. ": " .. error_msg, vim.log.levels.ERROR)
+      vim.notify("Invalid arguments for " .. subcommand .. ": " .. error_msg, vim.log.levels.ERROR, { title = "Namu" })
       return
     end
   end
 
   local success, result = pcall(cmd, args)
   if not success then
-    vim.notify("Error executing " .. subcommand .. ": " .. result, vim.log.levels.ERROR)
+    vim.notify("Error executing " .. subcommand .. ": " .. result, vim.log.levels.ERROR, { title = "Namu" })
   end
 end
 
