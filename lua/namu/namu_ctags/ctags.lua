@@ -176,6 +176,7 @@ local function symbols_to_selecta_items(raw_symbols)
         parent_signature = parent_signature,
         bufnr = bufnr,
       },
+      text = display_name,
       icon = impl.config.kindIcons[kind] or impl.config.icon,
       kind = kind,
       depth = depth,

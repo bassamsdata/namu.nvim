@@ -635,6 +635,7 @@ local function apply_highlights(buf, line_nr, item, opts, query, line_length, st
   local topline = win_info.topline - 1
   local botline = win_info.botline - 1
 
+  -- TODO: make text = item.text or item.value.text pleeeeeese
   if line_nr < topline or line_nr > botline then
     return
   end
