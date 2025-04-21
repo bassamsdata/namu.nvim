@@ -412,7 +412,18 @@ function M.show()
             end
           end,
         })
-
+        -- Count buffer items
+        local buffer_count = 0
+        for _, item in ipairs(all_items) do
+          if item.kind == "buffer" then
+            buffer_count = buffer_count + 1
+          end
+        end
+        local prompt_info = nil
+        if buffer_count > 0 then
+          local suffix = buffer_count == 1 and "buffer" or "buffers"
+          prompt_info = { text = "(" .. buffer_count .. " " .. suffix .. ")", hl_group = "Comment" }
+        end
         symbol_utils.show_picker(
           all_items,
           state,
@@ -421,9 +432,9 @@ function M.show()
           selecta,
           "Watchtower Symbols (ctags)",
           { title = "Namu" },
-          -- TODO: make one for ctags
           false,
-          "open"
+          "open",
+          prompt_info
         )
       end
     end
