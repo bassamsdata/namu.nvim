@@ -33,6 +33,7 @@ local special_filetypes = {
   -- org = true,
   vimdoc = true,
   markdown = true,
+  make = true,
 }
 
 -- Extract name from node using query captures

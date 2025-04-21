@@ -147,6 +147,17 @@ M.javascript = [[
   (#set! "kind" "Function")) @symbol
 ]]
 
+M.make = [[
+  (rule
+    (targets
+    (word) @name)
+    (#not-any-of? @name
+      ".ONESHELL"
+      ".PHONY"
+     )
+  (#set! "kind" "Interface")) @symbol
+]]
+
 -- Markdown query
 M.markdown = [[
 (atx_heading
