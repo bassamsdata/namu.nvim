@@ -6,9 +6,12 @@
 ---@field name string Symbol name
 ---@field kind number LSP symbol kind number
 ---@field range table<string, table> Symbol range in the document
----@field location? table<string, table>
+---@field location? table<string, table> Location information (alternative to range)
 ---@field children? LSPSymbol[] Child symbols
----@field bufnr number? Buffer number
+---@field parent_signature? string Signature of the parent symbol
+---@field signature? string Unique signature for this symbol
+---@field containerName? string Name of the container (for SymbolInformation)
+---@field selectionRange? table<string, table> Range for selection (for DocumentSymbol)
 
 ---@class NamuSymbolType
 ---@field kinds string[] List of LSP symbol kinds that match this filter

@@ -39,6 +39,11 @@ local config = require("namu.namu_symbols.config")
 -- For backward compatibility
 ---@NamuSymbolsConfig
 M.config = config.values
+M.config = vim.tbl_deep_extend("force", M.config, {
+  enhance_lua_test_symbols = true,
+  lua_test_truncate_length = 50,
+  lua_test_preserve_hierarchy = true,
+})
 
 -- Flag to track if implementation is loaded
 local impl_loaded = false
