@@ -107,7 +107,7 @@ local function symbols_to_selecta_items(raw_symbols, source, bufnr, config_value
 
     local parent_signature = depth > 0 and parent_stack[depth] or "buffer:" .. bufnr
     local clean_name = result.name:match("^([^%s%(]+)") or result.name
-    clean_name = state.original_ft == "markdown" and result.name or clean_name
+    clean_name = buffer_filetype == "markdown" and result.name or clean_name
     local style = tonumber(config_values.display.style) or 2
     local prefix = ui.get_prefix(depth, style)
     local display_text = prefix .. clean_name
