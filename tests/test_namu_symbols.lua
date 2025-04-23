@@ -3,6 +3,7 @@ local h = require("tests.helpers")
 local namu = require("namu.namu_symbols")
 local lsp = require("namu.namu_symbols.lsp")
 local format_utils = require("namu.core.format_utils")
+local test_patterns = require("namu.namu_symbols.lua_tests")
 ---@diagnostic disable-next-line: undefined-global
 local new_set = MiniTest.new_set
 
@@ -127,23 +128,29 @@ local function create_mock_config()
   }
 end
 
+local function create_mock_state()
+  return { original_buf = 1, original_ft = "lua" }
+end
+local function mock_lsp_symbol_kind(kind_num)
+  local kind_map = { [5] = "Class", [6] = "Method", [12] = "Function" }
+  return kind_map[kind_num] or "Unknown"
+end
+
+-- Mock buffer lines storage
+local mock_buffer_lines = {}
+local original_nvim_buf_get_lines = nil
+
 local function create_test_symbols()
   return {
     {
       name = "TestClass",
-      kind = 5, -- Class
-      range = {
-        start = { line = 0, character = 0 },
-        ["end"] = { line = 10, character = 0 },
-      },
+      kind = 5,
+      range = { start = { line = 0, character = 0 }, ["end"] = { line = 10, character = 0 } },
       children = {
         {
           name = "test_method",
-          kind = 6, -- Method
-          range = {
-            start = { line = 1, character = 2 },
-            ["end"] = { line = 3, character = 2 },
-          },
+          kind = 6,
+          range = { start = { line = 1, character = 2 }, ["end"] = { line = 3, character = 2 } },
         },
       },
     },
@@ -257,6 +264,260 @@ T["Init.caching"]["uses cache when available"] = function()
   h.eq(vim.inspect(result1), vim.inspect(result2))
 
   namu.config = _original_config
+end
+
+T["LuaTests"] = new_set({
+  hooks = {
+    pre_case = function()
+      -- Store original and apply mock before each test case in this set
+      original_nvim_buf_get_lines = vim.api.nvim_buf_get_lines
+      vim.api.nvim_buf_get_lines = function(bufnr, start_line, end_line, _)
+        -- Basic checks within the mock
+        if bufnr ~= 1 then
+          error("Mocked for bufnr 1 only")
+        end
+        if end_line ~= start_line + 1 then
+          error("Mocked for single line fetch only")
+        end
+        -- Return the mocked line or empty string
+        return { mock_buffer_lines[start_line + 1] or "" }
+      end
+      mock_buffer_lines = {} -- Ensure clean slate for lines
+    end,
+    post_case = function()
+      -- Restore original function after each test case
+      if original_nvim_buf_get_lines then
+        vim.api.nvim_buf_get_lines = original_nvim_buf_get_lines
+      end
+      original_nvim_buf_get_lines = nil
+      mock_buffer_lines = {} -- Clear lines after test
+    end,
+  },
+})
+
+-- Tests for extract_lua_test_info (Keep tests as they were)
+T["LuaTests"]["extract_lua_test_info handles double quotes multi-bracket"] = function()
+  local line = 'T["Category"]["Test Name"] = function()'
+  local result = test_patterns.extract_lua_test_info(line)
+  h.not_eq(result, nil)
+  h.eq(result.namespace, "T")
+  h.eq(result.segments[1], "Category")
+  h.eq(result.segments[2], "Test Name")
+  h.eq(result.quote_type, '"')
+  h.eq(result.parent_name, "Category")
+  h.eq(result.parent_full_name, 'T["Category"]')
+  h.eq(result.full_name, 'T["Category"]["Test Name"]')
+  h.eq(result.child_display, '["Test Name"]')
+  h.eq(type(result.last_bracket_pos), "number")
+end
+
+T["LuaTests"]["extract_lua_test_info handles single quotes multi-bracket"] = function()
+  local line = "T['Category']['Test Name'] = function()"
+  local result = test_patterns.extract_lua_test_info(line)
+  h.not_eq(result, nil)
+  h.eq(result.namespace, "T")
+  h.eq(result.segments[1], "Category")
+  h.eq(result.segments[2], "Test Name")
+  h.eq(result.quote_type, "'")
+  h.eq(result.parent_full_name, "T['Category']")
+  h.eq(result.full_name, "T['Category']['Test Name']")
+  h.eq(result.child_display, "['Test Name']")
+  h.eq(type(result.last_bracket_pos), "number")
+end
+
+T["LuaTests"]["extract_lua_test_info handles single bracket"] = function()
+  local line = 'T["Single Test"] = function()'
+  local result = test_patterns.extract_lua_test_info(line)
+  h.not_eq(result, nil)
+  h.eq(result.namespace, "T")
+  h.eq(#result.segments, 1)
+  h.eq(result.segments[1], "Single Test")
+  h.eq(result.parent_full_name, 'T["Single Test"]')
+  h.eq(result.full_name, 'T["Single Test"]')
+  h.eq(result.child_display, nil)
+  h.eq(result.last_bracket_pos, nil)
+end
+
+T["LuaTests"]["extract_lua_test_info handles invalid line"] = function()
+  local line = "local function my_func()"
+  local result = test_patterns.extract_lua_test_info(line)
+  h.eq(result, nil)
+end
+
+-- Tests for count_first_brackets (Keep tests as they were)
+T["LuaTests"]["count_first_brackets counts correctly"] = function()
+  local config = create_mock_config()
+  local state = create_mock_state()
+  local test_info_cache = {}
+  local first_bracket_counts = {}
+  mock_buffer_lines[1] = 'T["Category"]["Test 1"] = function()' -- Line 1 (index 0 in API)
+  mock_buffer_lines[2] = 'T["Category"]["Test 2"] = function()' -- Line 2 (index 1 in API)
+  mock_buffer_lines[3] = 'T["Other"]["Test 3"] = function()' -- Line 3 (index 2 in API)
+
+  local symbols = {
+    { name = "", kind = 12, range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 10 } } },
+    { name = "", kind = 12, range = { start = { line = 1, character = 0 }, ["end"] = { line = 1, character = 10 } } },
+    { name = "", kind = 12, range = { start = { line = 2, character = 0 }, ["end"] = { line = 2, character = 10 } } },
+  }
+
+  for _, symbol in ipairs(symbols) do
+    test_patterns.count_first_brackets(symbol, state, config, test_info_cache, first_bracket_counts)
+  end
+
+  h.eq(first_bracket_counts['T["Category"]'], 2)
+  h.eq(first_bracket_counts['T["Other"]'], 1)
+  h.not_eq(test_info_cache[0], nil)
+  h.not_eq(test_info_cache[1], nil)
+  h.not_eq(test_info_cache[2], nil)
+end
+
+-- Tests for process_lua_test_symbol (Keep tests as they were)
+T["LuaTests"]["process_lua_test_symbol hierarchy enabled multi-bracket"] = function()
+  local config = create_mock_config()
+  config.lua_test_preserve_hierarchy = true
+  local state = create_mock_state()
+  local test_info_cache = {}
+  local first_bracket_counts = { ['T["Category"]'] = 2 }
+  local items = {}
+  local bufnr = 1
+
+  mock_buffer_lines[1] = 'T["Category"]["Test 1"] = function()' -- Line 1 (index 0 in API)
+  local symbol = { name = "", kind = 12 }
+  local range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 30 } }
+
+  local depth, parent_sig = test_patterns.process_lua_test_symbol(
+    symbol,
+    config,
+    state,
+    range,
+    test_info_cache,
+    first_bracket_counts,
+    items,
+    0,
+    T._test.generate_signature,
+    mock_lsp_symbol_kind,
+    bufnr
+  )
+
+  h.eq(#items, 1)
+  h.eq(items[1].value.name, 'T["Category"]')
+  h.eq(items[1].depth, 0)
+  local expected_parent_sig = items[1].value.signature
+
+  h.eq(symbol.name, '["Test 1"]')
+  h.eq(symbol.is_test_symbol, true)
+  h.eq(range.start.character >= 0, true) -- Check character was adjusted (>=0)
+  h.eq(symbol.parent_signature, expected_parent_sig)
+
+  h.eq(depth, 1)
+  h.eq(parent_sig, expected_parent_sig)
+end
+
+T["LuaTests"]["process_lua_test_symbol hierarchy enabled single bracket"] = function()
+  local config = create_mock_config()
+  config.lua_test_preserve_hierarchy = true
+  local state = create_mock_state()
+  local test_info_cache = {}
+  local first_bracket_counts = { ['T["Single"]'] = 1 }
+  local items = {}
+  local bufnr = 1
+
+  mock_buffer_lines[1] = 'T["Single"] = function()' -- Line 1 (index 0 in API)
+  local symbol = { name = "", kind = 12 }
+  local range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 30 } }
+
+  local depth, parent_sig = test_patterns.process_lua_test_symbol(
+    symbol,
+    config,
+    state,
+    range,
+    test_info_cache,
+    first_bracket_counts,
+    items,
+    0,
+    T._test.generate_signature,
+    mock_lsp_symbol_kind,
+    bufnr
+  )
+
+  h.eq(#items, 0)
+
+  h.eq(symbol.name, 'T["Single"]')
+  h.eq(symbol.is_test_symbol, true)
+  h.eq(range.start.character, 0)
+  h.eq(symbol.parent_signature, nil)
+
+  h.eq(depth, 0)
+  h.eq(parent_sig, nil)
+end
+
+T["LuaTests"]["process_lua_test_symbol hierarchy disabled"] = function()
+  local config = create_mock_config()
+  config.lua_test_preserve_hierarchy = false
+  local state = create_mock_state()
+  local test_info_cache = {}
+  local first_bracket_counts = {}
+  local items = {}
+  local bufnr = 1
+
+  mock_buffer_lines[1] = 'T["Category"]["Test 1"] = function()' -- Line 1 (index 0 in API)
+  local symbol = { name = "", kind = 12 }
+  local range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 30 } }
+
+  local depth, parent_sig = test_patterns.process_lua_test_symbol(
+    symbol,
+    config,
+    state,
+    range,
+    test_info_cache,
+    first_bracket_counts,
+    items,
+    0,
+    T._test.generate_signature,
+    mock_lsp_symbol_kind,
+    bufnr
+  )
+
+  h.eq(#items, 0)
+
+  h.eq(symbol.name, 'T["Category"]["Test 1"]')
+  h.eq(symbol.is_test_symbol, true)
+  h.eq(range.start.character, 0)
+  h.eq(symbol.parent_signature, nil)
+
+  h.eq(depth, 0)
+  h.eq(parent_sig, nil)
+end
+
+T["LuaTests"]["process_lua_test_symbol handles truncation"] = function()
+  local config = create_mock_config()
+  config.lua_test_preserve_hierarchy = false
+  config.lua_test_truncate_length = 10
+  local state = create_mock_state()
+  local test_info_cache = {}
+  local first_bracket_counts = {}
+  local items = {}
+  local bufnr = 1
+
+  mock_buffer_lines[1] = 'T["AVeryLongCategoryName"]["AnotherVeryLongTestName"] = function()' -- Line 1 (index 0 in API)
+  local symbol = { name = "", kind = 12 }
+  local range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 60 } }
+
+  test_patterns.process_lua_test_symbol(
+    symbol,
+    config,
+    state,
+    range,
+    test_info_cache,
+    first_bracket_counts,
+    items,
+    0,
+    T._test.generate_signature,
+    mock_lsp_symbol_kind,
+    bufnr
+  )
+
+  h.eq(symbol.name, 'T["AVeryLo...')
 end
 
 return T
