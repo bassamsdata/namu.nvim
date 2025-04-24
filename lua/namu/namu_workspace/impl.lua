@@ -412,6 +412,8 @@ function impl.show_with_query(config, query, opts)
               })
               api.nvim_win_call(state.original_win, function()
                 vim.cmd("normal! zz")
+                -- Set alternate buffer
+                vim.fn.setreg("#", state.original_buf)
               end)
             end
           end)
