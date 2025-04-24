@@ -619,8 +619,10 @@ function M.show(config, scope)
         and api.nvim_buf_is_valid(state.original_buf)
       then
         api.nvim_win_call(state.original_win, function()
+          api.nvim_set_option_value("buflisted", true, { buf = item.value.bufnr })
           api.nvim_win_set_buf(state.original_win, item.value.bufnr)
           api.nvim_win_set_cursor(state.original_win, { item.value.lnum + 1, item.value.col })
+          vim.fn.setreg("#", state.original_buf)
           vim.cmd("normal! zz")
         end)
       end
