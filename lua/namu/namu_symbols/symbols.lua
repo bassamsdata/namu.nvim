@@ -152,11 +152,7 @@ local function symbols_to_selecta_items(raw_symbols, config, source)
     local parent_signature = result.parent_signature or (depth > 0 and parent_stack[depth] or nil)
 
     -- Create the item - Don't use regex for clean_name to prevent truncation
-    local clean_name = result.name
-    if not is_test_file then
-      clean_name = result.name:match("^([^%s%(]+)") or result.name
-    end
-    clean_name = state.original_ft == "markdown" and result.name or clean_name
+    local clean_name = core_utils.clean_symbol_name(result.name, state.original_ft, is_test_file)
 
     -- For TreeSitter, we need to map the kind string to a number
     local kind

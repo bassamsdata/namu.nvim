@@ -108,6 +108,30 @@ function M.is_big_buffer(bufnr, opts)
   return false
 end
 
+-- Cache frequently used patterns
+local NON_TEST_NAME_PATTERN = "^([^%s%(]+)"
+local MARKDOWN_LINE_PATTERN = "^([^\n\r]+)" -- this is for markdown lsp returns multiline sometime
+---Clean symbol name for display, handling special cases for different filetypes
+---@param name string Original symbol name
+---@param filetype string|nil File type
+---@param is_test_file boolean Whether this is a test file
+---@return string Cleaned name
+function M.clean_symbol_name(name, filetype, is_test_file)
+  if not name then
+    return ""
+  end
+
+  if is_test_file then
+    return name
+  end
+
+  if filetype == "markdown" then
+    return name:match(MARKDOWN_LINE_PATTERN) or name
+  end
+
+  return name:match(NON_TEST_NAME_PATTERN) or name
+end
+
 --- Modified highlighting function that uses is_big_buffer
 --- @param symbol table LSP symbol item
 --- @param win number Window handle
