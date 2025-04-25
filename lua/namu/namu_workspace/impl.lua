@@ -345,10 +345,16 @@ function impl.show_with_query(config, query, opts)
     end
 
     -- Always show picker, even with placeholder items
+    local prompt_info = {
+      text = " type to search",
+      -- pos = "eol",
+      hl_group = "Comment",
+    }
     impl.selecta.pick(
       initial_items,
       vim.tbl_deep_extend("force", config, {
-        title = "Workspace Symbols ",
+        title = "Namu Workspace ",
+        initial_prompt_info = prompt_info,
         config,
         async_source = create_async_symbol_source(state.original_buf, config),
         pre_filter = function(items, input_query)
