@@ -4,6 +4,7 @@ local namu = require("namu.namu_symbols")
 local lsp = require("namu.namu_symbols.lsp")
 local format_utils = require("namu.core.format_utils")
 local test_patterns = require("namu.namu_symbols.lua_tests")
+local treesitter_symbols = require("namu.core.treesitter_symbols")
 ---@diagnostic disable-next-line: undefined-global
 local new_set = MiniTest.new_set
 
@@ -227,28 +228,24 @@ T["Init.show"] = new_set()
 
 T["Init.show"]["handles empty results correctly"] = function()
   local notified = false
-  local _original_notify = vim.notify
-  local _original_request_symbols = lsp.request_symbols
-  local _original_config = namu.config
-
+  local expected_message = "No symbol provider for lua buffer (missing LSP/TreeSitter)"
   namu.config = create_mock_config()
+  vim.bo.filetype = "lua"
   vim.notify = function(msg, level)
-    if msg == "No results." and level == vim.log.levels.WARN then
+    if msg == expected_message and level == vim.log.levels.WARN then
       notified = true
     end
   end
-
+  -- Mock LSP to return no results
   lsp.request_symbols = function(_, _, callback)
-    callback(nil, {}, nil)
+    callback(nil, {}, nil) -- Simulate LSP error/empty result
   end
-
+  -- Mock TreeSitter to also return no results
+  treesitter_symbols.get_symbols = function(_)
+    return {} -- Simulate TreeSitter finding no symbols
+  end
   namu.show()
-
   h.eq(notified, true)
-
-  vim.notify = _original_notify
-  lsp.request_symbols = _original_request_symbols
-  namu.config = _original_config
 end
 
 T["Init.caching"] = new_set()
