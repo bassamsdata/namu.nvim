@@ -13,6 +13,7 @@ local command_descriptions = {
   colorscheme = "Select and apply colorscheme",
   call = "Show call hierarchy (use 'call in', 'call out', or 'call both')",
   workspace = "Search workspace symbols with LSP",
+  treesitter = "Show symbols using Treesitter",
   diagnostics = "Show diagnostics for current buffer (use 'diagnostics workspace' for workspace diagnostics)",
   open = "Show symbols from all open buffers",
   help = "Show help information (use 'help symbols' or 'help analysis' for detailed views)",
@@ -88,6 +89,9 @@ local command_validators = {
   end,
   watchtower = function(args)
     return #args == 0, "watchtower command doesn't accept arguments"
+  end,
+  treesitter = function(args)
+    return #args == 0, "Treesitter doesn't currently accept arguments"
   end,
   help = function(args)
     if #args > 1 then
@@ -167,6 +171,9 @@ local registry = {
   end,
   watchtower = function(args)
     require("namu.namu_watchtower").show()
+  end,
+  treesitter = function(args)
+    require("namu.namu_symbols").show_treesitter()
   end,
   help = function(args)
     if #args == 0 then

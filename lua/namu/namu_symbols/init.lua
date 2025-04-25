@@ -43,6 +43,7 @@ M.config = vim.tbl_deep_extend("force", M.config, {
   enhance_lua_test_symbols = true,
   lua_test_truncate_length = 50,
   lua_test_preserve_hierarchy = true,
+  source_priority = "lsp", -- Options: "lsp", "treesitter"
 })
 
 -- Flag to track if implementation is loaded
@@ -76,6 +77,14 @@ function M.show(opts)
     return
   end
   return impl.show(M.config, opts)
+end
+
+function M.show_treesitter(opts)
+  load_impl()
+  if not impl then
+    return
+  end
+  return impl.show_treesitter(M.config, opts)
 end
 
 -- Sets up default keymappings for symbol navigation

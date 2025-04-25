@@ -13,6 +13,8 @@ local symbol_utils = require("namu.core.symbol_utils")
 local format_utils = require("namu.core.format_utils")
 local test_patterns = require("namu.namu_symbols.lua_tests")
 local logger = require("namu.utils.logger")
+local core_utils = require("namu.core.utils")
+local treesitter_symbols = require("namu.core.treesitter_symbols")
 
 local M = {}
 
@@ -46,8 +48,10 @@ end
 ---Converts LSP symbols to selecta-compatible items with proper formatting
 ---@param raw_symbols LSPSymbol[]
 ---@param config table
+---@param source? string The source of the symbols ("lsp" or "treesitter")
 ---@return SelectaItem[]
-local function symbols_to_selecta_items(raw_symbols, config)
+local function symbols_to_selecta_items(raw_symbols, config, source)
+  source = source or "lsp"
   local bufnr = vim.api.nvim_get_current_buf()
   local cache_key = string.format("%d_%d", bufnr, vim.b[bufnr].changedtick or 0)
 
@@ -135,7 +139,7 @@ local function symbols_to_selecta_items(raw_symbols, config)
     end
     -- Generate signature for current item
     local signature = generate_signature(result, depth)
-    if not lsp.should_include_symbol(result, config, vim.bo.filetype) then
+    if source == "lsp" and not lsp.should_include_symbol(result, config, vim.bo.filetype) then
       if result.children then
         for _, child in ipairs(result.children) do
           process_symbol_result(child, depth, parent_stack)
@@ -154,12 +158,20 @@ local function symbols_to_selecta_items(raw_symbols, config)
     end
     clean_name = state.original_ft == "markdown" and result.name or clean_name
 
-    local kind = lsp.symbol_kind(result.kind)
+    -- For TreeSitter, we need to map the kind string to a number
+    local kind
+    if source == "treesitter" then
+      kind = lsp.symbol_kind_to_number(result.kind)
+    else
+      kind = result.kind
+    end
+    local kind_name = lsp.symbol_kind(kind)
+
     local item = {
       value = {
         text = clean_name,
         name = clean_name,
-        kind = kind,
+        kind = kind_name,
         lnum = range.start.line + 1,
         col = range.start.character + 1,
         end_lnum = range["end"].line + 1,
@@ -170,9 +182,10 @@ local function symbols_to_selecta_items(raw_symbols, config)
       -- PERF: we need this for matcher.
       text = clean_name,
       bufnr = bufnr,
-      icon = config.kindIcons[kind] or config.icon,
-      kind = kind,
+      icon = config.kindIcons[kind_name] or config.icon,
+      kind = kind_name,
       depth = depth,
+      source = source,
     }
     table.insert(items, item)
     -- Store current signature as parent for next depth level
@@ -191,8 +204,14 @@ local function symbols_to_selecta_items(raw_symbols, config)
   if config.display.format == "tree_guides" then
     items = format_utils.add_tree_state_to_items(items)
   end
-  symbol_cache = { key = cache_key, items = items }
-  symbol_utils.update_symbol_ranges_cache(items, symbol_range_cache)
+  if not core_utils.is_big_buffer(bufnr) then
+    symbol_cache = {
+      key = cache_key,
+      items = items,
+      source = source,
+    }
+    symbol_utils.update_symbol_ranges_cache(items, symbol_range_cache)
+  end
 
   return items
 end
@@ -208,7 +227,6 @@ function M.show(config, opts)
   -- Use cached symbols if available
   local bufnr = vim.api.nvim_get_current_buf()
   local cache_key = string.format("%d_%d", bufnr, vim.b[bufnr].changedtick or 0)
-
   if symbol_cache and symbol_cache.key == cache_key then
     local items = symbol_cache.items
     -- If filter_kind is specified, filter the cached items
@@ -217,42 +235,161 @@ function M.show(config, opts)
         return item.kind == opts.filter_kind
       end, items)
     end
-    symbol_utils.show_picker(items, state, config, ui, selecta, "LSP Symbols", notify_opts, false, "buffer")
+    -- Create prompt info based on source in cache
+    local prompt_info = {
+      text = symbol_cache.source == "lsp" and "󰿘 " or " ",
+      hl_group = "NamuSourceIndicator",
+    }
+    symbol_utils.show_picker(
+      items,
+      state,
+      config,
+      ui,
+      selecta,
+      "LSP Symbols",
+      notify_opts,
+      false,
+      "buffer",
+      prompt_info
+    )
     return
   end
 
+  local try_treesitter_first = config.source_priority == "treesitter"
+  local ts_attempted = false
+
+  local function try_treesitter()
+    ts_attempted = true
+    return M.show_treesitter(config, opts, true) -- pass silent as true
+  end
+  if try_treesitter_first then
+    if try_treesitter() then
+      return
+    end
+    logger.log("TreeSitter symbols not available, falling back to LSP")
+  end
+
   lsp.request_symbols(state.original_buf, "textDocument/documentSymbol", function(err, result, _)
-    if err then
-      local error_message = type(err) == "table" and err.message or err
-      vim.notify("Error fetching symbols: " .. error_message, vim.log.levels.ERROR, notify_opts)
+    if err or not result or #result == 0 then
+      local error_message = err and (type(err) == "table" and err.message or err) or "No results from LSP"
+      logger.log("LSP error: " .. error_message)
+
+      -- If LSP failed and we haven't tried TreeSitter yet, try it now
+      if not ts_attempted and not try_treesitter_first then
+        logger.log("LSP failed, trying TreeSitter")
+        if try_treesitter() then
+          return
+        end
+      end
+      -- Show a single consolidated error message if both methods failed
+      if ts_attempted then
+        local ft = vim.bo[state.original_buf].filetype or ""
+        local message =
+          string.format("No symbol provider for %s buffer (missing LSP/TreeSitter)", ft ~= "" and ft or "this")
+        vim.notify(message, vim.log.levels.WARN, notify_opts)
+      else
+        vim.notify(error_message, vim.log.levels.ERROR, notify_opts)
+      end
       return
     end
-    if not result or #result == 0 then
-      vim.notify("No results.", vim.log.levels.WARN, notify_opts)
-      return
-    end
-
-    -- Convert directly to selecta items preserving hierarchy
-    local selectaItems = symbols_to_selecta_items(result, config)
-
-    -- Update cache
-    symbol_cache = {
-      key = cache_key,
-      items = selectaItems,
-    }
-
-    -- Apply filter if specified
+    local selectaItems = symbols_to_selecta_items(result, config, "lsp")
+    -- -- Update cache
+    -- symbol_cache = {
+    --   key = cache_key,
+    --   items = selectaItems,
+    --   source = "lsp",
+    -- }
     if opts.filter_kind then
       selectaItems = vim.tbl_filter(function(item)
         return item.kind == opts.filter_kind
       end, selectaItems)
     end
+    local prompt_info = {
+      text = "󰿘 ",
+      hl_group = "NamuSourceIndicator",
+    }
 
-    symbol_utils.show_picker(selectaItems, state, config, ui, selecta, "LSP Symbols", notify_opts, false, "buffer")
+    symbol_utils.show_picker(
+      selectaItems,
+      state,
+      config,
+      ui,
+      selecta,
+      "LSP Symbols",
+      notify_opts,
+      false,
+      "buffer",
+      prompt_info
+    )
   end)
 end
 
--- Expose test utilities
+--- Show symbols from current buffer using TreeSitter
+--- @param opts? {filter_kind?: string} Optional settings to filter specific kinds
+--- @return boolean True if symbols were found and displayed, false otherwise
+function M.show_treesitter(config, opts, silent)
+  opts = opts or {}
+  initialize_state(config)
+  local notify_opts = { title = "Namu", icon = config.icon }
+
+  local bufnr = vim.api.nvim_get_current_buf()
+  local ts_symbols = treesitter_symbols.get_symbols(bufnr)
+  if not ts_symbols or #ts_symbols == 0 then
+    if not silent then
+      vim.notify("No TreeSitter symbols found in current buffer", vim.log.levels.WARN, notify_opts)
+    else
+      logger.log("No TreeSitter symbols found in current buffer")
+    end
+    return false
+  end
+
+  logger.log("Got " .. #ts_symbols .. " TreeSitter symbols")
+  local selectaItems = symbols_to_selecta_items(ts_symbols, config, "treesitter")
+
+  if opts and opts.filter_kind then
+    selectaItems = vim.tbl_filter(function(item)
+      return item.kind == opts.filter_kind
+    end, selectaItems)
+  end
+
+  if #selectaItems == 0 then
+    if not silent then
+      vim.notify("No symbols match the specified filter", vim.log.levels.WARN, notify_opts)
+    else
+      logger.log("No symbols match the specified filter")
+    end
+    return false
+  end
+
+  -- Only cache if not a big buffer
+  -- if not core_utils.is_big_buffer(bufnr) then
+  -- symbol_cache = {
+  --   key = string.format("%d_%d", bufnr, vim.b[bufnr].changedtick or 0),
+  --   items = selectaItems,
+  --   source = "treesitter",
+  -- }
+  -- symbol_utils.update_symbol_ranges_cache(selectaItems, symbol_range_cache)
+  -- end
+
+  local prompt_info = {
+    text = " ",
+    hl_group = "NamuSourceIndicator",
+  }
+  symbol_utils.show_picker(
+    selectaItems,
+    state,
+    config,
+    ui,
+    selecta,
+    "TreeSitter Symbols",
+    notify_opts,
+    false,
+    "buffer",
+    prompt_info
+  )
+  return true
+end
+
 M._test = {
   symbols_to_selecta_items = function(raw_symbols)
     -- This wrapper ensures compatibility with the original test API

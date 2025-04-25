@@ -60,6 +60,7 @@ function M.setup()
   M.set_highlights({
     NamuCursor = { blend = 100, nocombine = true },
     NamuPrefix = "Special",
+    NamuSourceIndicator = "Ignore",
     NamuMatch = "Identifier", -- the matched characters in items
     NamuFilter = "Type", -- the prefix in prompt window
     NamuPrompt = "FloatTitle", -- Prompt window

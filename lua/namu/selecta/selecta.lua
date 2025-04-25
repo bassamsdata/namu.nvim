@@ -984,7 +984,7 @@ local function update_prompt_info(state, opts, show_info)
   if show_info and opts.initial_prompt_info and opts.initial_prompt_info.text then
     vim.api.nvim_buf_set_extmark(state.prompt_buf, prompt_info_ns, 0, 0, {
       virt_text = { { opts.initial_prompt_info.text, opts.initial_prompt_info.hl_group or "Comment" } },
-      virt_text_pos = "right_align",
+      virt_text_pos = opts.initial_prompt_info.pos or "right_align",
       priority = 201,
     })
   end

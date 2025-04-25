@@ -41,40 +41,70 @@ function M.get_file_icon(file_path)
 end
 
 --- Determines if a buffer is considered "big" based on size thresholds
---- @param bufnr number|nil Buffer number (uses current buffer if nil)
---- @param line_threshold number|boolean Line threshold or false to skip check
---- @param byte_threshold number|boolean Byte threshold or false to skip check
+--- @param bufnr? number Buffer number (uses current buffer if nil)
+--- @param opts? {line_threshold?: number|false, byte_threshold_mb?: number|false, long_line_threshold?: number|false}
+---   Configuration options with thresholds:
+---   - line_threshold: Maximum number of lines (default: 10000, false to disable)
+---   - byte_threshold_mb: Maximum file size in MB (default: 1MB, false to disable)
+---   - long_line_threshold: Maximum line length (default: 1000, false to disable)
 --- @return boolean Whether the buffer is considered big
-function M.is_big_buffer(bufnr, line_threshold, byte_threshold)
+function M.is_big_buffer(bufnr, opts)
+  -- Handle parameters
   bufnr = bufnr or vim.api.nvim_get_current_buf()
+  opts = opts or {}
 
-  -- Check line count if enabled
-  if line_threshold ~= false then
-    line_threshold = line_threshold or 10000
+  -- Set defaults with clear variable names
+  local max_lines = opts.line_threshold
+  if max_lines == nil then
+    max_lines = 10000
+  end
+
+  local max_mb = opts.byte_threshold_mb
+  if max_mb == nil then
+    max_mb = 1
+  end -- Default 1MB
+
+  -- Convert MB to bytes internally
+  local max_bytes = max_mb ~= false and (max_mb * 1024 * 1024) or false
+
+  local max_line_length = opts.long_line_threshold
+  if max_line_length == nil then
+    max_line_length = 1000
+  end
+
+  -- 1. Check line count
+  if max_lines ~= false then
     local line_count = vim.api.nvim_buf_line_count(bufnr)
-    if line_count > line_threshold then
+    if line_count > max_lines then
       return true
     end
   end
-  -- Check file size if enabled
-  if byte_threshold ~= false then
-    byte_threshold = byte_threshold or 1000000 -- ~1MB
+
+  -- 2. Check file size
+  if max_bytes ~= false then
     local filepath = vim.api.nvim_buf_get_name(bufnr)
     if filepath and filepath ~= "" then
-      local stat = vim.loop.fs_stat(filepath)
-      if stat and stat.size > byte_threshold then
+      local stat = vim.uv.fs_stat(filepath)
+      if stat and stat.size > max_bytes then
         return true
       end
     end
   end
-  -- Check for long lines (could also make this optional)
-  local sample_lines = vim.api.nvim_buf_get_lines(bufnr, 0, math.min(100, vim.api.nvim_buf_line_count(bufnr)), false)
-  for _, line in ipairs(sample_lines) do
-    if #line > 1000 then -- Very long line detected
-      return true
+
+  -- 3. Check for long lines
+  if max_line_length ~= false then
+    -- Only sample the first 100 lines for efficiency
+    local lines_to_check = math.min(100, vim.api.nvim_buf_line_count(bufnr))
+    local sample_lines = vim.api.nvim_buf_get_lines(bufnr, 0, lines_to_check, false)
+
+    for _, line in ipairs(sample_lines) do
+      if #line > max_line_length then
+        return true
+      end
     end
   end
 
+  -- Buffer is not considered big by any criteria
   return false
 end
 

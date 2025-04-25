@@ -70,6 +70,12 @@
 ---@field current_highlight CurrentHighlightConfig Configuration for selection highlighting
 ---@field preserve_hierarchy? boolean Whether to show parent items when filtering
 
+---@class NamuSymbolsConfig : NamuCoreConfig
+---@field source_priority "lsp|treesitter" which source to prioritize for symbol resolution
+---@field enhance_lua_test_symbols boolean Whether to enhance Lua test symbols
+---@field lua_test_truncate_length number Length to truncate Lua test symbols
+---@field lua_test_preserve_hierarchy boolean Whether to preserve hierarchy in Lua test symbols
+
 ---@class CallHierarchyConfig : NamuCoreConfig
 ---@field call_hierarchy table Configuration for call hierarchy
 ---@field call_hierarchy.max_depth number Maximum depth to search for calls
