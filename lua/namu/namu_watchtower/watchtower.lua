@@ -14,6 +14,7 @@ local selecta = require("namu.selecta.selecta")
 local symbol_utils = require("namu.core.symbol_utils")
 local format_utils = require("namu.core.format_utils")
 local treesitter_symbols = require("namu.core.treesitter_symbols")
+local test_patterns = require("namu.namu_symbols.lua_tests")
 local utils = require("namu.core.utils")
 local logger = require("namu.utils.logger")
 local api = vim.api
@@ -75,6 +76,25 @@ local function symbols_to_selecta_items(raw_symbols, source, bufnr, config_value
   local items = {}
   local buffer_filetype = api.nvim_get_option_value("filetype", { buf = bufnr })
 
+  local buf_name = vim.api.nvim_buf_get_name(bufnr)
+  local is_test_file = buf_name:match("_spec%.lua$")
+    or buf_name:match("_test%.lua$")
+    or buf_name:match("/tests/.+%.lua$")
+
+  local first_bracket_counts = {}
+  local test_info_cache = {}
+  -- First pass: count brackets if hierarchy is enabled for Lua test files
+  if is_test_file and config_values.lua_test_preserve_hierarchy and state.original_ft == "lua" then
+    logger.log("Performing first pass to count Lua test brackets for hierarchy.")
+    for _, symbol in ipairs(raw_symbols) do
+      -- Call the counting function from the test_patterns module
+      test_patterns.count_first_brackets(symbol, state, config_values, test_info_cache, first_bracket_counts)
+    end
+    -- Log the counts for debugging
+    for bracket, count in pairs(first_bracket_counts) do
+      logger.log("First bracket count - " .. bracket .. ": " .. count)
+    end
+  end
   local function generate_signature(symbol, depth)
     local range = symbol.range or (symbol.location and symbol.location.range)
     if not range then
@@ -92,6 +112,30 @@ local function symbols_to_selecta_items(raw_symbols, source, bufnr, config_value
     local range = result.range or (result.location and result.location.range)
     if not range or not range.start or not range["end"] then
       return
+    end
+
+    if
+      state.original_ft == "lua"
+      and is_test_file
+      and config_values.enhance_lua_test_symbols
+      and (result.name == "" or result.name == " " or result.name:match("^function"))
+      and range
+    then
+      -- Call the processing function from the test_patterns module
+      local new_depth = test_patterns.process_lua_test_symbol(
+        result,
+        config_values,
+        state,
+        range,
+        test_info_cache,
+        first_bracket_counts,
+        items,
+        depth,
+        generate_signature,
+        lsp.symbol_kind,
+        bufnr
+      )
+      depth = new_depth
     end
     local signature = generate_signature(result, depth)
 

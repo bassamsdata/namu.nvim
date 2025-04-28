@@ -8,6 +8,9 @@ local M = {}
 -- Import only the configuration dependency
 M.config = require("namu.namu_symbols.config").values
 M.config = vim.tbl_deep_extend("force", M.config, {
+  enhance_lua_test_symbols = true,
+  lua_test_truncate_length = 50,
+  lua_test_preserve_hierarchy = true,
   display = {
     format = "tree_guides",
   },
