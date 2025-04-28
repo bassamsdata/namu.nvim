@@ -386,6 +386,15 @@ local function format_lsp_error(err, default_message)
   end
 end
 
+-- track if we've already shown a notification
+local notification_shown = false
+local function show_notification(message, level, opts)
+  if not notification_shown then
+    notification_shown = true
+    vim.notify(message, level or vim.log.levels.INFO, opts)
+  end
+end
+
 ---Fetch calls in either direction recursively
 ---@param item table Call hierarchy item
 ---@param all_items table Array to append results to
@@ -421,7 +430,7 @@ local function fetch_calls_recursive(
       local error_message = format_lsp_error(err, "Unknown error")
 
       if depth == 1 then
-        vim.notify(
+        show_notification(
           "Error fetching "
             .. direction
             .. " calls: "
@@ -651,8 +660,8 @@ local function apply_simple_highlights(buf, filtered_items, config)
 end
 
 function M.show_call_picker(selectaItems, notify_opts)
-  if #selectaItems == 0 then
-    vim.notify("No call hierarchy items found.", nil, notify_opts)
+  if #selectaItems <= 1 then
+    show_notification("No call hierarchy items found.", vim.log.levels.INFO, notify_opts)
     return
   end
   -- Super simple approach: deduplicate based on name + file
@@ -862,6 +871,7 @@ end
 function M.show(direction)
   direction = direction or CallDirection.BOTH
   processed_call_signatures = {}
+  notification_shown = false
 
   state.original_win = api.nvim_get_current_win()
   state.original_buf = api.nvim_get_current_buf()
@@ -904,12 +914,12 @@ function M.show(direction)
     make_call_hierarchy_request("textDocument/prepareCallHierarchy", params, function(err, result)
       if err then
         local error_message = format_lsp_error(err, "Unknown error")
-        vim.notify("Error preparing call hierarchy: " .. error_message, vim.log.levels.ERROR, notify_opts)
+        show_notification("Error preparing call hierarchy: " .. error_message, vim.log.levels.ERROR, notify_opts)
         return
       end
 
       if not result or #result == 0 then
-        vim.notify(
+        show_notification(
           "No call hierarchy items found at cursor position.\n Ensure the cursor is over a proper symbol.",
           vim.log.levels.WARN,
           notify_opts
@@ -931,7 +941,7 @@ function M.show(direction)
     process_call_hierarchy_item(synthetic_item, direction, cache_key, notify_opts)
   else
     -- No support for required call hierarchy methods
-    vim.notify("No LSP client supports the required call hierarchy methods", vim.log.levels.WARN, notify_opts)
+    show_notification("No LSP client supports the required call hierarchy methods", vim.log.levels.WARN, notify_opts)
   end
 end
 
