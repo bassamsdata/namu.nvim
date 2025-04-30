@@ -15,7 +15,7 @@ local command_descriptions = {
   workspace = "Search workspace symbols with LSP",
   treesitter = "Show symbols using Treesitter",
   diagnostics = "Show diagnostics for current buffer (use 'diagnostics workspace' for workspace diagnostics)",
-  open = "Show symbols from all open buffers",
+  watchtower = "Show symbols from all open buffers",
   help = "Show help information (use 'help symbols' or 'help analysis' for detailed views)",
 }
 -- Argument validators
