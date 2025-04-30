@@ -111,10 +111,117 @@ M.config = {
   },
 }
 
----@type CursorCache
-local cursor_cache = {
-  guicursor = nil,
-}
+-- Add this at the module level
+---@class SelectaStateManager
+local StateManager = {}
+StateManager.__index = StateManager
+
+---Create a new picker state
+---@param items SelectaItem[] List of items to display
+---@param opts SelectaOptions Configuration options
+---@return SelectaState
+function StateManager.new(items, opts)
+  local initial_width, initial_height =
+    M.calculate_window_size(opts.initially_hidden and {} or items, opts, opts.formatter, 0)
+
+  local row, col = M.get_window_position(initial_width, opts.row_position)
+
+  local state = {
+    -- Window and buffer info
+    buf = vim.api.nvim_create_buf(false, true),
+    original_buf = vim.api.nvim_get_current_buf(),
+    prompt_buf = nil,
+    prompt_win = nil,
+    win = nil,
+
+    -- Position and size
+    row = row,
+    col = col,
+    width = initial_width,
+    height = initial_height,
+
+    -- Item data
+    items = items,
+    filtered_items = opts.initially_hidden and {} or items,
+    filter_metadata = nil,
+
+    -- Selection state
+    selected = {},
+    selected_count = 0,
+
+    -- Input state
+    query = {},
+    cursor_pos = 1,
+
+    -- UI state
+    active = true,
+    initial_open = true,
+    best_match_index = nil,
+    cursor_moved = false,
+
+    -- Async state
+    is_loading = false,
+    last_query = nil,
+    current_request_id = nil,
+    loading_extmark_id = nil,
+    last_request_time = nil,
+  }
+
+  return setmetatable(state, StateManager)
+end
+
+---Check if the state is still valid/active
+---@return boolean
+function StateManager:is_valid()
+  return self.active
+    and self.buf
+    and vim.api.nvim_buf_is_valid(self.buf)
+    and self.win
+    and vim.api.nvim_win_is_valid(self.win)
+end
+
+---Update query and cursor position
+---@param char string|number The character or keycode
+---@return boolean Whether the query was changed
+function StateManager:update_query(char)
+  if type(char) == "number" and char >= 32 and char <= 126 then
+    table.insert(self.query, self.cursor_pos, vim.fn.nr2char(char))
+    self.cursor_pos = self.cursor_pos + 1
+    self.initial_open = false
+    self.cursor_moved = false
+    return true
+  end
+  return false
+end
+
+---Move the cursor left/right in the query
+---@param direction number Positive for right, negative for left
+function StateManager:move_cursor(direction)
+  if direction < 0 then
+    self.cursor_pos = math.max(1, self.cursor_pos - 1)
+  else
+    self.cursor_pos = math.min(#self.query + 1, self.cursor_pos + 1)
+  end
+end
+
+---Delete the character before the cursor
+---@return boolean Whether a character was deleted
+function StateManager:backspace()
+  if self.cursor_pos > 1 then
+    table.remove(self.query, self.cursor_pos - 1)
+    self.cursor_pos = self.cursor_pos - 1
+    self.initial_open = false
+    self.cursor_moved = false
+    return true
+  end
+  return false
+end
+
+---Get the current query as a string
+---@return string
+function StateManager:get_query_string()
+  return table.concat(self.query)
+end
 
 function M.log(message)
   logger.log(message)
@@ -125,34 +232,68 @@ M.clear_log = logger.clear_log
 local ns_id = vim.api.nvim_create_namespace("selecta_highlights")
 local current_selection_ns = vim.api.nvim_create_namespace("selecta_current_selection")
 
----Thanks to folke and mini.nvim for this utlity of hiding the cursor
----Hide the cursor by setting guicursor and caching the original value
----@return nil
-local function hide_cursor()
-  if vim.o.guicursor == "a:NamuCursor" then
+-- Add this at the module level
+local cursor_manager = {
+  guicursor = nil,
+  active = false,
+  restore_timer = nil,
+}
+
+-- Replace the hide_cursor function
+function cursor_manager.hide()
+  -- Don't hide if already hidden
+  if cursor_manager.active then
     return
   end
-  cursor_cache.guicursor = vim.o.guicursor
+
+  -- Store current cursor state
+  cursor_manager.guicursor = vim.o.guicursor
+  cursor_manager.active = true
+
+  -- Hide cursor
   vim.o.guicursor = "a:NamuCursor"
+
+  -- Set safety timer to restore cursor after 30 seconds if not restored properly
+  -- This prevents permanent cursor loss if something goes wrong
+  if cursor_manager.restore_timer then
+    cursor_manager.restore_timer:stop()
+  end
+  cursor_manager.restore_timer = vim.defer_fn(function()
+    if cursor_manager.active then
+      cursor_manager.restore()
+      vim.notify("Cursor automatically restored after timeout", vim.log.levels.WARN)
+    end
+  end, 30000)
 end
 
----Restore the cursor to its original state
----@return nil
-local function restore_cursor()
-  -- Handle edge case where guicursor was empty
-  if cursor_cache.guicursor == "" then
-    vim.o.guicursor = "a:"
-    cursor_cache.guicursor = nil -- Prevent second block from executing
-    vim.cmd("redraw")
+-- Replace the restore_cursor function
+function cursor_manager.restore()
+  -- Only restore if we're active
+  if not cursor_manager.active then
     return
   end
 
-  -- Restore original guicursor
-  if cursor_cache.guicursor then
-    logger.log("Restoring cursor: " .. cursor_cache.guicursor)
-    vim.o.guicursor = cursor_cache.guicursor
-    cursor_cache.guicursor = nil
+  -- Stop the safety timer
+  if cursor_manager.restore_timer then
+    cursor_manager.restore_timer:stop()
+    cursor_manager.restore_timer = nil
   end
+
+  -- Handle edge case where guicursor was empty
+  if cursor_manager.guicursor == "" then
+    vim.o.guicursor = "a:"
+  elseif cursor_manager.guicursor then
+    vim.o.guicursor = cursor_manager.guicursor
+  end
+
+  -- Reset state
+  cursor_manager.guicursor = nil
+  cursor_manager.active = false
+end
+
+-- Add a function to check status
+function cursor_manager.is_hidden()
+  return cursor_manager.active
 end
 
 local function get_prefix_info(item, max_prefix_width)
@@ -222,7 +363,7 @@ end
 ---@param items SelectaItem[]
 ---@param opts SelectaOptions
 ---@param formatter fun(item: SelectaItem): string
-local function calculate_window_size(items, opts, formatter, state_col)
+function M.calculate_window_size(items, opts, formatter, state_col)
   local max_width = opts.window.max_width or M.config.window.max_width
   local min_width = opts.window.min_width or M.config.window.min_width
   local max_height = opts.window.max_height or M.config.window.max_height
@@ -368,35 +509,167 @@ end
 ---@param state SelectaState
 ---@param opts SelectaOptions
 local function update_prompt(state, opts)
+  -- Get the query before and after the cursor
   local before_cursor = table.concat(vim.list_slice(state.query, 1, state.cursor_pos - 1))
   local after_cursor = table.concat(vim.list_slice(state.query, state.cursor_pos))
-  local raw_prmpt = opts.window.title_prefix .. before_cursor .. "│" .. after_cursor
 
-  if vim.api.nvim_win_is_valid(state.win) then
+  -- Build the prompt with cursor indicator
+  local raw_prompt = opts.window.title_prefix .. before_cursor .. "│" .. after_cursor
+
+  -- Update the prompt buffer if valid
+  if state.win and vim.api.nvim_win_is_valid(state.win) then
     if state.prompt_win and vim.api.nvim_win_is_valid(state.prompt_win) then
-      vim.api.nvim_buf_set_lines(state.prompt_buf, 0, -1, false, { raw_prmpt })
-      -- vim.api.nvim_buf_add_highlight(state.prompt_buf, -1, "NamuPrompt", 0, 0, -1)
-      -- else
-      --   pcall(vim.api.nvim_win_set_config, state.win, {
-      --     title = { { raw_prmpt, "NamuPrompt" } },
-      --     title_pos = opts.window.title_pos or M.config.window.title_pos,
-      --   })
+      if vim.api.nvim_buf_is_valid(state.prompt_buf) then
+        vim.api.nvim_buf_set_lines(state.prompt_buf, 0, -1, false, { raw_prompt })
+      end
     end
   end
 end
 
+-- Hierarchical filtering implementation
+---@param state SelectaState
+---@param items_to_filter SelectaItem[]
+---@param actual_query string
+---@param opts SelectaOptions
+local function hierarchical_filter(state, items_to_filter, actual_query, opts)
+  -- Track special root item if configured
+  local root_item = nil
+  if opts.always_include_root then
+    -- Find the root item based on the provided function
+    for _, item in ipairs(items_to_filter) do
+      if opts.is_root_item and opts.is_root_item(item) then
+        root_item = item
+        break
+      end
+    end
+  end
+
+  -- Step 1: Find direct matches with single pass
+  local matched_indices = {}
+  local match_scores = {}
+  local best_score = -math.huge
+  local best_index = nil
+
+  for i, item in ipairs(items_to_filter) do
+    local match = matcher.get_match_positions(item.text, actual_query)
+    if match then
+      matched_indices[i] = true
+      match_scores[i] = match.score
+
+      if match.score > best_score then
+        best_score = match.score
+        best_index = i
+      end
+    end
+  end
+
+  -- Step 2: Build a map for parent lookups (optimize with single pass)
+  local item_map = {}
+  for i, item in ipairs(items_to_filter) do
+    -- Create a unique identifier for this item
+    local item_id = tostring(item.value or item.text)
+    if item.value and item.value.signature then
+      item_id = item.value.signature
+    end
+    item_map[item_id] = { index = i, item = item }
+  end
+
+  -- Step 3: Include parents of matched items (build inclusion set)
+  local include_indices = {}
+  for i in pairs(matched_indices) do
+    -- Always include the direct match
+    include_indices[i] = true
+
+    -- Trace up through parents
+    local current = items_to_filter[i]
+    local visited = { [i] = true } -- Prevent cycles
+
+    while current do
+      -- Get parent key using the provided function
+      local parent_key = opts.parent_key(current)
+      if not parent_key or parent_key == "root" then
+        break -- Reached the root or no more parents
+      end
+
+      -- Find the parent item
+      local parent_entry = item_map[parent_key]
+      if parent_entry and not visited[parent_entry.index] then
+        include_indices[parent_entry.index] = true
+        visited[parent_entry.index] = true
+        current = parent_entry.item
+      else
+        break -- Parent not found or cycle detected
+      end
+    end
+  end
+
+  -- Special case: Always include the root item if requested
+  if root_item then
+    for i, item in ipairs(items_to_filter) do
+      if item == root_item then
+        include_indices[i] = true
+        break
+      end
+    end
+  end
+
+  -- Step 4: Create filtered list preserving original order
+  state.filtered_items = {}
+
+  -- If we have a root item and it should be first, add it first
+  if root_item and opts.root_item_first then
+    for i, item in ipairs(items_to_filter) do
+      if item == root_item and include_indices[i] then
+        -- Mark if it's a direct match
+        item.is_direct_match = matched_indices[i] or nil
+        if matched_indices[i] then
+          item.match_score = match_scores[i]
+        end
+        table.insert(state.filtered_items, item)
+        include_indices[i] = nil -- Remove so we don't add it again
+        break
+      end
+    end
+  end
+
+  -- Add remaining items in order
+  for i, item in ipairs(items_to_filter) do
+    if include_indices[i] then
+      -- Mark direct matches vs contextual items
+      item.is_direct_match = matched_indices[i] or nil
+      if matched_indices[i] then
+        item.match_score = match_scores[i]
+      end
+      table.insert(state.filtered_items, item)
+    end
+  end
+
+  -- Step 5: Set best match index for cursor positioning
+  if best_index then
+    -- Find where the best match ended up in the filtered list
+    for i, item in ipairs(state.filtered_items) do
+      if item == items_to_filter[best_index] then
+        state.best_match_index = i
+        break
+      end
+    end
+  end
+end
+
+-- Optimize filtering logic
 ---@param state SelectaState
 ---@param query string
 ---@param opts SelectaOptions
 function M.update_filtered_items(state, query, opts)
   -- Skip normal filtering if we're loading
   if state.is_loading then
-    return state.filtered_items
+    return
   end
 
   local items_to_filter = state.items
   local actual_query = query
 
+  -- Run pre-filter hook if available
   if opts.pre_filter then
     local new_items, new_query, metadata = opts.pre_filter(state.items, query)
     if new_items then
@@ -408,164 +681,79 @@ function M.update_filtered_items(state, query, opts)
     state.filter_metadata = metadata
   end
 
-  -- Only proceed with further filtering if there's an actual query
-  if actual_query ~= "" then
-    -- Check if hierarchical filtering is enabled
-    local use_hierarchical = opts.preserve_hierarchy and type(opts.parent_key) == "function"
-
-    if use_hierarchical then
-      -- Track special root item if configured
-      local root_item = nil
-      if opts.always_include_root then
-        -- Find the root item based on the provided function
-        for _, item in ipairs(items_to_filter) do
-          if opts.is_root_item and opts.is_root_item(item) then
-            root_item = item
-            break
-          end
-        end
-      end
-      -- Step 1: Find direct matches
-      local matched_indices = {}
-      local match_scores = {}
-      local best_score = -math.huge
-      local best_index = nil
-
-      for i, item in ipairs(items_to_filter) do
-        local match = matcher.get_match_positions(item.text, actual_query)
-        if match then
-          -- print(
-          --   string.format(
-          --     "Item: %-30s Score: %d Type: %-8s Gaps: %d Positions: %s",
-          --     item.text,
-          --     match.score,
-          --     match.type,
-          --     match.gaps,
-          --     vim.inspect(match.positions)
-          --   )
-          -- )
-          matched_indices[i] = true
-          match_scores[i] = match.score
-
-          if match.score > best_score then
-            best_score = match.score
-            best_index = i
-          end
-        end
-      end
-
-      -- Step 2: Build a map for parent lookups
-      local item_map = {}
-      for i, item in ipairs(items_to_filter) do
-        -- Create a unique identifier for this item
-        local item_id = tostring(item)
-        if item.value and item.value.signature then
-          item_id = item.value.signature
-        end
-        item_map[item_id] = { index = i, item = item }
-      end
-
-      -- Step 3: Include parents of matched items
-      local include_indices = {}
-      for i in pairs(matched_indices) do
-        -- Always include the direct match
-        include_indices[i] = true
-
-        -- Trace up through parents
-        local current = items_to_filter[i]
-        local visited = { [i] = true } -- Prevent cycles
-
-        while current do
-          -- Get parent key using the provided function
-          local parent_key = opts.parent_key(current)
-          if not parent_key or parent_key == "root" then
-            break -- Reached the root or no more parents
-          end
-
-          -- Find the parent item
-          local parent_entry = item_map[parent_key]
-          if parent_entry and not visited[parent_entry.index] then
-            include_indices[parent_entry.index] = true
-            visited[parent_entry.index] = true
-            current = parent_entry.item
-          else
-            break -- Parent not found or cycle detected
-          end
-        end
-      end
-      -- Special case: Always include the root item if requested
-      if root_item then
-        for i, item in ipairs(items_to_filter) do
-          if item == root_item then
-            include_indices[i] = true
-            break
-          end
-        end
-      end
-      -- Step 4: Create filtered list preserving original order
-      state.filtered_items = {}
-      -- If we have a root item and it should be first, add it first
-      if root_item and opts.root_item_first then
-        for i, item in ipairs(items_to_filter) do
-          if item == root_item and include_indices[i] then
-            -- Mark if it's a direct match
-            item.is_direct_match = matched_indices[i] or nil
-            if matched_indices[i] then
-              item.match_score = match_scores[i]
-            end
-            table.insert(state.filtered_items, item)
-            include_indices[i] = nil -- Remove so we don't add it again
-            break
-          end
-        end
-      end
-      for i, item in ipairs(items_to_filter) do
-        if include_indices[i] then
-          -- Mark direct matches vs contextual items
-          item.is_direct_match = matched_indices[i] or nil
-          if matched_indices[i] then
-            item.match_score = match_scores[i]
-          end
-          table.insert(state.filtered_items, item)
-        end
-      end
-
-      -- Step 5: Set best match index for cursor positioning
-      if best_index then
-        -- Find where the best match ended up in the filtered list
-        for i, item in ipairs(state.filtered_items) do
-          if item == items_to_filter[best_index] then
-            state.best_match_index = i
-            break
-          end
-        end
-      end
-    else
-      state.filtered_items = {}
-      for _, item in ipairs(items_to_filter) do
-        local match = matcher.get_match_positions(item.text, actual_query)
-        if match then
-          table.insert(state.filtered_items, item)
-        end
-      end
-
-      local best_index
-      state.filtered_items, best_index = matcher.sort_items(state.filtered_items, actual_query, opts.preserve_order)
-      state.best_match_index = best_index
+  -- Early return if no query
+  if actual_query == "" then
+    if not opts.pre_filter then
+      state.filtered_items = items_to_filter
+      state.best_match_index = nil
     end
-
-    if opts.auto_select and #state.filtered_items == 1 and not state.initial_open then
-      local selected = state.filtered_items[1]
-      if selected and opts.on_select then
-        opts.on_select(selected)
-        M.close_picker(state)
-      end
-    end
-  elseif not opts.pre_filter then
-    -- Only set to all items if there's no pre_filter
-    state.filtered_items = items_to_filter
-    state.best_match_index = nil
+    return
   end
+
+  -- Use specialized filtering based on options
+  if opts.preserve_hierarchy and type(opts.parent_key) == "function" then
+    hierarchical_filter(state, items_to_filter, actual_query, opts)
+  else
+    -- Standard filtering with optimized implementation
+    standard_filter(state, items_to_filter, actual_query, opts)
+  end
+
+  -- Handle auto-select for single result
+  if opts.auto_select and #state.filtered_items == 1 and not state.initial_open then
+    local selected = state.filtered_items[1]
+    if selected and opts.on_select then
+      opts.on_select(selected)
+      M.close_picker(state)
+    end
+  end
+end
+
+-- Standard filtering with better performance
+function standard_filter(state, items, query, opts)
+  -- Early optimization: pre-allocate matched items array
+  local matched_items = {}
+  local match_scores = {}
+
+  -- First pass: identify matches and collect scores
+  for i, item in ipairs(items) do
+    local match = matcher.get_match_positions(item.text, query)
+    if match then
+      -- Store matched items and scores
+      table.insert(matched_items, item)
+      match_scores[item] = match.score
+    end
+  end
+
+  -- Skip sorting if we should preserve order
+  if not opts.preserve_order then
+    -- Sort matched items by score (higher score first)
+    table.sort(matched_items, function(a, b)
+      return match_scores[a] > match_scores[b]
+    end)
+
+    -- If we have matched items, the first is the best match
+    if #matched_items > 0 then
+      state.best_match_index = 1
+    else
+      state.best_match_index = nil
+    end
+  else
+    -- Find best match while preserving order
+    local best_score = -math.huge
+    local best_index = nil
+
+    for i, item in ipairs(matched_items) do
+      local score = match_scores[item]
+      if score > best_score then
+        best_score = score
+        best_index = i
+      end
+    end
+
+    state.best_match_index = best_index
+  end
+
+  state.filtered_items = matched_items
 end
 
 ---@param state SelectaState
@@ -592,31 +780,20 @@ end
 ---@param item SelectaItem
 ---@return string
 local function get_item_id(item)
+  if item.id then
+    return item.id
+  end
+
+  if item.value then
+    if item.value.signature then
+      return item.value.signature
+    elseif item.value.id then
+      return item.value.id
+    end
+  end
+
+  -- Fallback: Create a string from text or other properties
   return tostring(item.value or item.text)
-end
-
--- Apply highlights to the parent item with hierarchical
-local function apply_hierarchical_highlights(buf, line_nr, item, opts)
-  -- Only apply if hierarchical mode is active
-  if not (opts.preserve_hierarchy and item.is_direct_match ~= nil) then
-    return
-  end
-
-  -- If this is a parent item (not a direct match), add subtle styling
-  if item.is_direct_match == nil then
-    vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, 0, {
-      hl_group = "Comment",
-      priority = 203,
-      hl_mode = "blend",
-    })
-  else
-    -- If this is a direct match, we can optionally add emphasis
-    vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, 0, {
-      hl_group = "SpecialKey",
-      priority = 300,
-      hl_mode = "blend",
-    })
-  end
 end
 
 ---@param buf number
@@ -625,11 +802,6 @@ end
 ---@param opts SelectaOptions
 ---@param query string
 local function apply_highlights(buf, line_nr, item, opts, query, line_length, state)
-  -- Apply hierarchical highlighting if enabled
-  -- if opts.preserve_hierarchy then
-  -- apply_hierarchical_highlights(buf, line_nr, item, opts)
-  -- end
-
   -- Skip if line is not visible (extra safety check)
   local win_info = vim.fn.getwininfo(state.win)[1]
   local topline = win_info.topline - 1
@@ -851,6 +1023,104 @@ local function update_cursor_position(state, opts)
   end
 end
 
+-- Add proper bounds checking for highlight operations
+local function safe_highlight_current_item(state, opts, line_nr)
+  -- Check if state and buffer are valid
+  if not state or not state.buf or not vim.api.nvim_buf_is_valid(state.buf) then
+    return false
+  end
+
+  -- Clear previous highlights
+  vim.api.nvim_buf_clear_namespace(state.buf, current_selection_ns, 0, -1)
+
+  -- Validate line number
+  if line_nr < 0 or line_nr >= vim.api.nvim_buf_line_count(state.buf) then
+    return false
+  end
+
+  -- Apply highlight safely
+  local ok, err = pcall(function()
+    vim.api.nvim_buf_set_extmark(state.buf, current_selection_ns, line_nr, 0, {
+      end_row = line_nr + 1,
+      end_col = 0,
+      hl_eol = true,
+      hl_group = "NamuCurrentItem",
+      priority = 202,
+    })
+
+    -- Add the prefix icon if enabled
+    if opts.current_highlight.enabled and #opts.current_highlight.prefix_icon > 0 then
+      vim.api.nvim_buf_set_extmark(state.buf, current_selection_ns, line_nr, 0, {
+        virt_text = { { opts.current_highlight.prefix_icon, "NamuCurrentItem" } },
+        virt_text_pos = "overlay",
+        priority = 202,
+      })
+    end
+  end)
+
+  if not ok then
+    logger.error("Error highlighting current item: " .. err)
+    return false
+  end
+
+  return true
+end
+
+-- Add this function to render only visible items
+---@param state SelectaState
+---@param opts SelectaOptions
+local function render_visible_items(state, opts)
+  -- Early return if not valid
+  if not state:is_valid() then
+    return
+  end
+
+  -- Get window info for visibility determination
+  local win_info = vim.fn.getwininfo(state.win)[1]
+  if not win_info then
+    return
+  end
+
+  -- Format ALL lines (not just visible ones) to maintain consistent buffer state
+  local lines = {}
+  for i, item in ipairs(state.filtered_items) do
+    lines[i] = opts.formatter(item)
+  end
+
+  -- Update the buffer with all formatted lines
+  vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
+
+  -- Clear existing highlights
+  vim.api.nvim_buf_clear_namespace(state.buf, ns_id, 0, -1)
+
+  -- Get visible range for optimization
+  local topline = win_info.topline - 1
+  local botline = math.min(win_info.botline - 1, #state.filtered_items - 1)
+
+  -- Apply highlights only to visible items for performance optimization
+  local query = state:get_query_string()
+  for i = topline, botline do
+    local line_nr = i -- 0-indexed for extmarks
+    local item = state.filtered_items[i + 1] -- 1-indexed for items
+    if item then
+      local line = lines[i + 1]
+      local line_length = vim.api.nvim_strwidth(line)
+      apply_highlights(state.buf, line_nr, item, opts, query, line_length, state)
+    end
+  end
+
+  -- Call render hook after highlights are applied
+  if opts.hooks and opts.hooks.on_render then
+    opts.hooks.on_render(state.buf, state.filtered_items, opts)
+  end
+
+  -- Update current line highlight
+  local cursor_pos = vim.api.nvim_win_get_cursor(state.win)
+  if cursor_pos and cursor_pos[1] > 0 and cursor_pos[1] <= #state.filtered_items then
+    safe_highlight_current_item(state, opts, cursor_pos[1] - 1)
+  end
+end
+
 ---@param state SelectaState
 ---@param opts SelectaOptions
 local function resize_window(state, opts)
@@ -860,7 +1130,7 @@ local function resize_window(state, opts)
   -- Calculate new dimensions based on filtered items
   -- BUG: we need to limit the new_width to the available space on the screen so
   -- it doesn't push the col to go left
-  local new_width, new_height = calculate_window_size(state.filtered_items, opts, opts.formatter)
+  local new_width, new_height = M.calculate_window_size(state.filtered_items, opts, opts.formatter)
   local current_config = vim.api.nvim_win_get_config(state.win)
   -- Calculate maximum height based on available space below the initial row
   local max_available_height = calculate_max_available_height(parse_position(opts.row_position))
@@ -997,15 +1267,17 @@ function M.update_display(state, opts)
   if not state.active then
     return
   end
-  local query = table.concat(state.query)
+
+  local query = state:get_query_string()
   update_prompt(state, opts)
   update_prompt_info(state, opts, #query == 0) -- Show only if query is empty
+
   -- Special handling for loading state
-  if state.is_loading and #state.filtered_items == 1 and state.filtered_items[1].is_loading then
+  if state.is_loading then
     if vim.api.nvim_buf_is_valid(state.buf) then
       vim.api.nvim_buf_clear_namespace(state.buf, ns_id, 0, -1)
 
-      local loading_text = state.filtered_items[1].text
+      local loading_text = "Loading results..."
       vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, { loading_text })
 
       -- Apply loading highlight
@@ -1020,6 +1292,7 @@ function M.update_display(state, opts)
     if opts.window.auto_resize then
       resize_window(state, opts)
     end
+
     -- Update filter info display
     update_filter_info(state, state.filter_metadata)
 
@@ -1037,51 +1310,21 @@ function M.update_display(state, opts)
       update_footer(state, state.win, opts)
     end
 
+    -- Resize window if needed
     if opts.window.auto_resize then
       resize_window(state, opts)
-
-      -- Update prompt window size if it exists
-      if state.prompt_win and vim.api.nvim_win_is_valid(state.prompt_win) then
-        local main_win_config = vim.api.nvim_win_get_config(state.win)
-        pcall(vim.api.nvim_win_set_config, state.prompt_win, {
-          width = main_win_config.width,
-          col = main_win_config.col,
-        })
-      end
     end
 
-    -- Update buffer content
-    if vim.api.nvim_buf_is_valid(state.buf) then
-      vim.api.nvim_buf_clear_namespace(state.buf, ns_id, 0, -1)
+    -- Use virtualized rendering for better performance
+    render_visible_items(state, opts)
 
-      local lines = {}
-      for i, item in ipairs(state.filtered_items) do
-        lines[i] = opts.formatter and opts.formatter(item) or item.text
-      end
+    -- Update filter info display
+    update_filter_info(state, state.filter_metadata)
 
-      vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
-      -- Update filter info display
-      update_filter_info(state, state.filter_metadata)
-
-      -- Apply highlights
-      for i, item in ipairs(state.filtered_items) do
-        local line_nr = i - 1
-        local line = lines[i]
-        local line_length = vim.api.nvim_strwidth(line)
-        apply_highlights(state.buf, line_nr, item, opts, query, line_length, state)
-      end
-      -- Call render hook after highlights are applied
-      if opts.hooks and opts.hooks.on_render then
-        -- TODO: Maybe we can do it as a loop similar for apply_highlights
-        -- so that we can enhance performance by checking if the item is visible
-        opts.hooks.on_render(state.buf, state.filtered_items, opts)
-      end
-
-      update_cursor_position(state, opts)
-      local cursor_pos = vim.api.nvim_win_get_cursor(state.win)
-      update_current_highlight(state, opts, cursor_pos[1] - 1)
-    end
+    -- Update cursor position
+    update_cursor_position(state, opts)
   else
+    -- Handle case when initially hidden with no query
     if vim.api.nvim_buf_is_valid(state.buf) then
       vim.api.nvim_buf_clear_namespace(state.buf, ns_id, 0, -1)
       vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, {})
@@ -1089,15 +1332,14 @@ function M.update_display(state, opts)
         opts.hooks.on_buffer_clear()
       end
     end
+
     update_prompt_info(state, opts, #state.query == 0)
 
-    -- Resize window to minimum dimensions using resize_window function
+    -- Resize window to minimum dimensions
     if opts.window.auto_resize then
-      -- Temporarily set filtered_items to an empty table to calculate minimum size
       local original_filtered_items = state.filtered_items
       state.filtered_items = {}
       resize_window(state, opts)
-      -- Restore original filtered_items
       state.filtered_items = original_filtered_items
     end
   end
@@ -1110,40 +1352,27 @@ local loading_ns_id = vim.api.nvim_create_namespace("selecta_loading_indicator")
 ---@param callback function
 ---@return boolean started
 function M.start_async_fetch(state, query, opts, callback)
-  if state.last_request_time and (vim.uv.now() - state.last_request_time) < 5 then
-    logger.log("🚫 Debounced rapid request")
-    return false
-  end
-  state.last_request_time = vim.uv.now()
-  -- Only start if we have an async source and query changed
-  if not opts.async_source or state.last_query == query then
-    logger.log("🔄 Skipping async fetch - same query or no async source")
-    return false
-  end
-
-  -- Store query
+  -- Generate a unique request ID for this specific request
+  local request_id = tostring(vim.uv.now()) .. "_" .. vim.fn.rand()
+  state.current_request_id = request_id
+  -- Store the current query
   state.last_query = query
-  -- Set loading state for internal tracking
+  -- Set loading state
   state.is_loading = true
-  -- Add a loading indicator using extmark instead of replacing items
+  -- Display loading indicator
   if state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) then
-    -- Get loading indicator text and icon with fallbacks
-    local loading_icon = "󰇚" -- Default icon
-    local loading_text = "Loading..."
-
-    -- Safely access the loading indicator configuration with fallbacks
-    if opts.loading_indicator then
-      loading_icon = opts.loading_indicator.icon or loading_icon
-      loading_text = opts.loading_indicator.text or loading_text
-    elseif M.config.loading_indicator then
-      loading_icon = M.config.loading_indicator.icon or loading_icon
-      loading_text = M.config.loading_indicator.text or loading_text
-    end
-
     -- Clear any previous loading indicator
     vim.api.nvim_buf_clear_namespace(state.prompt_buf, loading_ns_id, 0, -1)
 
-    -- Add the loading indicator as virtual text at the end of the prompt
+    -- Get loading indicator text and icon with fallbacks
+    local loading_icon = opts.loading_indicator and opts.loading_indicator.icon
+      or M.config.loading_indicator and M.config.loading_indicator.icon
+      or "󰇚"
+
+    local loading_text = opts.loading_indicator and opts.loading_indicator.text
+      or M.config.loading_indicator and M.config.loading_indicator.text
+      or "Loading..."
+
     state.loading_extmark_id = vim.api.nvim_buf_set_extmark(state.prompt_buf, loading_ns_id, 0, 0, {
       virt_text = { { " " .. loading_icon .. " " .. loading_text, "Comment" } },
       virt_text_pos = "eol",
@@ -1152,15 +1381,14 @@ function M.start_async_fetch(state, query, opts, callback)
   end
 
   -- Get the process function
-  logger.log("🔌 Getting process function from async_source")
   local process_fn = opts.async_source(query)
 
   -- Define the callback to handle processed items
   local function handle_items(items)
+    -- Schedule the UI update in the main Neovim loop
     vim.schedule(function()
-      -- Skip if picker was closed
-      if not state.active then
-        logger.log("⛔ Picker no longer active, aborting")
+      -- Skip if picker was closed or a newer request has arrived
+      if not state.active or state.current_request_id ~= request_id then
         return
       end
 
@@ -1170,10 +1398,8 @@ function M.start_async_fetch(state, query, opts, callback)
         state.loading_extmark_id = nil
       end
 
-      if items and type(items) == "table" then
-        logger.log("📦 Received " .. #items .. " items from async source")
-
-        -- Update with results
+      -- Update with results if we have valid data
+      if type(items) == "table" then
         state.items = items
         state.filtered_items = items
 
@@ -1184,21 +1410,20 @@ function M.start_async_fetch(state, query, opts, callback)
         end
       else
         -- Handle error or empty results
-        logger.log("⚠️ Invalid items returned: " .. type(items))
-        state.filtered_items = { { text = "No matching symbols found", icon = "󰅚", value = nil } }
+        state.filtered_items = { { text = "No matching results found", icon = "󰅚", value = nil } }
       end
 
       -- Clear loading state
       state.is_loading = false
 
-      -- Update display
+      -- Execute the callback
       if callback then
         callback()
       end
     end)
   end
 
-  -- Start the process and pass our callback
+  -- Start the process
   process_fn(handle_items)
 
   return true
@@ -1254,32 +1479,64 @@ function M.close_picker(state)
   if state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_close(state.win, true)
   end
-  restore_cursor()
+  cursor_manager.restore()
 end
 
----Toggle selection of an item
----@param state SelectaState
----@param item SelectaItem
----@param opts SelectaOptions
----@return boolean Whether the operation was successful
-local function toggle_selection(state, item, opts)
+---Toggle selection of the current item
+---@param item SelectaItem The item to toggle
+---@param opts SelectaOptions The current options
+---@return boolean Whether the selection was changed
+function StateManager:toggle_selection(item, opts)
   if not opts.multiselect or not opts.multiselect.enabled then
     return false
   end
 
   local item_id = get_item_id(item)
-  if state.selected[item_id] then
-    state.selected[item_id] = nil
-    state.selected_count = state.selected_count - 1
+  if self.selected[item_id] then
+    self.selected[item_id] = nil
+    self.selected_count = self.selected_count - 1
     return true
   else
-    if opts.multiselect.max_items and state.selected_count >= opts.multiselect.max_items then
+    if opts.multiselect.max_items and self.selected_count >= opts.multiselect.max_items then
       return false
     end
-    state.selected[item_id] = true
-    state.selected_count = state.selected_count + 1
+    self.selected[item_id] = true
+    self.selected_count = self.selected_count + 1
     return true
   end
+end
+
+---Get the list of selected items
+---@return SelectaItem[]
+function StateManager:get_selected_items()
+  local result = {}
+  for _, item in ipairs(self.items) do
+    if self.selected[get_item_id(item)] then
+      table.insert(result, item)
+    end
+  end
+  return result
+end
+
+---Clean up resources when closing the picker
+function StateManager:cleanup()
+  -- Clear loading state
+  if self.prompt_buf and vim.api.nvim_buf_is_valid(self.prompt_buf) then
+    vim.api.nvim_buf_clear_namespace(self.prompt_buf, loading_ns_id, 0, -1)
+    vim.api.nvim_buf_clear_namespace(self.prompt_buf, prompt_info_ns, 0, -1)
+  end
+
+  -- Close windows
+  if self.prompt_win and vim.api.nvim_win_is_valid(self.prompt_win) then
+    vim.api.nvim_win_close(self.prompt_win, true)
+  end
+
+  if self.win and vim.api.nvim_win_is_valid(self.win) then
+    vim.api.nvim_win_close(self.win, true)
+  end
+
+  -- Mark as inactive
+  self.active = false
 end
 
 ---Select or deselect all visible items
@@ -1314,7 +1571,7 @@ end
 ---@param width number
 ---@return number row
 ---@return number col
-local function get_window_position(width, row_position)
+function M.get_window_position(width, row_position)
   local lines = vim.o.lines
   local columns = vim.o.columns
   local cmdheight = vim.o.cmdheight
@@ -1383,10 +1640,10 @@ local function create_picker(items, opts)
     width = opts.window.min_width or M.config.window.min_width
     height = opts.window.min_height or M.config.window.min_height
   else
-    width, height = calculate_window_size(items, opts, opts.formatter, 0)
+    width, height = M.calculate_window_size(items, opts, opts.formatter, 0)
   end
 
-  local row, col = get_window_position(width, opts.row_position)
+  local row, col = M.get_window_position(width, opts.row_position)
 
   -- print(string.format(
   --   "Initial position:  row=%d, column=%d, height=%d, position=%s, total_lines=%d, scrolloff=%d",
@@ -1482,44 +1739,46 @@ local SPECIAL_KEYS = {
   MOUSE = vim.api.nvim_replace_termcodes("<LeftMouse>", true, true, true),
 }
 
----Delete last word from query
----@param state SelectaState
-local function delete_last_word(state)
+---Delete the word before the cursor
+---@return boolean Whether a word was deleted
+function StateManager:delete_word()
   -- If we're at the start, nothing to delete
-  if state.cursor_pos <= 1 then
-    return
+  if self.cursor_pos <= 1 then
+    return false
   end
 
   -- Find the last non-space character before cursor
-  local last_char_pos = state.cursor_pos - 1
-  while last_char_pos > 1 and state.query[last_char_pos] == " " do
+  local last_char_pos = self.cursor_pos - 1
+  while last_char_pos > 1 and self.query[last_char_pos] == " " do
     last_char_pos = last_char_pos - 1
   end
 
   -- Find the start of the word
   local word_start = last_char_pos
-  while word_start > 1 and state.query[word_start - 1] ~= " " do
+  while word_start > 1 and self.query[word_start - 1] ~= " " do
     word_start = word_start - 1
   end
 
   -- Remove characters from word_start to last_char_pos
   for _ = word_start, last_char_pos do
-    table.remove(state.query, word_start)
+    table.remove(self.query, word_start)
   end
 
   -- Update cursor position
-  state.cursor_pos = word_start
-  state.initial_open = false
-  state.cursor_moved = false
+  self.cursor_pos = word_start
+  self.initial_open = false
+  self.cursor_moved = false
+
+  return true
 end
 
----Clear the entire query line
----@param state SelectaState
-local function clear_query_line(state)
-  state.query = {}
-  state.cursor_pos = 1
-  state.initial_open = false
-  state.cursor_moved = false
+---Clear the entire query
+---@return nil
+function StateManager:clear_query()
+  self.query = {}
+  self.cursor_pos = 1
+  self.initial_open = false
+  self.cursor_moved = false
 end
 
 -- Pre-compute the movement keys
@@ -1568,20 +1827,45 @@ local function get_movement_keys(opts)
   return keys
 end
 
--- Simplified movement handler
-local function handle_movement(state, direction, opts)
+---Handle special key inputs
+---@param key string The key that was pressed
+---@param opts SelectaOptions Configuration options
+---@return boolean was_handled Whether the key was handled
+function StateManager:handle_special_key(key, opts)
+  -- Handle basic navigation
+  if key == SPECIAL_KEYS.LEFT then
+    self:move_cursor(-1)
+    return true
+  elseif key == SPECIAL_KEYS.RIGHT then
+    self:move_cursor(1)
+    return true
+  elseif key == SPECIAL_KEYS.BS then
+    if self:backspace() then
+      M.process_query(self, opts)
+      return true
+    end
+  end
+  return false
+end
+
+---Handle movement keys (up/down navigation)
+---@param direction number Direction of movement (1 for down, -1 for up)
+---@param opts SelectaOptions Configuration options
+---@return boolean was_handled Whether the movement was handled
+function StateManager:handle_movement(direction, opts)
   -- Early return if there are no items or initially hidden with empty query
-  if #state.filtered_items == 0 or (opts.initially_hidden and #table.concat(state.query) == 0) then
-    return
+  if #self.filtered_items == 0 or (opts.initially_hidden and #self:get_query_string() == 0) then
+    return false
   end
 
   -- Make sure the window is still valid before attempting to get/set cursor
-  if not vim.api.nvim_win_is_valid(state.win) then
-    return
+  if not vim.api.nvim_win_is_valid(self.win) then
+    return false
   end
-  local cursor = vim.api.nvim_win_get_cursor(state.win)
+
+  local cursor = vim.api.nvim_win_get_cursor(self.win)
   local current_pos = cursor[1]
-  local total_items = #state.filtered_items
+  local total_items = #self.filtered_items
 
   -- Simple cycling calculation
   local new_pos = current_pos + direction
@@ -1591,11 +1875,51 @@ local function handle_movement(state, direction, opts)
     new_pos = 1
   end
 
-  pcall(vim.api.nvim_win_set_cursor, state.win, { new_pos, 0 })
-  update_current_highlight(state, opts, new_pos - 1) -- 0-indexed for extmarks
+  pcall(vim.api.nvim_win_set_cursor, self.win, { new_pos, 0 })
+  update_current_highlight(self, opts, new_pos - 1) -- 0-indexed for extmarks
 
   if opts.on_move then
-    opts.on_move(state.filtered_items[new_pos])
+    opts.on_move(self.filtered_items[new_pos])
+  end
+
+  -- Mark that user has manually moved cursor
+  self.cursor_moved = true
+  self.initial_open = false
+
+  return true
+end
+
+---Toggle selection of an item (compatibility layer)
+---@param state SelectaState The state object
+---@param item SelectaItem The item to toggle
+---@param opts SelectaOptions Configuration options
+---@return boolean Whether the selection was changed
+local function toggle_selection(state, item, opts)
+  -- Check if this is a StateManager instance
+  if type(state) == "table" and state.toggle_selection then
+    -- Use the state method directly
+    return state:toggle_selection(item, opts)
+  else
+    -- Fallback for backward compatibility
+    logger.debug("Using legacy toggle_selection - consider updating your code")
+
+    if not opts.multiselect or not opts.multiselect.enabled then
+      return false
+    end
+
+    local item_id = get_item_id(item)
+    if state.selected[item_id] then
+      state.selected[item_id] = nil
+      state.selected_count = state.selected_count - 1
+      return true
+    else
+      if opts.multiselect.max_items and state.selected_count >= opts.multiselect.max_items then
+        return false
+      end
+      state.selected[item_id] = true
+      state.selected_count = state.selected_count + 1
+      return true
+    end
   end
 end
 
@@ -1716,21 +2040,8 @@ local function handle_untoggle(state, opts)
   end
 end
 
----Handle character input in the picker
----@param state SelectaState The current state of the picker
----@param char string|number The character input
----@param opts SelectaOptions The options for the picker
----@return nil
-local function handle_char(state, char, opts)
-  if not state.active then
-    return nil
-  end
-
-  local char_key = type(char) == "number" and vim.fn.nr2char(char) or char
-  local movement_keys = get_movement_keys(opts)
-
-  -- Handle custom keymaps first
-
+-- Helper function to handle custom keymaps
+local function handle_custom_keymaps(state, char_key, opts)
   if opts.custom_keymaps and type(opts.custom_keymaps) == "table" then
     for _, action in pairs(opts.custom_keymaps) do
       -- Check if action is properly formatted
@@ -1746,66 +2057,127 @@ local function handle_char(state, char, opts)
               if selected and action.handler then
                 if opts.multiselect and opts.multiselect.enabled and state.selected_count > 0 then
                   -- Handle multiselect case
-                  local selected_items = {}
-                  for _, item in ipairs(state.filtered_items) do
-                    if state.selected[get_item_id(item)] then
-                      table.insert(selected_items, item)
-                    end
-                  end
+                  local selected_items = state:get_selected_items()
                   local should_close = action.handler(selected_items, state)
                   if should_close == false then
                     M.close_picker(state)
-                    return nil
+                    return true
                   end
                 else
                   -- Handle single item case
                   local should_close = action.handler(selected, state)
                   if should_close == false then
                     M.close_picker(state)
-                    return nil
+                    return true
                   end
                 end
               end
-              return nil
+              return true
             end
           end
         end
       end
     end
   end
+  return false
+end
 
-  -- Handle multiselect keymaps
+-- Helper function to handle multiselect keymaps
+local function handle_multiselect_keymaps(state, char_key, opts)
   if opts.multiselect and opts.multiselect.enabled then
     local multiselect_keys = opts.multiselect.keymaps or M.config.multiselect.keymaps
     if char_key == vim.api.nvim_replace_termcodes(multiselect_keys.toggle, true, true, true) then
       if handle_toggle(state, opts, 1) then
-        return nil
+        return true
       end
     elseif char_key == vim.api.nvim_replace_termcodes(multiselect_keys.untoggle, true, true, true) then
       if handle_untoggle(state, opts) then
-        return nil
+        return true
       end
     elseif char_key == vim.api.nvim_replace_termcodes(multiselect_keys.select_all, true, true, true) then
       bulk_selection(state, opts, true)
       M.process_query(state, opts)
-      return nil
+      return true
     elseif char_key == vim.api.nvim_replace_termcodes(multiselect_keys.clear_all, true, true, true) then
       bulk_selection(state, opts, false)
       M.process_query(state, opts)
+      return true
+    end
+  end
+  return false
+end
+
+-- Helper function to handle selection
+local function handle_selection(state, opts)
+  if opts.multiselect and opts.multiselect.enabled then
+    local selected_items = state:get_selected_items()
+    if #selected_items > 0 and opts.multiselect.on_select then
+      opts.multiselect.on_select(selected_items)
+    elseif #selected_items == 0 then
+      local current = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
+      if current and opts.on_select then
+        opts.on_select(current)
+      end
+    end
+  else
+    local selected = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
+    if selected and opts.on_select then
+      opts.on_select(selected)
+    end
+  end
+end
+
+---Handle character input in the picker
+---@param state SelectaState The current state of the picker
+---@param char string|number The character input
+---@param opts SelectaOptions The options for the picker
+---@return nil
+local function handle_char(state, char, opts)
+  if not state.active then
+    return nil
+  end
+
+  local char_key = type(char) == "number" and vim.fn.nr2char(char) or char
+  local movement_keys = get_movement_keys(opts)
+
+  -- Handle custom keymaps first
+  if handle_custom_keymaps(state, char_key, opts) then
+    return nil
+  end
+
+  -- Handle multiselect keymaps
+  if handle_multiselect_keymaps(state, char_key, opts) then
+    return nil
+  end
+
+  -- Handle special keys using StateManager methods when possible
+  if
+    state.handle_special_key
+    and (char_key == SPECIAL_KEYS.LEFT or char_key == SPECIAL_KEYS.RIGHT or char_key == SPECIAL_KEYS.BS)
+  then
+    if state:handle_special_key(char_key, opts) then
       return nil
     end
   end
 
-  -- Handle movement and control keys
+  -- Handle movement keys
   if vim.tbl_contains(movement_keys.previous, char_key) then
-    state.cursor_moved = true
-    state.initial_open = false
-    handle_movement(state, -1, opts)
+    if state.handle_movement then
+      state:handle_movement(-1, opts)
+    else
+      state.cursor_moved = true
+      state.initial_open = false
+      handle_movement(state, -1, opts)
+    end
     return nil
   elseif vim.tbl_contains(movement_keys.next, char_key) then
-    state.cursor_moved = true
-    state.initial_open = false
-    handle_movement(state, 1, opts)
+    if state.handle_movement then
+      state:handle_movement(1, opts)
+    else
+      state.cursor_moved = true
+      state.initial_open = false
+      handle_movement(state, 1, opts)
+    end
     return nil
   elseif vim.tbl_contains(movement_keys.close, char_key) then
     if opts.on_cancel then
@@ -1814,35 +2186,28 @@ local function handle_char(state, char, opts)
     M.close_picker(state)
     return nil
   elseif vim.tbl_contains(movement_keys.select, char_key) then
-    if opts.multiselect and opts.multiselect.enabled then
-      local selected_items = {}
-      for _, item in ipairs(state.items) do
-        if state.selected[get_item_id(item)] then
-          table.insert(selected_items, item)
-        end
-      end
-      if #selected_items > 0 and opts.multiselect.on_select then
-        opts.multiselect.on_select(selected_items)
-      elseif #selected_items == 0 then
-        local current = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
-        if current and opts.on_select then
-          opts.on_select(current)
-        end
-      end
-    else
-      local selected = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
-      if selected and opts.on_select then
-        opts.on_select(selected)
-      end
-    end
+    handle_selection(state, opts)
     M.close_picker(state)
     return nil
   elseif vim.tbl_contains(movement_keys.delete_word, char_key) then
-    delete_last_word(state)
-    M.process_query(state, opts)
+    if state.delete_word then
+      if state:delete_word() then
+        M.process_query(state, opts)
+      end
+    else
+      delete_last_word(state)
+      M.process_query(state, opts)
+    end
     return nil
   elseif vim.tbl_contains(movement_keys.clear_line, char_key) then
-    clear_query_line(state)
+    if state.clear_query then
+      state:clear_query()
+    else
+      state.query = {}
+      state.cursor_pos = 1
+      state.initial_open = false
+      state.cursor_moved = false
+    end
     M.process_query(state, opts)
     return nil
   elseif char_key == SPECIAL_KEYS.MOUSE and vim.v.mouse_win ~= state.win and vim.v.mouse_win ~= state.prompt_win then
@@ -1851,26 +2216,98 @@ local function handle_char(state, char, opts)
     end
     M.close_picker(state)
     return nil
-  elseif char_key == SPECIAL_KEYS.LEFT then
-    state.cursor_pos = math.max(1, state.cursor_pos - 1)
-  elseif char_key == SPECIAL_KEYS.RIGHT then
-    state.cursor_pos = math.min(#state.query + 1, state.cursor_pos + 1)
-  elseif char_key == SPECIAL_KEYS.BS then
-    if state.cursor_pos > 1 then
-      table.remove(state.query, state.cursor_pos - 1)
-      state.cursor_pos = state.cursor_pos - 1
-      state.initial_open = false
-      state.cursor_moved = false
+  elseif char_key == SPECIAL_KEYS.LEFT and not state.handle_special_key then
+    state:move_cursor(-1)
+  elseif char_key == SPECIAL_KEYS.RIGHT and not state.handle_special_key then
+    state:move_cursor(1)
+  elseif char_key == SPECIAL_KEYS.BS and not state.handle_special_key then
+    if state:backspace() then
+      M.process_query(state, opts)
     end
-  elseif type(char) == "number" and char >= 32 and char <= 126 then
-    table.insert(state.query, state.cursor_pos, vim.fn.nr2char(char))
-    state.cursor_pos = state.cursor_pos + 1
-    state.initial_open = false
-    state.cursor_moved = false
+  else
+    -- Handle regular character input
+    if state:update_query(char) then
+      M.process_query(state, opts)
+    end
   end
 
-  M.process_query(state, opts)
   return nil
+end
+
+---Create the picker windows
+---@param state SelectaState
+---@param opts SelectaOptions
+local function create_windows(state, opts)
+  -- Handle initially_hidden option
+  if opts.initially_hidden then
+    -- When initially hidden, set minimal dimensions
+    state.filtered_items = {}
+    state.width = opts.window.min_width or M.config.window.min_width
+    state.height = opts.window.min_height or M.config.window.min_height
+  end
+
+  -- Create main window
+  local win_config = vim.tbl_deep_extend("force", {
+    relative = opts.window.relative or M.config.window.relative,
+    row = state.row + 1, -- Shift main window down by 1 to make room for prompt
+    col = state.col,
+    width = state.width,
+    height = state.height,
+    style = "minimal",
+    border = get_border_with_footer(opts),
+  }, opts.window.override or {})
+
+  -- Set footer if needed
+  if opts.window.show_footer then
+    win_config.footer = {
+      { string.format(" %d/%d ", #state.filtered_items, #state.items), "NamuFooter" },
+    }
+    win_config.footer_pos = opts.window.footer_pos or "right"
+  end
+
+  -- Create windows and setup
+  state.win = vim.api.nvim_open_win(state.buf, true, win_config)
+
+  -- Call window create hook
+  if opts.hooks and opts.hooks.on_window_create then
+    opts.hooks.on_window_create(state.win, state.buf, opts)
+  end
+
+  -- Create prompt window
+  create_prompt_window(state, opts)
+  update_prompt_info(state, opts, true)
+
+  -- Configure window options
+  vim.wo[state.win].cursorline = true
+  vim.wo[state.win].cursorlineopt = "both"
+  vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = state.buf })
+  vim.api.nvim_set_option_value("buftype", "nofile", { buf = state.buf })
+
+  -- Handle initially_hidden option post-creation
+  if opts.initially_hidden then
+    vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, {})
+  end
+
+  -- Handle initial cursor position if specified
+  if opts.initial_index and opts.initial_index <= #state.items then
+    local target_pos = math.min(opts.initial_index, #state.filtered_items)
+    if target_pos > 0 then
+      vim.schedule(function()
+        if vim.api.nvim_win_is_valid(state.win) then
+          -- Set cursor position
+          pcall(vim.api.nvim_win_set_cursor, state.win, { target_pos, 0 })
+          -- Force redraw to update highlight
+          vim.cmd("redraw")
+          -- Ensure cursorline is enabled and visible
+          vim.wo[state.win].cursorline = true
+          -- Trigger a manual cursor move to ensure everything is updated
+          if opts.on_move then
+            opts.on_move(state.filtered_items[target_pos])
+          end
+        end
+      end)
+    end
+  end
 end
 
 ---Pick an item from the list with cursor management
@@ -1922,10 +2359,12 @@ function M.pick(items, opts)
       end
     end
 
-  local state = create_picker(items, opts)
+  local state = StateManager.new(items, opts)
+  -- Create the UI
+  create_windows(state, opts)
   M.process_query(state, opts)
   vim.cmd("redraw")
-  hide_cursor()
+  cursor_manager.hide()
 
   -- Handle initial cursor position
   if opts.initial_index and opts.initial_index <= #items then
@@ -1952,17 +2391,14 @@ function M.pick(items, opts)
   end)
 
   vim.schedule(function()
-    restore_cursor()
+    cursor_manager.restore()
   end)
   if state and state.active then
-    M.close_picker(state)
+    state:cleanup()
   end
 
   -- Ensure cursor is restored even if there was an error
   if not ok then
-    vim.schedule(function()
-      restore_cursor()
-    end)
     error(result)
   end
 
@@ -1973,10 +2409,10 @@ M._test = {
   get_match_positions = matcher.get_match_positions,
   is_word_boundary = matcher.is_word_boundary,
   update_filtered_items = M.update_filtered_items,
-  calculate_window_size = calculate_window_size,
+  calculate_window_size = M.calculate_window_size,
   validate_input = matcher.validate_input,
   apply_highlights = apply_highlights,
-  get_window_position = get_window_position,
+  get_window_position = M.get_window_position,
   parse_position = parse_position,
 }
 
