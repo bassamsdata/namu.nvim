@@ -111,7 +111,6 @@ M.config = {
   },
 }
 
--- Add this at the module level
 ---@class SelectaStateManager
 local StateManager = {}
 StateManager.__index = StateManager
@@ -133,32 +132,26 @@ function StateManager.new(items, opts)
     prompt_buf = nil,
     prompt_win = nil,
     win = nil,
-
     -- Position and size
     row = row,
     col = col,
     width = initial_width,
     height = initial_height,
-
     -- Item data
     items = items,
     filtered_items = opts.initially_hidden and {} or items,
     filter_metadata = nil,
-
     -- Selection state
     selected = {},
     selected_count = 0,
-
     -- Input state
     query = {},
     cursor_pos = 1,
-
     -- UI state
     active = true,
     initial_open = true,
     best_match_index = nil,
     cursor_moved = false,
-
     -- Async state
     is_loading = false,
     last_query = nil,
@@ -695,7 +688,7 @@ function M.update_filtered_items(state, query, opts)
     hierarchical_filter(state, items_to_filter, actual_query, opts)
   else
     -- Standard filtering with optimized implementation
-    standard_filter(state, items_to_filter, actual_query, opts)
+    M.standard_filter(state, items_to_filter, actual_query, opts)
   end
 
   -- Handle auto-select for single result
@@ -709,7 +702,7 @@ function M.update_filtered_items(state, query, opts)
 end
 
 -- Standard filtering with better performance
-function standard_filter(state, items, query, opts)
+function M.standard_filter(state, items, query, opts)
   -- Early optimization: pre-allocate matched items array
   local matched_items = {}
   local match_scores = {}
@@ -1935,7 +1928,7 @@ local function handle_toggle(state, opts, direction)
   local current_item = state.filtered_items[cursor_pos]
   if current_item then
     M.log(string.format("Current item: %s", current_item.text))
-    local was_toggled = toggle_selection(state, current_item, opts)
+    local was_toggled = state:toggle_selection(current_item, opts)
     M.log(string.format("Item toggled: %s", tostring(was_toggled)))
 
     -- Only move if toggle was successful
