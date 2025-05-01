@@ -2148,9 +2148,9 @@ local function handle_char(state, char, opts)
     state.handle_special_key
     and (char_key == SPECIAL_KEYS.LEFT or char_key == SPECIAL_KEYS.RIGHT or char_key == SPECIAL_KEYS.BS)
   then
-    if state:handle_special_key(char_key, opts) then
-      return nil
-    end
+    state:handle_special_key(char_key, opts)
+    M.process_query(state, opts) -- Make sure this happens after all key handling
+    return nil
   end
 
   -- Handle movement keys
