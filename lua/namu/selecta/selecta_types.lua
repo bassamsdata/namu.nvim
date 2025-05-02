@@ -22,8 +22,23 @@
 ---@field last_request_time number? Last request time
 ---@field last_query string? Last query
 ---@field filter_metadata table? Filter metadata
+---@field current_request_id string? Current async request ID
 ---@field loading_extmark_id number? Loading extmark id
----@field initial_index number? Initial index
+---@field original_buf number Original buffer handle
+---@field _cleanup_timer? function Function to clean up timers on close
+---@field _cleanup_scroll? function Function to clean up scroll handlers
+---@field handle_special_key fun(self: SelectaState, key: string, opts: SelectaOptions): boolean
+---@field handle_movement fun(self: SelectaState, direction: number, opts: SelectaOptions): boolean
+---@field update_query fun(self: SelectaState, char: string|number): boolean
+---@field move_cursor fun(self: SelectaState, direction: number)
+---@field backspace fun(self: SelectaState): boolean
+---@field get_query_string fun(self: SelectaState): string
+---@field delete_word fun(self: SelectaState): boolean
+---@field clear_query fun(self: SelectaState)
+---@field toggle_selection fun(self: SelectaState, item: SelectaItem, opts: SelectaOptions): boolean
+---@field get_selected_items fun(self: SelectaState): SelectaItem[]
+---@field is_valid fun(self: SelectaState): boolean
+---@field cleanup fun(self: SelectaState)
 
 ---@class SelectaItem
 ---@field text string Display text
@@ -35,6 +50,7 @@
 ---@field match_score number? Match score
 ---@field is_loading boolean? Is loading
 ---@field bufnr? number? Buffer number
+---@field id? string Unique identifier
 
 ---@class SelectaKeymap
 ---@field key string The key sequence
@@ -65,6 +81,8 @@
 ---@field previous string|string[] Key(s) for moving to previous item
 ---@field close string|string[] Key(s) for closing picker
 ---@field select string|string[] Key(s) for selecting item
+---@field delete_word string|string[] Key(s) for deleting word
+---@field clear_line string|string[] Key(s) for clearing line
 ---@field alternative_next? string @deprecated Use next array instead
 ---@field alternative_previous? string @deprecated Use previous array instead
 
@@ -84,16 +102,16 @@
 ---@field row_position? "center"|"top10"|"top10_right"|"center_right"|"bottom" -- Added more options
 ---@field multiselect? SelectaMultiselect
 ---@field display? SelectaDisplay
----@field offset? number
+---@field offset? fun(item: SelectaItem): number|number
 ---@field hooks? SelectaHooks
 ---@field initially_hidden? boolean
 ---@field initial_index? number
----@field initial_prompt_info? {text: string, hl_group: string} Optional info for the prompt when empty
+---@field initial_prompt_info? {text: string, hl_group?: string, pos?: string} Optional info for the prompt when empty
 ---@field debug? boolean
 ---@field movement? SelectaMovementConfig
 ---@field custom_keymaps? table<string, SelectaCustomAction> Custom actions
----@field pre_filter? fun(items: SelectaItem[], query: string): SelectaItem[], string Function to pre-filter items before matcher
----@field async_source? fun(query: string): function A function that returns a coroutine for async fetching
+---@field pre_filter? fun(items: SelectaItem[], query: string): SelectaItem[], string, table? Function to pre-filter items before matcher
+---@field async_source? fun(query: string): function A function that returns a function for async fetching
 ---@field loading_indicator? { text: string, icon: string } Custom loading indicator
 ---@field prefix_highlighter? fun(buf: number, line_nr: number, item: SelectaItem, icon_end: number, ns_id: number)
 ---@field parent_key? fun(item: SelectaItem): string
@@ -102,6 +120,12 @@
 ---@field is_root_item? fun(item: SelectaItem): boolean
 ---@field current_highlight? CurrentHighlightConfig
 ---@field preserve_hierarchy? boolean
+---@field right_position? {fixed: boolean, ratio: number}
+
+---@class CurrentHighlightConfig
+---@field enabled boolean Whether to use custom highlight
+---@field hl_group string Highlight group to use
+---@field prefix_icon string Icon to show before current selection
 
 ---@class SelectaHooks
 ---@field on_render? fun(buf: number, items: SelectaItem[], opts: SelectaOptions) Called after items are rendered
@@ -117,7 +141,7 @@
 ---@class SelectaMultiselect
 ---@field enabled boolean Whether multiselect is enabled
 ---@field indicator string Character to show for selected items
----@field on_select fun(items: SelectaItem[]) Callback for multiselect completion
+---@field on_select? fun(items: SelectaItem[]) Callback for multiselect completion
 ---@field max_items? number|nil Maximum number of items that can be selected
 ---@field keymaps? table<string, string> Custom keymaps for multiselect operations
 
@@ -142,3 +166,7 @@
 ---@field raw_width number Width without padding
 ---@field padding number Padding after prefix
 ---@field hl_group string Highlight group to use
+
+---@class PositionInfo
+---@field type string "top"|"center"|"bottom"|"top_right"|"center_right"
+---@field ratio number Position ratio (0.0-1.0)
