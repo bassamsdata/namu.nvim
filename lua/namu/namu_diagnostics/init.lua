@@ -7,11 +7,18 @@ local M = {}
 
 M.config = require("namu.namu_symbols.config").values
 M.config = vim.tbl_deep_extend("force", M.config, {
+  row_position = "top10_right",
   highlights = {
     Error = "DiagnosticVirtualTextError",
     Warn = "DiagnosticVirtualTextWarn",
     Info = "DiagnosticVirtualTextInfo",
     Hint = "DiagnosticVirtualTextHint",
+  },
+  workspace_diagnostics = {
+    load_once = true,
+    load_timeout = 5000, -- 5 seconds timeout for initial loading
+    progressive_updates = true,
+    preload_progress = true,
   },
   icons = {
     Error = "",
@@ -120,6 +127,14 @@ function M.show_buffer_diagnostics()
     return
   end
   return impl.show_buffer_diagnostics(M.config)
+end
+
+function M.load_workspace_diagnostics()
+  load_impl()
+  if not impl then
+    return false
+  end
+  return impl.load_workspace_diagnostics(M.config)
 end
 
 function M.show_workspace_diagnostics()

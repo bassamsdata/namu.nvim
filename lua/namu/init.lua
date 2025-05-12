@@ -19,7 +19,7 @@ M.setup = function(opts)
   require("namu.core.highlights").setup()
 
   if M.config.namu_symbols.enable then
-    require("namu.selecta.selecta").setup(M.config.namu_symbols.options)
+    -- require("namu.selecta").setup(M.config.namu_symbols.options)
     require("namu.namu_symbols").setup(M.config.namu_symbols.options)
   end
 

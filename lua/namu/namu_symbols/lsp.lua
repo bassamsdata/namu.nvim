@@ -10,7 +10,7 @@ local state = {
 ---Fixes old style clients
 ---@param client vim.lsp.Client
 ---@return vim.lsp.Client
-local function ensure_client_compatibility(client)
+function M.ensure_client_compatibility(client)
   -- If client already has the new-style API, return it as-is
   if getmetatable(client) and getmetatable(client).request then
     return client
@@ -55,7 +55,7 @@ function M.get_client_with_method(bufnr, method)
   logger.log(string.format("Buffer: %d, Method: %s", bufnr, method))
 
   local get_clients_fn = vim.lsp.get_clients
-  local clients = vim.tbl_map(ensure_client_compatibility, get_clients_fn({ bufnr = bufnr }))
+  local clients = vim.tbl_map(M.ensure_client_compatibility, get_clients_fn({ bufnr = bufnr }))
 
   logger.log(string.format("Found %d clients", #clients))
 

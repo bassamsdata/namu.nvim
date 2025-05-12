@@ -166,7 +166,16 @@ local registry = {
     if #args == 0 then
       require("namu.namu_diagnostics").show()
     else
-      require("namu.namu_diagnostics").show("workspace")
+      -- For workspace diagnostics, first try to load them
+      local diag_module = require("namu.namu_diagnostics")
+      if args[1] == "workspace" then
+        -- Wait a bit for diagnostics to be collected before showing
+        vim.defer_fn(function()
+          diag_module.show_workspace_diagnostics()
+        end, 1000) -- Give LSP servers a second to process the files
+      else
+        diag_module.show("workspace")
+      end
     end
   end,
   watchtower = function(args)
@@ -316,7 +325,6 @@ local function command_complete(_, line, col)
     end, ctags_types)
   end
   if words[2] == "help" then
-    -- BUG: after modulize the plugin request_symbol is not working with those.
     local help_types = { "symbols", "analysis" }
     local prefix = words[3] or ""
     return vim.tbl_filter(function(type)
