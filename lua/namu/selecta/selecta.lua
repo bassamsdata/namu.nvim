@@ -1480,6 +1480,7 @@ local SPECIAL_KEYS = {
   ESC = vim.api.nvim_replace_termcodes("<ESC>", true, true, true),
   BS = vim.api.nvim_replace_termcodes("<BS>", true, true, true),
   MOUSE = vim.api.nvim_replace_termcodes("<LeftMouse>", true, true, true),
+  CTRL_C = vim.api.nvim_replace_termcodes("<C-c>", true, true, true),
 }
 
 ---Delete last word from query
@@ -1807,15 +1808,11 @@ local function handle_char(state, char, opts)
     handle_movement(state, 1, opts)
     return nil
   elseif vim.tbl_contains(movement_keys.close, char_key) then
-    -- For <C-c>, it's a special case. We need to check if the raw char value matches
-    -- Ctrl+C is usually 3 in ASCII
-    if char == 3 or vim.tbl_contains(movement_keys.close, char_key) then
-      if opts.on_cancel then
-        opts.on_cancel()
-      end
-      M.close_picker(state)
-      return nil
+    if opts.on_cancel then
+      opts.on_cancel()
     end
+    M.close_picker(state)
+    return nil
   elseif vim.tbl_contains(movement_keys.select, char_key) then
     if opts.multiselect and opts.multiselect.enabled then
       local selected_items = {}
