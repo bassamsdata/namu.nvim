@@ -118,7 +118,7 @@ M.defaults = {
     -- TODO: still needs implementing, keep it always now
     highlight_mode = "always", -- "always" | "select" (only highlight when selecting)
   },
-  icon = "󱠦", -- 󱠦 -  -  -- 󰚟
+  icon = "󱠦  ", -- 󱠦 -  -  -- 󰚟
   highlight = "NamuPreview",
   highlights = {
     parent = "NamuParent",

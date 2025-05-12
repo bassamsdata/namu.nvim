@@ -25,7 +25,7 @@ M.config = vim.tbl_deep_extend("force", M.config, {
     prefix_icon = " ",
   },
   window = {
-    title_prefix = "󰃣 > ",
+    title_prefix = "󰃣 ",
     min_width = 20,
     max_width = 80,
     min_height = 1,

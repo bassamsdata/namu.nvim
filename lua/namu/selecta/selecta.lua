@@ -49,11 +49,7 @@ local ui = require("namu.selecta.ui")
 function M.log(message)
   logger.log(message)
 end
-
 M.clear_log = logger.clear_log
-
-local ns_id = vim.api.nvim_create_namespace("selecta_highlights")
-local current_selection_ns = vim.api.nvim_create_namespace("selecta_current_selection")
 
 -- Add this at the module level
 local cursor_manager = {
@@ -69,22 +65,16 @@ function cursor_manager.hide(state)
   if cursor_manager.active then
     return
   end
-
   -- Store current cursor state
   cursor_manager.guicursor = vim.o.guicursor
   cursor_manager.active = true
-
-  -- Hide cursor
   vim.o.guicursor = "a:NamuCursor"
-
   -- Set up recurring check every 20 seconds
   -- Stops when state.active becomes false and restores cursor
   if cursor_manager.restore_timer then
     cursor_manager.restore_timer:stop()
   end
-
   local function check_state()
-    vim.notify("statemanager.active: " .. tostring(state.active))
     if cursor_manager.active and not state.active then
       cursor_manager.restore()
       vim.notify("Cursor automatically restored after state became inactive", vim.log.levels.WARN)
@@ -112,21 +102,17 @@ function cursor_manager.restore()
   if not cursor_manager.active then
     return
   end
-
   -- Stop the safety timer
   if cursor_manager.restore_timer then
     cursor_manager.restore_timer:stop()
     cursor_manager.restore_timer = nil
   end
-
   -- Handle edge case where guicursor was empty
   if cursor_manager.guicursor == "" then
     vim.o.guicursor = "a:"
   elseif cursor_manager.guicursor then
     vim.o.guicursor = cursor_manager.guicursor
   end
-
-  -- Reset state
   cursor_manager.guicursor = nil
   cursor_manager.active = false
 end
@@ -453,8 +439,11 @@ end
 ---@param state SelectaState
 ---@param opts SelectaOptions
 function M.process_query(state, opts)
-  local query = table.concat(state.query)
+  local query = state:get_query_string()
 
+  if state.initial_open then
+    state.initial_open = false
+  end
   -- Step 1: Try async fetch if configured
   if opts.async_source then
     -- Try to start async fetch, pass callback for display update
@@ -463,6 +452,8 @@ function M.process_query(state, opts)
       M.update_filtered_items(state, query, opts)
       ui.update_display(state, opts)
       common.update_selection_highlights(state, opts)
+      -- Handle cursor positioning and on_move callback
+      -- state:handle_post_filter_cursor(opts)
       vim.cmd("redraw")
     end)
 
@@ -477,6 +468,8 @@ function M.process_query(state, opts)
   M.update_filtered_items(state, query, opts)
   ui.update_display(state, opts)
   common.update_selection_highlights(state, opts)
+  -- Handle cursor positioning and on_move callback
+  -- state:handle_post_filter_cursor(opts)
 end
 
 ---Close the picker and restore cursor
@@ -506,7 +499,9 @@ function M.close_picker(state)
       vim.api.nvim_win_close(state.win, true)
     end
   end
-  cursor_manager.restore()
+  -- cursor_manager.restore()
+  -- TODO: CHECK THIS BEFORE RELEASE
+  vim.cmd("stopinsert!")
 end
 
 ---Calculate window position based on preset
@@ -555,6 +550,52 @@ function M.get_window_position(width, row_position)
   return row, col
 end
 
+---Set up the prompt buffer with event handling and keymaps
+---@param state SelectaState
+---@param opts SelectaOptions
+---@return nil
+function M.setup_prompt_buffer(state, opts)
+  -- Early return if buffer is not valid
+  if not state.prompt_buf or not vim.api.nvim_buf_is_valid(state.prompt_buf) then
+    return
+  end
+
+  -- Set up buffer change tracking using nvim_buf_attach
+  vim.api.nvim_buf_attach(state.prompt_buf, false, {
+    on_lines = function(_, bufnr, _, firstline, lastline, new_lastline, _)
+      if bufnr ~= state.prompt_buf or not state.active then
+        return false
+      end
+
+      -- Update query from buffer content - but don't process yet
+      if state:update_query_from_buffer() and state.active then
+        -- Instead of calling process_query directly, set a flag and trigger it
+        -- on the next UI event via vim.schedule
+        state.query_changed = true
+        vim.schedule(function()
+          -- if state.active and state.query_changed then
+          --   state.query_changed = nil
+          -- Process query outside the callback context
+          M.process_query(state, opts)
+          -- Handle cursor positioning and on_move callback after filtering
+          -- state:handle_post_filter_cursor(opts)
+          -- end
+        end)
+      end
+
+      -- Keep attachment
+      return false
+    end,
+  })
+
+  -- Set up keymaps by passing our functions to avoid circular dependencies
+  input_handler.setup_keymaps(state, opts, M.close_picker, M.process_query)
+  -- Add prefix to prompt in signcolumn
+  ui.update_prompt_prefix(state, opts, state:get_query_string())
+  -- Start in insert mode
+  vim.cmd("startinsert")
+end
+
 ---Handle character input in the picker
 ---@param state SelectaState The current state of the picker
 ---@param char string|number The character input
@@ -567,7 +608,7 @@ end
 ---Pick an item from the list with cursor management
 ---@param items SelectaItem[]
 ---@param opts? SelectaOptions
----@return SelectaItem|nil
+---@return nil
 function M.pick(items, opts)
   local base_opts = {
     title = "Select",
@@ -576,13 +617,14 @@ function M.pick(items, opts)
       return query == "" or string.find(string.lower(item.text), string.lower(query))
     end,
     fuzzy = false,
-    offnet = 0,
+    offset = 0,
     movement = vim.tbl_deep_extend("force", common.config.movement, {}),
     auto_select = common.config.auto_select,
     window = common.config.window,
     pre_filter = nil,
     row_position = common.config.row_position,
     debug = common.config.debug,
+    normal_mode = false, -- New: default to false for backward compatibility
   }
   opts = vim.tbl_deep_extend("force", base_opts, opts or {})
 
@@ -594,7 +636,7 @@ function M.pick(items, opts)
   opts.formatter = opts.formatter
     or function(item)
       local prefix_padding = ""
-      if opts.current_highlight.enabled and #opts.current_highlight.prefix_icon > 0 then
+      if opts.current_highlight and opts.current_highlight.enabled and #opts.current_highlight.prefix_icon > 0 then
         prefix_padding = string.rep(" ", vim.api.nvim_strwidth(opts.current_highlight.prefix_icon))
       end
       if opts.display.mode == "raw" then
@@ -609,10 +651,13 @@ function M.pick(items, opts)
       end
     end
 
+  -- Create state
   local state = StateManager.new(items, opts)
+
   -- Calculate dimensions and position for the state
   local width, height = ui.calculate_window_size(opts.initially_hidden and {} or items, opts, opts.formatter, 0)
   local row, col = M.get_window_position(width, opts.row_position)
+
   -- Update state with calculated values
   state.row = row
   state.col = col
@@ -620,9 +665,11 @@ function M.pick(items, opts)
   state.height = height
   -- Create the UI
   ui.create_windows(state, opts)
+  -- Set up the prompt buffer with event handling
+  M.setup_prompt_buffer(state, opts)
+  -- Initial processing
   M.process_query(state, opts)
   vim.cmd("redraw")
-  cursor_manager.hide(state)
 
   -- Handle initial cursor position
   if opts.initial_index and opts.initial_index <= #items then
@@ -636,31 +683,10 @@ function M.pick(items, opts)
     end
   end
 
-  -- Main input loop
-  local ok, result = pcall(function()
-    while state.active do
-      local char = vim.fn.getchar()
-      local result = handle_char(state, char, opts)
-      if result ~= nil then
-        return result
-      end
-      vim.cmd("redraw")
-    end
-  end)
-
-  vim.schedule(function()
-    cursor_manager.restore()
-  end)
-  if state and state.active then
-    state:cleanup()
+  -- Focus the prompt window and start in insert mode
+  if state.prompt_win and vim.api.nvim_win_is_valid(state.prompt_win) then
+    vim.api.nvim_set_current_win(state.prompt_win)
   end
-
-  -- Ensure cursor is restored even if there was an error
-  if not ok then
-    error(result)
-  end
-
-  return result
 end
 
 M._test = {
@@ -669,9 +695,7 @@ M._test = {
   update_filtered_items = M.update_filtered_items,
   calculate_window_size = M.calculate_window_size,
   validate_input = matcher.validate_input,
-  apply_highlights = apply_highlights,
   get_window_position = M.get_window_position,
-  parse_position = parse_position,
 }
 
 ---@param opts? table

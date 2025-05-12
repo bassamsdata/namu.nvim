@@ -12,7 +12,7 @@ local log = common.log
 ---@param opts SelectaOptions
 ---@return table<string, string[]>
 local function get_movement_keys(opts)
-  local movement_config = opts.movement or {}
+  local movement_config = opts.movement or common.config.movement
   local keys = {
     next = {},
     previous = {},
@@ -25,12 +25,6 @@ local function get_movement_keys(opts)
   -- Handle arrays of keys
   for action, mapping in pairs(movement_config) do
     if action ~= "alternative_next" and action ~= "alternative_previous" then
-      if action == "delete_word" or action == "clear_line" then
-        print("Action: " .. action .. ", Mapping: " .. vim.inspect(mapping))
-        if vim.tbl_isempty(mapping) then
-          print("Warning: " .. action .. " has empty mapping")
-        end
-      end
       if type(mapping) == "table" then
         -- Handle array of keys
         for _, key in ipairs(mapping) do
@@ -213,6 +207,8 @@ local function handle_custom_keymaps(state, char_key, opts, close_picker_fn)
         if type(keys) == "table" then
           for _, key in ipairs(keys) do
             if type(key) == "string" and char_key == vim.api.nvim_replace_termcodes(key, true, true, true) then
+              -- Store current cursor position before executing handler
+              local current_pos = vim.api.nvim_win_get_cursor(state.win)
               local selected = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
               if selected and action.handler then
                 if opts.multiselect and opts.multiselect.enabled and state.selected_count > 0 then
@@ -222,7 +218,7 @@ local function handle_custom_keymaps(state, char_key, opts, close_picker_fn)
                   if should_close == false then
                     -- Main module will handle closing
                     close_picker_fn(state)
-                    return true
+                    return nil
                   end
                 else
                   -- Handle single item case
@@ -230,11 +226,11 @@ local function handle_custom_keymaps(state, char_key, opts, close_picker_fn)
                   if should_close == false then
                     -- Main module will handle closing
                     close_picker_fn(state)
-                    return true
+                    return nil -- Exit without further processing
                   end
                 end
               end
-              return true
+              return nil -- Exit without further processing
             end
           end
         end
@@ -278,53 +274,336 @@ end
 ---@param state SelectaState
 ---@param opts SelectaOptions
 local function handle_selection(state, opts)
+  if not state or not state.active then
+    return
+  end
+  if #state.filtered_items == 0 then
+    return
+  end
+  local ok, cursor_pos = pcall(function()
+    return vim.api.nvim_win_get_cursor(state.win)[1]
+  end)
+  if not ok or not cursor_pos or cursor_pos < 1 or cursor_pos > #state.filtered_items then
+    -- Invalid cursor position, try to use first item
+    cursor_pos = #state.filtered_items > 0 and 1 or nil
+  end
   if opts.multiselect and opts.multiselect.enabled then
     local selected_items = state:get_selected_items()
     if #selected_items > 0 and opts.multiselect.on_select then
       opts.multiselect.on_select(selected_items)
-    elseif #selected_items == 0 then
-      local current = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
+    elseif #selected_items == 0 and cursor_pos then
+      local current = state.filtered_items[cursor_pos]
       if current and opts.on_select then
         opts.on_select(current)
       end
     end
   else
-    local selected = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
-    if selected and opts.on_select then
-      opts.on_select(selected)
+    if cursor_pos then
+      local selected = state.filtered_items[cursor_pos]
+      if selected and opts.on_select then
+        opts.on_select(selected)
+      end
     end
   end
 end
 
--- Delete last word
-local function delete_last_word(state)
-  -- Legacy method for compatibility
-  if state.delete_word then
-    state:delete_word()
+local function _set_picker_keymap(prompt_buf_id, is_normal_mode_active, key_lhs, callback_fn, force_modes_list)
+  local modes_to_set
+  if force_modes_list then
+    modes_to_set = force_modes_list
+  elseif is_normal_mode_active then
+    modes_to_set = { "i", "n" } -- Map for both insert and normal if normal_mode is enabled
+  else
+    modes_to_set = { "i" } -- Default to insert mode only
+  end
+
+  vim.keymap.set(modes_to_set, key_lhs, callback_fn, {
+    buffer = prompt_buf_id,
+    nowait = true,
+    silent = true, -- Keep picker mappings silent by default
+    desc = "Selecta: " .. key_lhs,
+  })
+end
+
+---Set up keymaps for the picker
+---@param state SelectaState
+---@param opts SelectaOptions
+---@param close_picker_fn function
+---@param process_query_fn function
+function M.setup_keymaps(state, opts, close_picker_fn, process_query_fn)
+  if not state.prompt_buf or not vim.api.nvim_buf_is_valid(state.prompt_buf) then
     return
   end
-  -- If we're at the start, nothing to delete
-  if state.cursor_pos <= 1 then
-    return
+  local movement_keys = opts.movement or common.config.movement
+
+  local function map_key_adapter(key_lhs, callback_fn, force_modes_list)
+    _set_picker_keymap(state.prompt_buf, opts.normal_mode, key_lhs, callback_fn, force_modes_list)
   end
-  -- Find the last non-space character before cursor
-  local last_char_pos = state.cursor_pos - 1
-  while last_char_pos > 1 and state.query[last_char_pos] == " " do
-    last_char_pos = last_char_pos - 1
+
+  local augroup_name = "NamuFocus_" .. vim.api.nvim_get_current_buf() .. "_" .. state.prompt_buf
+  local augroup = vim.api.nvim_create_augroup(augroup_name, { clear = true })
+  vim.api.nvim_create_autocmd("WinLeave", {
+    group = augroup,
+    pattern = "*",
+    callback = function(args)
+      if args.buf ~= state.prompt_buf and args.buf ~= state.buf then
+        return
+      end
+      vim.schedule(function()
+        if not state.active then
+          return
+        end
+        local current_win = vim.api.nvim_get_current_win()
+        if current_win ~= state.win and current_win ~= state.prompt_win then
+          if not state.in_custom_action then
+            if opts.on_cancel then
+              opts.on_cancel()
+            end
+            close_picker_fn(state)
+          end
+        end
+      end)
+    end,
+  })
+
+  local original_cleanup = state.cleanup
+  state.cleanup = function(...)
+    pcall(vim.api.nvim_del_augroup_by_name, augroup_name)
+    if original_cleanup then
+      return original_cleanup(...)
+    end
   end
-  -- Find the start of the word
-  local word_start = last_char_pos
-  while word_start > 1 and state.query[word_start - 1] ~= " " do
-    word_start = word_start - 1
+
+  -- Specific Normal Mode Mappings (if opts.normal_mode is true)
+  if opts.normal_mode then
+    for _, key in ipairs(movement_keys.next) do
+      vim.keymap.set("n", key, function()
+        if state.active then
+          state:handle_movement(1, opts)
+        end
+      end, { buffer = state.prompt_buf, nowait = true, silent = true, desc = "Namu: Next" })
+    end
+    for _, key in ipairs(movement_keys.previous) do
+      vim.keymap.set("n", key, function()
+        if state.active then
+          state:handle_movement(-1, opts)
+        end
+      end, { buffer = state.prompt_buf, nowait = true, silent = true, desc = "Namu: Previous" })
+    end
+    vim.keymap.set("n", "j", function()
+      if state.active then
+        state:handle_movement(1, opts)
+      end
+    end, { buffer = state.prompt_buf, nowait = true, silent = true, desc = "Namu: next" })
+    vim.keymap.set("n", "k", function()
+      if state.active then
+        state:handle_movement(-1, opts)
+      end
+    end, { buffer = state.prompt_buf, nowait = true, silent = true, desc = "Namu: previous" })
+
+    -- <Esc> in Normal mode always closes the picker
+    vim.keymap.set("n", "<esc>", function()
+      if state.active then
+        if opts.on_cancel then
+          opts.on_cancel()
+        end
+        close_picker_fn(state)
+      end
+    end, { buffer = state.prompt_buf, nowait = true, silent = true, desc = "Namu: Esc Close" })
   end
-  -- Remove characters from word_start to last_char_pos
-  for _ = word_start, last_char_pos do
-    table.remove(state.query, word_start)
+
+  -- Process movement_keys from config
+  -- Previous item navigation
+  for _, key_code in ipairs(movement_keys.previous) do
+    local callback = function()
+      if state.active then
+        state:handle_movement(-1, opts)
+      end
+    end
+    -- local key_termcodes = vim.api.nvim_replace_termcodes(key_code, true, true, true)
+    -- if opts.normal_mode and key_termcodes == common.SPECIAL_KEYS.CTRL_P then
+    -- _set_picker_keymap_on_buf(state.prompt_buf, opts.normal_mode, key_code, callback, { "i" })
+    -- else
+    _set_picker_keymap(state.prompt_buf, opts.normal_mode, key_code, callback)
+    -- end
   end
-  -- Update cursor position
-  state.cursor_pos = word_start
-  state.initial_open = false
-  state.cursor_moved = false
+
+  -- Next item navigation
+  for _, key_code in ipairs(movement_keys.next) do
+    local callback = function()
+      if state.active then
+        state:handle_movement(1, opts)
+      end
+    end
+    local key_termcodes = vim.api.nvim_replace_termcodes(key_code, true, true, true)
+    -- if opts.normal_mode and key_termcodes == common.SPECIAL_KEYS.CTRL_N then
+    --   _set_picker_keymap_on_buf(state.prompt_buf, opts.normal_mode, key_termcodes, callback, { "i" })
+    -- else
+    _set_picker_keymap(state.prompt_buf, opts.normal_mode, key_code, callback)
+    -- end
+  end
+
+  -- Close keys
+  if movement_keys.close then
+    local close_callback = function()
+      if state.active then
+        if opts.on_cancel then
+          opts.on_cancel()
+        end
+        close_picker_fn(state)
+      end
+    end
+
+    if opts.normal_mode then
+      -- If normal_mode is true, map close keys (EXCEPT <Esc>) only for insert mode.
+      -- Normal mode <Esc> is handled directly above.
+      for _, key_code in ipairs(movement_keys.close) do
+        if key_code ~= "<ESC>" then
+          _set_picker_keymap(state.prompt_buf, true, key_code, close_callback, { "i" })
+        end
+        -- <Esc> in insert mode is intentionally NOT mapped to close_callback here
+        -- when opts.normal_mode is true, allowing it to switch to normal mode.
+      end
+    else
+      -- If not normal_mode, map all close keys (including <Esc> if present) for insert mode.
+      for _, key_code in ipairs(movement_keys.close) do
+        _set_picker_keymap(state.prompt_buf, false, key_code, close_callback, { "i" })
+      end
+    end
+  end
+
+  -- Selection
+  for _, key_code in ipairs(movement_keys.select) do
+    _set_picker_keymap(state.prompt_buf, opts.normal_mode, key_code, function()
+      if not state.active then
+        return
+      end
+      if #state.filtered_items == 0 then
+        if opts.on_cancel then
+          opts.on_cancel()
+        end
+      else
+        M.handle_selection(state, opts)
+      end
+      close_picker_fn(state)
+    end)
+  end
+
+  if opts.multiselect and opts.multiselect.enabled then
+    M.setup_multiselect_keymaps(state, opts, close_picker_fn, process_query_fn, map_key_adapter)
+  end
+  if opts.custom_keymaps and type(opts.custom_keymaps) == "table" then
+    M.setup_custom_keymaps(state, opts, close_picker_fn, map_key_adapter)
+  end
+
+  if movement_keys.delete_word and #movement_keys.delete_word > 0 then
+    for _, key_code in ipairs(movement_keys.delete_word) do
+      _set_picker_keymap(state.prompt_buf, opts.normal_mode, key_code, function()
+        if state.active and state:delete_word() then
+          process_query_fn(state, opts)
+        end
+      end)
+    end
+  end
+  if movement_keys.clear_line and #movement_keys.clear_line > 0 then
+    for _, key_code in ipairs(movement_keys.clear_line) do
+      _set_picker_keymap(state.prompt_buf, opts.normal_mode, key_code, function()
+        if state.active then
+          state:clear_query()
+          process_query_fn(state, opts)
+        end
+      end)
+    end
+  end
+end
+
+---Setup multiselect keymaps
+---@param state SelectaState
+---@param opts SelectaOptions
+---@param close_picker_fn function Function to close the picker
+---@param process_query_fn function Function to process queries
+---@param map_key function Helper function to map keys
+---@return nil
+function M.setup_multiselect_keymaps(state, opts, close_picker_fn, process_query_fn, map_key)
+  local multiselect_keys = opts.multiselect.keymaps or common.config.multiselect.keymaps
+
+  -- Toggle selection
+  if multiselect_keys.toggle then
+    map_key(multiselect_keys.toggle, function()
+      handle_toggle(state, opts, 1)
+    end)
+  end
+
+  -- Untoggle selection
+  if multiselect_keys.untoggle then
+    map_key(multiselect_keys.untoggle, function()
+      handle_untoggle(state, opts)
+    end)
+  end
+
+  -- Select all
+  if multiselect_keys.select_all then
+    map_key(multiselect_keys.select_all, function()
+      bulk_selection(state, opts, true)
+      process_query_fn(state, opts)
+    end)
+  end
+
+  -- Clear all selections
+  if multiselect_keys.clear_all then
+    map_key(multiselect_keys.clear_all, function()
+      bulk_selection(state, opts, false)
+      process_query_fn(state, opts)
+    end)
+  end
+end
+
+---Setup custom keymaps defined by the user
+---@param state SelectaState
+---@param opts SelectaOptions
+---@param close_picker_fn function Function to close the picker
+---@param map_key function Helper function to map keys
+---@return nil
+function M.setup_custom_keymaps(state, opts, close_picker_fn, map_key)
+  for _, action in pairs(opts.custom_keymaps) do
+    if action and action.keys then
+      local keys = type(action.keys) == "string" and { action.keys } or action.keys
+
+      for _, key_raw in ipairs(keys) do
+        -- We use the raw keymap.set for custom keymaps since they might need special handling
+        local custom_handler = function()
+          if not action.handler then
+            return
+          end
+
+          -- Mark that we're in a custom action to prevent auto-closing
+          state.in_custom_action = true
+
+          local current_pos = vim.api.nvim_win_get_cursor(state.win)[1]
+          local selected = state.filtered_items[current_pos]
+          local should_close
+
+          if opts.multiselect and opts.multiselect.enabled and state.selected_count > 0 then
+            local selected_items = state:get_selected_items()
+            should_close = action.handler(selected_items, state)
+          else
+            if selected then
+              should_close = action.handler(selected, state)
+            end
+          end
+
+          -- After the handler finishes
+          state.in_custom_action = false
+
+          if should_close then
+            close_picker_fn(state)
+          end
+        end
+
+        map_key(key_raw, custom_handler)
+      end
+    end
+  end
 end
 
 ---Handle character input in the picker
@@ -367,7 +646,7 @@ function M.handle_char(state, char, opts, process_query_fn, close_picker_fn)
     if state.handle_movement then
       state:handle_movement(-1, opts)
     else
-      state.cursor_moved = true
+      state.user_navigated = true
       state.initial_open = false
       -- Legacy method for compatibility
       -- handle_movement(state, -1, opts)
@@ -377,7 +656,7 @@ function M.handle_char(state, char, opts, process_query_fn, close_picker_fn)
     if state.handle_movement then
       state:handle_movement(1, opts)
     else
-      state.cursor_moved = true
+      state.user_navigated = true
       state.initial_open = false
       -- Legacy method for compatibility
       -- handle_movement(state, 1, opts)
@@ -413,7 +692,7 @@ function M.handle_char(state, char, opts, process_query_fn, close_picker_fn)
       state.query = {}
       state.cursor_pos = 1
       state.initial_open = false
-      state.cursor_moved = false
+      state.user_navigated = false
     end
     process_query_fn(state, opts)
     return nil

@@ -117,24 +117,41 @@ function M.update_prompt(state, opts)
   end
 end
 
+---Create the prompt window for input
 ---@param state SelectaState
 ---@param opts SelectaOptions
+---@return number win_id The window id
+---@return number buf_id The buffer id
 function M.create_prompt_window(state, opts)
   state.prompt_buf = vim.api.nvim_create_buf(false, true)
+  -- Set buffer options for editing
+  vim.api.nvim_buf_set_option(state.prompt_buf, "filetype", "namu_prompt")
+  vim.b[state.prompt_buf].completion = false
 
+  -- vim.bo[state.prompt_buf].buftype = "prompt" -- Setting buffer type to "prompt"
+  -- Initialize with empty content
+  -- vim.api.nvim_buf_set_lines(state.prompt_buf, 0, -1, false, { "" })
+
+  -- Create window with prompt buffer
   local prompt_config = {
     relative = opts.window.relative or common.config.window.relative,
-    row = state.row, -- this related to the zindex because this cover main menu
+    row = state.row,
     col = state.col,
     width = state.width,
     height = 1,
     style = "minimal",
     border = get_prompt_border(opts.window.border),
-    zindex = 60, -- related to row without this, row = row -1
+    zindex = 60,
   }
 
   state.prompt_win = vim.api.nvim_open_win(state.prompt_buf, false, prompt_config)
-  -- vim.api.nvim_win_set_option(state.prompt_win, "winhl", "Normal:NamuPrompt")
+
+  -- -- Set window options
+  -- vim.api.nvim_win_set_option(state.prompt_win, "wrap", false)
+  -- vim.api.nvim_win_set_option(state.prompt_win, "cursorline", false)
+
+  -- Return the created window and buffer
+  return state.prompt_win, state.prompt_buf
 end
 
 ---@param state SelectaState
@@ -337,8 +354,10 @@ function M.resize_window(state, opts)
   -- Simple fix: if filtered items are less than window height,
   -- ensure we're viewing from the top
   if #state.filtered_items <= new_height then
-    vim.api.nvim_win_set_cursor(state.win, { 1, 0 })
-    vim.cmd("normal! zt")
+    vim.api.nvim_win_call(state.win, function()
+      vim.api.nvim_win_set_cursor(state.win, { 1, 0 })
+      vim.cmd("normal! zt")
+    end)
   end
 end
 
@@ -374,8 +393,9 @@ function M.safe_highlight_current_item(state, opts, line_nr)
     -- Add the prefix icon if enabled
     if opts.current_highlight and opts.current_highlight.enabled and #opts.current_highlight.prefix_icon > 0 then
       vim.api.nvim_buf_set_extmark(state.buf, current_selection_ns, line_nr, 0, {
-        virt_text = { { opts.current_highlight.prefix_icon, "NamuCurrentItem" } },
-        virt_text_pos = "overlay",
+        sign_text = opts.current_highlight.prefix_icon,
+        sign_hl_group = "NamuCurrentItem",
+        -- virt_text_pos = "overlay",
         priority = 202,
       })
     end
@@ -387,6 +407,40 @@ function M.safe_highlight_current_item(state, opts, line_nr)
   end
 
   return true
+end
+
+---Add or update prefix in the signcolumn for the prompt with correct highlighting
+---@param state SelectaState
+---@param opts SelectaOptions
+---@param query string Current query string
+function M.update_prompt_prefix(state, opts, query)
+  if not state.prompt_buf or not vim.api.nvim_buf_is_valid(state.prompt_buf) then
+    return
+  end
+
+  -- Clear previous extmarks
+  vim.api.nvim_buf_clear_namespace(state.prompt_buf, common.prompt_icon_ns, 0, -1)
+  local prefix = opts.window.title_prefix
+  if not prefix or prefix == "" then
+    return
+  end
+  -- Enable signcolumn in the prompt buffer
+  vim.api.nvim_buf_set_option(state.prompt_buf, "signcolumn", "yes")
+  -- Determine highlight group based on filter status
+  local highlight_group = "NamuFilter"
+  -- Check if this is a symbol filter query
+  local filter, remaining = query:match("^(/[%w][%w])(.*)$")
+  if filter then
+    -- Use different highlight for active filter
+    highlight_group = "NamuActiveFilter"
+  end
+
+  -- Add the prefix as a sign
+  vim.api.nvim_buf_set_extmark(state.prompt_buf, common.prompt_icon_ns, 0, 0, {
+    sign_text = prefix,
+    sign_hl_group = highlight_group,
+    priority = 100,
+  })
 end
 
 ---@param buf number
@@ -418,27 +472,27 @@ function M.apply_highlights(buf, line_nr, item, opts, query, line_length, state)
   local filter, remaining = query:match("^(/[%w][%w])(.*)$")
   local actual_query = remaining or query
 
-  -- Highlight title prefix in prompt buffer
-  if state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) then
-    -- Highlight the title prefix
-    local prefix = opts.window.title_prefix
-    if prefix then
-      vim.api.nvim_buf_set_extmark(state.prompt_buf, ns_id, 0, 0, {
-        end_col = #prefix,
-        hl_group = "NamuFilter",
-        priority = 200,
-      })
-    end
-    -- If there's a filter, highlight it in the prompt buffer
-    if filter then
-      local prefix_len = #(opts.window.title_prefix or "")
-      vim.api.nvim_buf_set_extmark(state.prompt_buf, ns_id, 0, prefix_len, {
-        end_col = prefix_len + 3, -- Length of %xx is 3
-        hl_group = "NamuFilter",
-        priority = 200,
-      })
-    end
-  end
+  -- -- Highlight title prefix in prompt buffer
+  -- if state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) then
+  --   -- Highlight the title prefix
+  --   local prefix = opts.window.title_prefix
+  --   if prefix then
+  --     vim.api.nvim_buf_set_extmark(state.prompt_buf, ns_id, 0, 0, {
+  --       end_col = #prefix,
+  --       hl_group = "NamuFilter",
+  --       priority = 200,
+  --     })
+  --   end
+  --   -- If there's a filter, highlight it in the prompt buffer
+  --   if filter then
+  --     local prefix_len = #(opts.window.title_prefix or "")
+  --     vim.api.nvim_buf_set_extmark(state.prompt_buf, ns_id, 0, prefix_len, {
+  --       end_col = prefix_len + 3, -- Length of %xx is 3
+  --       hl_group = "NamuFilter",
+  --       priority = 200,
+  --     })
+  --   end
+  -- end
   -- Get the formatted display string
   if opts.display.mode == "raw" then
     local offset = opts.offset and opts.offset(item) or 0
@@ -559,6 +613,7 @@ function M.render_visible_items(state, opts)
       M.apply_highlights(state.buf, line_nr, item, opts, query, line_length, state)
     end
   end
+  M.update_prompt_prefix(state, opts, state:get_query_string())
 
   -- Call render hook after highlights are applied
   if opts.hooks and opts.hooks.on_render then
@@ -578,50 +633,67 @@ end
 ---@param state SelectaState
 ---@param opts SelectaOptions
 function M.update_cursor_position(state, opts)
-  if #state.filtered_items > 0 then
-    local new_pos
+  -- Early return if there are no items to position the cursor on
+  if #state.filtered_items == 0 then
+    return
+  end
 
-    -- Check if we're in hierarchical mode and have direct matches
-    local has_hierarchical_results = false
+  local new_pos = nil
 
-    if opts.preserve_hierarchy then
-      -- Find the first direct match in the filtered items
-      for _, item in ipairs(state.filtered_items) do
-        if item.is_direct_match then
-          has_hierarchical_results = true
-          break
-        end
+  -- Handle hierarchical results differently if configured
+  local has_hierarchical_results = false
+  if opts.preserve_hierarchy then
+    -- Check if we have any direct matches in hierarchical mode
+    for _, item in ipairs(state.filtered_items) do
+      if item.is_direct_match then
+        has_hierarchical_results = true
+        break
       end
     end
+  end
 
-    -- Determine cursor position based on various factors
-    if has_hierarchical_results and state.best_match_index and not state.cursor_moved then
-      -- Use the best match index we calculated during hierarchical filtering
-      new_pos = { state.best_match_index, 0 }
-      -- Only use best_match_index if we haven't moved the cursor manually
-      -- and we're not in initial state
-    elseif opts.preserve_order and state.best_match_index and not state.initial_open and not state.cursor_moved then
-      new_pos = { state.best_match_index, 0 }
+  -- Decision tree for cursor positioning:
+  -- 1. If user manually navigated: respect their position
+  -- 2. If we have hierarchical results with a best match: use that
+  -- 3. If preserve_order is enabled and we have a best match: use that
+  -- 4. Default to first item for normal searches or row 1
+
+  if state.user_navigated then
+    -- Keep current position, just ensure it's within bounds
+    local cur_pos = vim.api.nvim_win_get_cursor(state.win)
+    new_pos = { math.min(cur_pos[1], #state.filtered_items), 0 }
+  elseif has_hierarchical_results and state.best_match_index then
+    -- For hierarchical data, use calculated best match
+    new_pos = { state.best_match_index, 0 }
+  elseif opts.preserve_order and state.best_match_index and not state.initial_open then
+    -- When preserving order but still want to highlight best match
+    new_pos = { state.best_match_index, 0 }
+  else
+    -- Default behavior: first item or current position
+    if not opts.preserve_order and not state.initial_open then
+      -- Always position at top item (best match) for non-preserve_order
+      new_pos = { 1, 0 }
     else
-      -- When not preserving order, always start at first item (best match)
-      -- unless cursor has been manually moved
-      if not opts.preserve_order and not state.cursor_moved then
-        new_pos = { 1, 0 }
-      else
-        -- Use current cursor position
-        local cur_pos = vim.api.nvim_win_get_cursor(state.win)
-        new_pos = { math.min(cur_pos[1], #state.filtered_items), 0 }
-      end
+      -- Try to maintain current position or default to first
+      local cur_pos = pcall(vim.api.nvim_win_get_cursor, state.win) and vim.api.nvim_win_get_cursor(state.win)[1] or 1
+      new_pos = { math.min(cur_pos, #state.filtered_items), 0 }
     end
-    -- SAFETY CHECK: Ensure new_pos[1] is valid before setting the cursor
-    new_pos[1] = math.min(new_pos[1], #state.filtered_items)
-    new_pos[1] = math.max(new_pos[1], 1) -- Ensure at least 1
-    vim.api.nvim_win_set_cursor(state.win, new_pos)
+  end
+
+  -- Safety checks: ensure position is valid
+  new_pos[1] = math.max(1, math.min(new_pos[1], #state.filtered_items))
+
+  -- Set cursor position and update highlights
+  if state.win and vim.api.nvim_win_is_valid(state.win) then
+    pcall(vim.api.nvim_win_set_cursor, state.win, new_pos)
     common.update_current_highlight(state, opts, new_pos[1] - 1) -- 0-indexed for extmarks
 
-    -- Only trigger on_move if not in initial state
+    -- Trigger on_move callback if configured
     if opts.on_move and not state.initial_open then
-      opts.on_move(state.filtered_items[new_pos[1]])
+      local item = state.filtered_items[new_pos[1]]
+      if item then
+        opts.on_move(item)
+      end
     end
   end
 end
@@ -634,7 +706,7 @@ function M.update_display(state, opts)
   end
 
   local query = state:get_query_string()
-  M.update_prompt(state, opts)
+  -- M.update_prompt(state, opts)
   M.update_prompt_info(state, opts, #query == 0) -- Show only if query is empty
 
   -- Special handling for loading state
@@ -787,7 +859,7 @@ function M.create_windows(state, opts)
   end
 
   -- Create prompt window
-  create_prompt_window(state, opts)
+  M.create_prompt_window(state, opts)
   update_prompt_info(state, opts, true)
 
   -- Configure window options

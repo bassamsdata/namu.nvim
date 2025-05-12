@@ -10,7 +10,7 @@
 ---@field active boolean Whether picker is active
 ---@field initial_open boolean First open flag
 ---@field best_match_index number? Index of best match
----@field cursor_moved boolean Whether cursor has moved
+---@field user_navigated boolean Whether cursor has moved
 ---@field row number Window row position
 ---@field col number Window column position
 ---@field width number Window width
@@ -27,14 +27,8 @@
 ---@field original_buf number Original buffer handle
 ---@field _cleanup_timer? function Function to clean up timers on close
 ---@field _cleanup_scroll? function Function to clean up scroll handlers
----@field handle_special_key fun(self: SelectaState, key: string, opts: SelectaOptions): boolean
 ---@field handle_movement fun(self: SelectaState, direction: number, opts: SelectaOptions): boolean
----@field update_query fun(self: SelectaState, char: string|number): boolean
----@field move_cursor fun(self: SelectaState, direction: number)
----@field backspace fun(self: SelectaState): boolean
 ---@field get_query_string fun(self: SelectaState): string
----@field delete_word fun(self: SelectaState): boolean
----@field clear_query fun(self: SelectaState)
 ---@field toggle_selection fun(self: SelectaState, item: SelectaItem, opts: SelectaOptions): boolean
 ---@field get_selected_items fun(self: SelectaState): SelectaItem[]
 ---@field is_valid fun(self: SelectaState): boolean
@@ -121,6 +115,7 @@
 ---@field current_highlight? CurrentHighlightConfig
 ---@field preserve_hierarchy? boolean
 ---@field right_position? {fixed: boolean, ratio: number}
+---@field normal_mode? boolean Enable normal mode navigation (default: false)
 
 ---@class CurrentHighlightConfig
 ---@field enabled boolean Whether to use custom highlight

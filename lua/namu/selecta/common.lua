@@ -92,6 +92,7 @@ M.selection_ns = vim.api.nvim_create_namespace("selecta_selection_highlights")
 M.filter_info_ns = vim.api.nvim_create_namespace("selecta_filter_info")
 M.prompt_info_ns = vim.api.nvim_create_namespace("selecta_prompt_info")
 M.loading_ns_id = vim.api.nvim_create_namespace("selecta_loading_indicator")
+M.prompt_icon_ns = vim.api.nvim_create_namespace("selecta_prompt_icon")
 
 M.DEFAULT_POSITIONS = {
   center = 0.5,
@@ -352,8 +353,11 @@ function M.update_selection_highlights(state, opts)
     if state.selected[item_id] then
       -- i-1 because buffer lines are 0-indexed
       vim.api.nvim_buf_set_extmark(state.buf, M.selection_ns, i - 1, 0, {
-        virt_text = { { indicator, "NamuSelected" } },
-        virt_text_pos = "overlay",
+        -- FIX: fix it please or return the previous behaviour
+        sign_text = indicator,
+        sign_hl_group = "NamuSelected",
+        -- virt_text = { { indicator, "NamuSelected" } },
+        -- virt_text_pos = "overlay",
         priority = 203, -- higher than current item highlight
       })
     end

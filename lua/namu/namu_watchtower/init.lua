@@ -29,6 +29,7 @@ M.config = vim.tbl_deep_extend("force", M.config, {
         if not impl then
           return
         end
+        -- FIX: Implemetn this please
         return impl.yank_diagnostic_with_context(M.config, items_or_item, state)
       end,
     },

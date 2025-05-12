@@ -13,9 +13,9 @@ StateManager.__index = StateManager
 ---@return SelectaState
 function StateManager.new(items, opts)
   local initial_width, initial_height = 0, 0
-  -- Note: We'll use the main module's calculate_window_size function later
+  -- NOTE: We'll use the main module's calculate_window_size function later
+  -- We'll use the main module's get_window_position function later
   local row, col = 0, 0
-  -- Note: We'll use the main module's get_window_position function later
   local state = {
     -- Window and buffer info
     buf = vim.api.nvim_create_buf(false, true),
@@ -37,12 +37,17 @@ function StateManager.new(items, opts)
     selected_count = 0,
     -- Input state
     query = {},
-    cursor_pos = 1,
+    query_string = "",
+    cursor_pos = 0,
+    query_changed = nil,
     -- UI state
     active = true,
     initial_open = true,
     best_match_index = nil,
-    cursor_moved = false,
+    user_navigated = false,
+    -- Mode state
+    normal_mode = opts.normal_mode or false,
+    current_mode = "insert",
     -- Async state
     is_loading = false,
     last_query = nil,
@@ -64,110 +69,85 @@ function StateManager:is_valid()
     and vim.api.nvim_win_is_valid(self.win)
 end
 
----Update query and cursor position
----@param char string|number The character or keycode
----@return boolean Whether the query was changed
-function StateManager:update_query(char)
-  if type(char) == "number" and char >= 32 and char <= 126 then
-    table.insert(self.query, self.cursor_pos, vim.fn.nr2char(char))
-    self.cursor_pos = self.cursor_pos + 1
-    self.initial_open = false
-    self.cursor_moved = false
-    return true
+---Update query from buffer content
+---@return boolean changed Whether the query was changed
+function StateManager:update_query_from_buffer()
+  if not self.prompt_buf or not vim.api.nvim_buf_is_valid(self.prompt_buf) then
+    return false
   end
-  return false
-end
 
----Move the cursor left/right in the query
----@param direction number Positive for right, negative for left
-function StateManager:move_cursor(direction)
-  if direction < 0 then
-    self.cursor_pos = math.max(1, self.cursor_pos - 1)
+  -- Get buffer content
+  local lines = vim.api.nvim_buf_get_lines(self.prompt_buf, 0, 1, false)
+  local new_query = lines[1] or ""
+
+  -- Update the query string
+  local changed = new_query ~= self.query_string
+  self.query_string = new_query
+
+  -- Update the character array for compatibility
+  self.query = {}
+  for i = 1, #new_query do
+    self.query[i] = new_query:sub(i, i)
+  end
+
+  -- Update cursor position based on buffer cursor
+  if vim.api.nvim_win_is_valid(self.prompt_win) then
+    local cursor = vim.api.nvim_win_get_cursor(self.prompt_win)
+    -- The cursor position should match where we are in the buffer
+    self.cursor_pos = cursor[2] + 1
   else
-    self.cursor_pos = math.min(#self.query + 1, self.cursor_pos + 1)
+    -- Default to end of query if window is not valid
+    self.cursor_pos = #self.query + 1
   end
+
+  if changed then
+    self.user_navigated = false
+    self.initial_open = false
+  end
+  return changed
 end
 
----Delete the character before the cursor
----@return boolean Whether a character was deleted
-function StateManager:backspace()
-  if self.cursor_pos > 1 then
-    table.remove(self.query, self.cursor_pos - 1)
-    self.cursor_pos = self.cursor_pos - 1
-    self.initial_open = false
-    self.cursor_moved = false
-    return true
+---Handle cursor position after filtering results
+---@param opts SelectaOptions Configuration options
+---@return nil
+function StateManager:handle_post_filter_cursor(opts)
+  if #self.filtered_items == 0 then
+    return
   end
-  return false
+
+  -- FIX: the code here is a little problematic
+  -- it looks like the user_navigated is always false until we do the handle_movement when trigger the movement manually
+  local cursor_pos
+  -- Choose position based on best match, prior position, or first item
+  -- BUG: why this cursor_pos logic is sometimes not correct so it falls back to 1
+  -- not sure what the logic is here do we need to check if user_navigated?
+  if self.best_match_index and self.user_navigated then
+    cursor_pos = self.best_match_index
+  else
+    -- Try to maintain current position or use first item
+    local current_pos = pcall(vim.api.nvim_win_get_cursor, self.win) and vim.api.nvim_win_get_cursor(self.win)[1] or 1
+    cursor_pos = math.min(current_pos, #self.filtered_items)
+  end
+
+  -- Set cursor and update highlights
+  if self.win and vim.api.nvim_win_is_valid(self.win) then
+    pcall(vim.api.nvim_win_set_cursor, self.win, { cursor_pos, 0 })
+    common.update_current_highlight(self, opts, cursor_pos - 1)
+
+    -- Trigger on_move callback
+    if opts.on_move then
+      local item = self.filtered_items[cursor_pos]
+      if item then
+        opts.on_move(item)
+      end
+    end
+  end
 end
 
 ---Get the current query as a string
 ---@return string
 function StateManager:get_query_string()
-  return table.concat(self.query)
-end
-
----Delete the word before the cursor
----@return boolean Whether a word was deleted
-function StateManager:delete_word()
-  -- If we're at the start, nothing to delete
-  if self.cursor_pos <= 1 then
-    return false
-  end
-
-  -- Find the last non-space character before cursor
-  local last_char_pos = self.cursor_pos - 1
-  while last_char_pos > 1 and self.query[last_char_pos] == " " do
-    last_char_pos = last_char_pos - 1
-  end
-
-  -- Find the start of the word
-  local word_start = last_char_pos
-  while word_start > 1 and self.query[word_start - 1] ~= " " do
-    word_start = word_start - 1
-  end
-
-  -- Remove characters from word_start to last_char_pos
-  for _ = word_start, last_char_pos do
-    table.remove(self.query, word_start)
-  end
-
-  -- Update cursor position
-  self.cursor_pos = word_start
-  self.initial_open = false
-  self.cursor_moved = false
-
-  return true
-end
-
----Clear the entire query
----@return nil
-function StateManager:clear_query()
-  self.query = {}
-  self.cursor_pos = 1
-  self.initial_open = false
-  self.cursor_moved = false
-end
-
----Handle special key inputs
----@param key string The key that was pressed
----@param opts SelectaOptions Configuration options
----@return boolean was_handled Whether the key was handled
-function StateManager:handle_special_key(key, opts)
-  -- Handle basic navigation
-  if key == common.SPECIAL_KEYS.LEFT then
-    self:move_cursor(-1)
-    return true
-  elseif key == common.SPECIAL_KEYS.RIGHT then
-    self:move_cursor(1)
-    return true
-  elseif key == common.SPECIAL_KEYS.BS then
-    if self:backspace() then
-      -- Note: process_query will be called by the main module
-      return true
-    end
-  end
-  return false
+  return self.query_string
 end
 
 ---Handle movement keys (up/down navigation)
@@ -205,7 +185,7 @@ function StateManager:handle_movement(direction, opts)
   end
 
   -- Mark that user has manually moved cursor
-  self.cursor_moved = true
+  self.user_navigated = true
   self.initial_open = false
 
   return true
@@ -258,6 +238,13 @@ end
 
 ---Clean up resources when closing the picker
 function StateManager:cleanup()
+  -- Clear all highlights in all namespaces
+  if self.buf and vim.api.nvim_buf_is_valid(self.buf) then
+    vim.api.nvim_buf_clear_namespace(self.buf, common.ns_id, 0, -1)
+    vim.api.nvim_buf_clear_namespace(self.buf, common.current_selection_ns, 0, -1)
+    vim.api.nvim_buf_clear_namespace(self.buf, common.selection_ns, 0, -1)
+    vim.api.nvim_buf_clear_namespace(self.buf, common.filter_info_ns, 0, -1)
+  end
   -- Clear loading state
   if self.prompt_buf and vim.api.nvim_buf_is_valid(self.prompt_buf) then
     vim.api.nvim_buf_clear_namespace(self.prompt_buf, common.loading_ns_id, 0, -1)
@@ -276,6 +263,12 @@ function StateManager:cleanup()
 
   if self.win and vim.api.nvim_win_is_valid(self.win) then
     vim.api.nvim_win_close(self.win, true)
+  end
+
+  if self.original_buf and vim.api.nvim_buf_is_valid(self.original_buf) then
+    vim.api.nvim_buf_clear_namespace(self.original_buf, common.ns_id, 0, -1)
+    vim.api.nvim_buf_clear_namespace(self.original_buf, common.current_selection_ns, 0, -1)
+    vim.api.nvim_buf_clear_namespace(self.original_buf, common.selection_ns, 0, -1)
   end
 
   -- Mark as inactive

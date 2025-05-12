@@ -604,6 +604,7 @@ function M.show_picker(
     current_highlight = config.current_highlight,
     row_position = config.row_position,
     custom_keymaps = vim.tbl_deep_extend("force", config.custom_keymaps, {}),
+    normal_mode = config.normal_mode,
     debug = config.debug,
     preserve_hierarchy = config.preserve_hierarchy or false,
     -- root_item_first = true,

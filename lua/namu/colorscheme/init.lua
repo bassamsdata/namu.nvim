@@ -21,10 +21,10 @@ M.config = {
   write_shada = false,
   excluded_schemes = {},
   movement = {
-    next = "<C-n>",
-    previous = "<C-p>",
-    alternative_next = "<DOWN>",
-    alternative_previous = "<UP>",
+    next = { "<C-n>", "<DOWN>" },
+    previous = { "<C-p>", "<UP>" },
+    close = { "<ESC>" },
+    select = { "<CR>" },
   },
   current_highlight = {
     enabled = true,
@@ -166,7 +166,7 @@ function M.show(opts)
     },
     window = {
       border = "none",
-      title_prefix = "🎨 ",
+      title_prefix = " ",
       auto_size = true,
       min_width = 20,
     },

@@ -115,7 +115,7 @@ local function symbols_to_selecta_items(raw_symbols, source, bufnr, config_value
     end
 
     if
-      state.original_ft == "lua"
+      buffer_filetype == "lua"
       and is_test_file
       and config_values.enhance_lua_test_symbols
       and (result.name == "" or result.name == " " or result.name:match("^function"))
