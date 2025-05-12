@@ -495,26 +495,6 @@ function M.setup_keymaps(state, opts, close_picker_fn, process_query_fn)
   if opts.custom_keymaps and type(opts.custom_keymaps) == "table" then
     M.setup_custom_keymaps(state, opts, close_picker_fn, map_key_adapter)
   end
-
-  if movement_keys.delete_word and #movement_keys.delete_word > 0 then
-    for _, key_code in ipairs(movement_keys.delete_word) do
-      _set_picker_keymap(state.prompt_buf, opts.normal_mode, key_code, function()
-        if state.active and state:delete_word() then
-          process_query_fn(state, opts)
-        end
-      end)
-    end
-  end
-  if movement_keys.clear_line and #movement_keys.clear_line > 0 then
-    for _, key_code in ipairs(movement_keys.clear_line) do
-      _set_picker_keymap(state.prompt_buf, opts.normal_mode, key_code, function()
-        if state.active then
-          state:clear_query()
-          process_query_fn(state, opts)
-        end
-      end)
-    end
-  end
 end
 
 ---Setup multiselect keymaps

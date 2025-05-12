@@ -573,13 +573,13 @@ function M.setup_prompt_buffer(state, opts)
         -- on the next UI event via vim.schedule
         state.query_changed = true
         vim.schedule(function()
-          -- if state.active and state.query_changed then
-          --   state.query_changed = nil
-          -- Process query outside the callback context
-          M.process_query(state, opts)
-          -- Handle cursor positioning and on_move callback after filtering
-          -- state:handle_post_filter_cursor(opts)
-          -- end
+          if state.active and state.query_changed then
+            state.query_changed = nil
+            -- Process query outside the callback context
+            M.process_query(state, opts)
+            -- Handle cursor positioning and on_move callback after filtering
+            -- state:handle_post_filter_cursor(opts)
+          end
         end)
       end
 
@@ -594,15 +594,6 @@ function M.setup_prompt_buffer(state, opts)
   ui.update_prompt_prefix(state, opts, state:get_query_string())
   -- Start in insert mode
   vim.cmd("startinsert")
-end
-
----Handle character input in the picker
----@param state SelectaState The current state of the picker
----@param char string|number The character input
----@param opts SelectaOptions The options for the picker
----@return nil
-local function handle_char(state, char, opts)
-  return input_handler.handle_char(state, char, opts, M.process_query, M.close_picker)
 end
 
 ---Pick an item from the list with cursor management

@@ -33,6 +33,7 @@
 ---@field get_selected_items fun(self: SelectaState): SelectaItem[]
 ---@field is_valid fun(self: SelectaState): boolean
 ---@field cleanup fun(self: SelectaState)
+---@field query_changed? boolean
 
 ---@class SelectaItem
 ---@field text string Display text
