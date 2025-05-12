@@ -1730,7 +1730,6 @@ local function handle_char(state, char, opts)
   local movement_keys = get_movement_keys(opts)
 
   -- Handle custom keymaps first
-
   if opts.custom_keymaps and type(opts.custom_keymaps) == "table" then
     for _, action in pairs(opts.custom_keymaps) do
       -- Check if action is properly formatted
@@ -1808,11 +1807,15 @@ local function handle_char(state, char, opts)
     handle_movement(state, 1, opts)
     return nil
   elseif vim.tbl_contains(movement_keys.close, char_key) then
-    if opts.on_cancel then
-      opts.on_cancel()
+    -- For <C-c>, it's a special case. We need to check if the raw char value matches
+    -- Ctrl+C is usually 3 in ASCII
+    if char == 3 or vim.tbl_contains(movement_keys.close, char_key) then
+      if opts.on_cancel then
+        opts.on_cancel()
+      end
+      M.close_picker(state)
+      return nil
     end
-    M.close_picker(state)
-    return nil
   elseif vim.tbl_contains(movement_keys.select, char_key) then
     if opts.multiselect and opts.multiselect.enabled then
       local selected_items = {}
