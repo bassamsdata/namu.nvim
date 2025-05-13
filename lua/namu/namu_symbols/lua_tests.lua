@@ -73,7 +73,7 @@ function M.process_lua_test_symbol(
   lsp_symbol_kind,
   bufnr
 )
-  local line = vim.api.nvim_buf_get_lines(state.original_buf, range.start.line, range.start.line + 1, false)[1]
+  local line = vim.api.nvim_buf_get_lines(bufnr, range.start.line, range.start.line + 1, false)[1]
   local test_info = test_info_cache[range.start.line] or M.extract_lua_test_info(line)
   local parent_signature = nil
   if test_info then
