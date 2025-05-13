@@ -2,6 +2,7 @@ local M = {}
 local logger = require("namu.utils.logger")
 local format_utils = require("namu.core.format_utils")
 local config = require("namu.namu_symbols.config")
+local core = require("namu.core.utils")
 local api = vim.api
 
 -- Factory function to create a state object for a particular module
@@ -184,7 +185,7 @@ end
 ---@param state table State object containing original_win
 function M.jump_to_symbol(symbol, state)
   vim.cmd.normal({ "m`", bang = true }) -- set jump mark
-  api.nvim_win_set_cursor(state.original_win, { symbol.lnum, symbol.col - 1 })
+  core.restore_focus_and_cursor(state.original_win, { symbol.lnum, symbol.col - 1 })
 end
 
 ---Parse symbol filter from query string
@@ -689,9 +690,7 @@ function M.show_picker(
         end)
       end
       if state.original_win and state.original_pos and api.nvim_win_is_valid(state.original_win) then
-        vim.schedule(function()
-          api.nvim_win_set_cursor(state.original_win, state.original_pos)
-        end)
+        core.restore_focus_and_cursor(state.original_win, state.original_pos)
       end
     end,
     -- BUG: cursor position outside

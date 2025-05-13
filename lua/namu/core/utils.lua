@@ -194,4 +194,17 @@ function M.highlight_symbol(symbol, win, ns_id)
   end)
 end
 
+---Restore focus and cursor position
+---@param win_id number Window ID
+---@param cursor_pos table Cursor position
+---@return nil
+function M.restore_focus_and_cursor(win_id, cursor_pos)
+  if win_id and vim.api.nvim_win_is_valid(win_id) then
+    pcall(vim.api.nvim_set_current_win, win_id)
+  end
+  if cursor_pos then
+    pcall(vim.api.nvim_win_set_cursor, win_id, cursor_pos)
+  end
+end
+
 return M

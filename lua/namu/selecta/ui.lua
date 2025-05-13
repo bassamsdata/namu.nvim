@@ -97,26 +97,6 @@ local function get_border_with_footer(opts)
   return borders[opts.window.border] or opts.window.border
 end
 
----@param state SelectaState
----@param opts SelectaOptions
-function M.update_prompt(state, opts)
-  -- Get the query before and after the cursor
-  local before_cursor = table.concat(vim.list_slice(state.query, 1, state.cursor_pos - 1))
-  local after_cursor = table.concat(vim.list_slice(state.query, state.cursor_pos))
-
-  -- Build the prompt with cursor indicator
-  local raw_prompt = opts.window.title_prefix .. before_cursor .. "│" .. after_cursor
-
-  -- Update the prompt buffer if valid
-  if state.win and vim.api.nvim_win_is_valid(state.win) then
-    if state.prompt_win and vim.api.nvim_win_is_valid(state.prompt_win) then
-      if vim.api.nvim_buf_is_valid(state.prompt_buf) then
-        vim.api.nvim_buf_set_lines(state.prompt_buf, 0, -1, false, { raw_prompt })
-      end
-    end
-  end
-end
-
 ---Create the prompt window for input
 ---@param state SelectaState
 ---@param opts SelectaOptions
@@ -432,7 +412,10 @@ function M.update_prompt_prefix(state, opts, query)
   local filter, remaining = query:match("^(/[%w][%w])(.*)$")
   if filter then
     -- Use different highlight for active filter
-    highlight_group = "NamuActiveFilter"
+    highlight_group = "Statement"
+  end
+  if #state.filtered_items == 0 then
+    highlight_group = "NamuFooter"
   end
 
   -- Add the prefix as a sign
@@ -472,26 +455,14 @@ function M.apply_highlights(buf, line_nr, item, opts, query, line_length, state)
   local filter, remaining = query:match("^(/[%w][%w])(.*)$")
   local actual_query = remaining or query
 
-  -- -- Highlight title prefix in prompt buffer
-  -- if state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) then
-  --   -- Highlight the title prefix
-  --   local prefix = opts.window.title_prefix
-  --   if prefix then
-  --     vim.api.nvim_buf_set_extmark(state.prompt_buf, ns_id, 0, 0, {
-  --       end_col = #prefix,
-  --       hl_group = "NamuFilter",
-  --       priority = 200,
-  --     })
-  --   end
-  --   -- If there's a filter, highlight it in the prompt buffer
-  --   if filter then
-  --     local prefix_len = #(opts.window.title_prefix or "")
-  --     vim.api.nvim_buf_set_extmark(state.prompt_buf, ns_id, 0, prefix_len, {
-  --       end_col = prefix_len + 3, -- Length of %xx is 3
-  --       hl_group = "NamuFilter",
-  --       priority = 200,
-  --     })
-  --   end
+  -- If there's a filter, highlight it in the prompt buffer
+  if filter then
+    vim.api.nvim_buf_set_extmark(state.prompt_buf, ns_id, 0, 0, {
+      end_col = 3, -- Length of %xx is 3
+      hl_group = "Statement",
+      priority = 200,
+    })
+  end
   -- end
   -- Get the formatted display string
   if opts.display.mode == "raw" then

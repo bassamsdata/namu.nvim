@@ -69,21 +69,6 @@ M.config = {
     icon = "󰇚",
   },
 }
--- Pre-compute the special keys once at module level
-M.SPECIAL_KEYS = {
-  UP = vim.api.nvim_replace_termcodes("<Up>", true, true, true),
-  DOWN = vim.api.nvim_replace_termcodes("<Down>", true, true, true),
-  CTRL_P = vim.api.nvim_replace_termcodes("<C-p>", true, true, true),
-  CTRL_N = vim.api.nvim_replace_termcodes("<C-n>", true, true, true),
-  TAB = vim.api.nvim_replace_termcodes("<Tab>", true, true, true),
-  S_TAB = vim.api.nvim_replace_termcodes("<S-Tab>", true, true, true),
-  LEFT = vim.api.nvim_replace_termcodes("<Left>", true, true, true),
-  RIGHT = vim.api.nvim_replace_termcodes("<Right>", true, true, true),
-  CR = vim.api.nvim_replace_termcodes("<CR>", true, true, true),
-  ESC = vim.api.nvim_replace_termcodes("<ESC>", true, true, true),
-  BS = vim.api.nvim_replace_termcodes("<BS>", true, true, true),
-  MOUSE = vim.api.nvim_replace_termcodes("<LeftMouse>", true, true, true),
-}
 
 -- Create namespaces for highlights
 M.ns_id = vim.api.nvim_create_namespace("selecta_highlights")

@@ -54,6 +54,7 @@ function M.restore_window_state(win_id, preview_state)
 
   pcall(function()
     if vim.api.nvim_buf_is_valid(preview_state.original_buf) then
+      vim.api.nvim_set_current_win(win_id)
       vim.api.nvim_win_set_buf(win_id, preview_state.original_buf)
     end
 
@@ -193,6 +194,7 @@ function M.edit_file(path, win_id)
     logger.log("Failed to set buffer: " .. err)
     return
   end
+  pcall(vim.api.nvim_set_current_win, win_id)
 
   vim.bo[buf_id].buflisted = true
 

@@ -110,6 +110,7 @@ end
 ---Handle cursor position after filtering results
 ---@param opts SelectaOptions Configuration options
 ---@return nil
+---FIX: probably we don't need this fucntion
 function StateManager:handle_post_filter_cursor(opts)
   if #self.filtered_items == 0 then
     return
@@ -117,10 +118,10 @@ function StateManager:handle_post_filter_cursor(opts)
 
   -- FIX: the code here is a little problematic
   -- it looks like the user_navigated is always false until we do the handle_movement when trigger the movement manually
+  -- why this cursor_pos logic is sometimes not correct so it falls back to 1
+  -- not sure what the logic is here do we need to check if user_navigated?
   local cursor_pos
   -- Choose position based on best match, prior position, or first item
-  -- BUG: why this cursor_pos logic is sometimes not correct so it falls back to 1
-  -- not sure what the logic is here do we need to check if user_navigated?
   if self.best_match_index and self.user_navigated then
     cursor_pos = self.best_match_index
   else
@@ -256,6 +257,7 @@ function StateManager:cleanup()
     self._cleanup_timer()
   end
 
+  -- vim.cmd("noautocmd")
   -- Close windows
   if self.prompt_win and vim.api.nvim_win_is_valid(self.prompt_win) then
     vim.api.nvim_win_close(self.prompt_win, true)
@@ -264,6 +266,7 @@ function StateManager:cleanup()
   if self.win and vim.api.nvim_win_is_valid(self.win) then
     vim.api.nvim_win_close(self.win, true)
   end
+  -- vim.cmd("doautocmd WinEnter")
 
   if self.original_buf and vim.api.nvim_buf_is_valid(self.original_buf) then
     vim.api.nvim_buf_clear_namespace(self.original_buf, common.ns_id, 0, -1)

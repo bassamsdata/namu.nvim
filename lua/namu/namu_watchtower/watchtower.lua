@@ -84,7 +84,7 @@ local function symbols_to_selecta_items(raw_symbols, source, bufnr, config_value
   local first_bracket_counts = {}
   local test_info_cache = {}
   -- First pass: count brackets if hierarchy is enabled for Lua test files
-  if is_test_file and config_values.lua_test_preserve_hierarchy and state.original_ft == "lua" then
+  if is_test_file and config_values.lua_test_preserve_hierarchy and buffer_filetype == "lua" then
     logger.log("Performing first pass to count Lua test brackets for hierarchy.")
     for _, symbol in ipairs(raw_symbols) do
       -- Call the counting function from the test_patterns module

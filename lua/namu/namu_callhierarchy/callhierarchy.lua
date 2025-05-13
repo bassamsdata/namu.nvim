@@ -821,6 +821,7 @@ function M.show_call_picker(selectaItems, notify_opts)
           and api.nvim_win_is_valid(state.original_win)
           and api.nvim_buf_is_valid(state.original_buf)
         then
+          api.nvim_set_current_win(state.original_win)
           api.nvim_win_set_buf(state.original_win, state.original_buf)
           api.nvim_win_set_cursor(state.original_win, state.original_pos)
         end

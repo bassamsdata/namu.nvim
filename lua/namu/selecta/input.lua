@@ -2,10 +2,8 @@
 local M = {}
 
 local common = require("namu.selecta.common")
-local logger = require("namu.utils.logger")
 
 -- Local references to reduce table lookups
-local SPECIAL_KEYS = common.SPECIAL_KEYS
 local log = common.log
 
 -- Pre-compute the movement keys
@@ -194,82 +192,6 @@ local function bulk_selection(state, opts, select)
   common.update_selection_highlights(state, opts)
 end
 
--- Helper function to handle custom keymaps
-local function handle_custom_keymaps(state, char_key, opts, close_picker_fn)
-  if opts.custom_keymaps and type(opts.custom_keymaps) == "table" then
-    for _, action in pairs(opts.custom_keymaps) do
-      -- Check if action is properly formatted
-      if action and action.keys then
-        local keys = action.keys
-        if type(keys) == "string" then
-          keys = { keys } -- Convert to table if it's a single string
-        end
-        if type(keys) == "table" then
-          for _, key in ipairs(keys) do
-            if type(key) == "string" and char_key == vim.api.nvim_replace_termcodes(key, true, true, true) then
-              -- Store current cursor position before executing handler
-              local current_pos = vim.api.nvim_win_get_cursor(state.win)
-              local selected = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
-              if selected and action.handler then
-                if opts.multiselect and opts.multiselect.enabled and state.selected_count > 0 then
-                  -- Handle multiselect case
-                  local selected_items = state:get_selected_items()
-                  local should_close = action.handler(selected_items, state)
-                  if should_close == false then
-                    -- Main module will handle closing
-                    close_picker_fn(state)
-                    return nil
-                  end
-                else
-                  -- Handle single item case
-                  local should_close = action.handler(selected, state)
-                  if should_close == false then
-                    -- Main module will handle closing
-                    close_picker_fn(state)
-                    return nil -- Exit without further processing
-                  end
-                end
-              end
-              return nil -- Exit without further processing
-            end
-          end
-        end
-      end
-    end
-  end
-  return false
-end
-
----Helper function to handle multiselect keymaps
----@param state SelectaState
----@param char_key string
----@param opts SelectaOptions
----@param process_query_fn function
----@return boolean handled
-local function handle_multiselect_keymaps(state, char_key, opts, process_query_fn)
-  if opts.multiselect and opts.multiselect.enabled then
-    local multiselect_keys = opts.multiselect.keymaps or common.config.multiselect.keymaps
-    if char_key == vim.api.nvim_replace_termcodes(multiselect_keys.toggle, true, true, true) then
-      if handle_toggle(state, opts, 1) then
-        return true
-      end
-    elseif char_key == vim.api.nvim_replace_termcodes(multiselect_keys.untoggle, true, true, true) then
-      if handle_untoggle(state, opts) then
-        return true
-      end
-    elseif char_key == vim.api.nvim_replace_termcodes(multiselect_keys.select_all, true, true, true) then
-      bulk_selection(state, opts, true)
-      process_query_fn(state, opts)
-      return true
-    elseif char_key == vim.api.nvim_replace_termcodes(multiselect_keys.clear_all, true, true, true) then
-      bulk_selection(state, opts, false)
-      process_query_fn(state, opts)
-      return true
-    end
-  end
-  return false
-end
-
 ---Helper function to handle selection
 ---@param state SelectaState
 ---@param opts SelectaOptions
@@ -321,7 +243,7 @@ local function _set_picker_keymap(prompt_buf_id, is_normal_mode_active, key_lhs,
     buffer = prompt_buf_id,
     nowait = true,
     silent = true, -- Keep picker mappings silent by default
-    desc = "Selecta: " .. key_lhs,
+    desc = "Namu: " .. key_lhs,
   })
 end
 
@@ -435,7 +357,6 @@ function M.setup_keymaps(state, opts, close_picker_fn, process_query_fn)
         state:handle_movement(1, opts)
       end
     end
-    local key_termcodes = vim.api.nvim_replace_termcodes(key_code, true, true, true)
     -- if opts.normal_mode and key_termcodes == common.SPECIAL_KEYS.CTRL_N then
     --   _set_picker_keymap_on_buf(state.prompt_buf, opts.normal_mode, key_termcodes, callback, { "i" })
     -- else
@@ -584,120 +505,6 @@ function M.setup_custom_keymaps(state, opts, close_picker_fn, map_key)
       end
     end
   end
-end
-
----Handle character input in the picker
----@param state SelectaState The current state of the picker
----@param char string|number The character input
----@param opts SelectaOptions The options for the picker
----@param process_query_fn function Function to process query changes
----@param close_picker_fn function Function to close the picker
----@return nil
-function M.handle_char(state, char, opts, process_query_fn, close_picker_fn)
-  if not state.active then
-    return nil
-  end
-  local char_key = type(char) == "number" and vim.fn.nr2char(char) or char
-  local movement_keys = get_movement_keys(opts)
-  -- Handle custom keymaps first
-  if handle_custom_keymaps(state, char_key, opts, close_picker_fn) then
-    if state.active == false then
-      return nil
-    end
-    process_query_fn(state, opts)
-    return nil
-  end
-  -- Handle multiselect keymaps
-  if handle_multiselect_keymaps(state, char_key, opts, process_query_fn) then
-    return nil
-  end
-  -- Handle special keys using StateManager methods when possible
-  if
-    state.handle_special_key
-    and (char_key == SPECIAL_KEYS.LEFT or char_key == SPECIAL_KEYS.RIGHT or char_key == SPECIAL_KEYS.BS)
-  then
-    if state:handle_special_key(char_key, opts) then
-      process_query_fn(state, opts)
-      return nil
-    end
-  end
-  -- Handle movement keys
-  if vim.tbl_contains(movement_keys.previous, char_key) then
-    if state.handle_movement then
-      state:handle_movement(-1, opts)
-    else
-      state.user_navigated = true
-      state.initial_open = false
-      -- Legacy method for compatibility
-      -- handle_movement(state, -1, opts)
-    end
-    return nil
-  elseif vim.tbl_contains(movement_keys.next, char_key) then
-    if state.handle_movement then
-      state:handle_movement(1, opts)
-    else
-      state.user_navigated = true
-      state.initial_open = false
-      -- Legacy method for compatibility
-      -- handle_movement(state, 1, opts)
-    end
-    return nil
-  elseif vim.tbl_contains(movement_keys.close, char_key) then
-    if opts.on_cancel then
-      opts.on_cancel()
-    end
-    close_picker_fn(state)
-    return nil
-  elseif vim.tbl_contains(movement_keys.select, char_key) then
-    handle_selection(state, opts)
-    close_picker_fn(state)
-    return nil
-  elseif vim.tbl_contains(movement_keys.delete_word, char_key) then
-    print("state.delete_word exists: " .. tostring(state.delete_word ~= nil))
-    if state.delete_word then
-      if state:delete_word() then
-        process_query_fn(state, opts)
-      end
-    else
-      -- delete_last_word(state)
-      state:delete_word()
-      process_query_fn(state, opts)
-    end
-    return nil
-  elseif vim.tbl_contains(movement_keys.clear_line, char_key) then
-    print("state.clear_query exists: " .. tostring(state.clear_query ~= nil))
-    if state.clear_query then
-      state:clear_query()
-    else
-      state.query = {}
-      state.cursor_pos = 1
-      state.initial_open = false
-      state.user_navigated = false
-    end
-    process_query_fn(state, opts)
-    return nil
-  elseif char_key == SPECIAL_KEYS.MOUSE and vim.v.mouse_win ~= state.win and vim.v.mouse_win ~= state.prompt_win then
-    if opts.on_cancel then
-      opts.on_cancel()
-    end
-    close_picker_fn(state)
-    return nil
-  elseif char_key == SPECIAL_KEYS.LEFT and not state.handle_special_key then
-    state:move_cursor(-1)
-  elseif char_key == SPECIAL_KEYS.RIGHT and not state.handle_special_key then
-    state:move_cursor(1)
-  elseif char_key == SPECIAL_KEYS.BS and not state.handle_special_key then
-    if state:backspace() then
-      process_query_fn(state, opts)
-    end
-  else
-    -- Handle regular character input
-    if state:update_query(char) then
-      process_query_fn(state, opts)
-    end
-  end
-
-  return nil
 end
 
 -- Make bulk_selection available to other modules

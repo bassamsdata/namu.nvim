@@ -388,16 +388,6 @@ function impl.show_with_query(config, query, opts)
             impl.logger.log("Invalid item for selection")
             return
           end
-          impl.logger.log(string.format("Selected symbol: %s at line %d", item.value.name, item.value.lnum))
-          -- -- Clean up preview state
-          -- if
-          --   state.preview_state
-          --   and state.preview_state.scratch_buf
-          --   and api.nvim_buf_is_valid(state.preview_state.scratch_buf)
-          -- then
-          --   api.nvim_buf_delete(state.preview_state.scratch_buf, { force = true })
-          --   state.preview_state.scratch_buf = nil
-          -- end
           local cache_eventignore = vim.o.eventignore
           vim.o.eventignore = "BufEnter"
           pcall(function()
@@ -450,6 +440,7 @@ function impl.show_with_query(config, query, opts)
               and api.nvim_win_is_valid(state.original_win)
               and api.nvim_buf_is_valid(state.original_buf)
             then
+              api.nvim_set_current_win(state.original_win)
               api.nvim_win_set_buf(state.original_win, state.original_buf)
               api.nvim_win_set_cursor(state.original_win, state.original_pos)
             end

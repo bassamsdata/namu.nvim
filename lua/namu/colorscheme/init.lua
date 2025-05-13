@@ -34,6 +34,11 @@ M.config = {
   icon = "󱠦", -- 󱠦 -  -  -- 󰚟
 }
 local notify_opts = { title = "Namu", icon = M.config.icon }
+local state = {
+  original_win = nil,
+  original_buf = nil,
+  original_pos = nil,
+}
 
 ---@param callback? fun(success: boolean, error_message?: string) Callback function after setup is complete
 ---@diagnostic disable-next-line: unused-local
@@ -116,9 +121,16 @@ end
 ---@param opts? SelectaColorschemeConfig
 function M.show(opts)
   opts = vim.tbl_deep_extend("force", M.config, opts or {})
+
+  local win = vim.api.nvim_get_current_win()
+  state = {
+    original_win = win,
+    original_buf = vim.api.nvim_get_current_buf(),
+    original_pos = vim.api.nvim_win_get_cursor(win),
+  }
+
   -- Get the current colorscheme
   local original_colorscheme = vim.g.colors_name
-
   -- Get a list of available colorschemes
   local colorschemes = vim.fn.getcompletion("", "color")
 
@@ -184,6 +196,8 @@ function M.show(opts)
       end
     end,
     on_cancel = function()
+      vim.api.nvim_set_current_win(state.original_win)
+      vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
       vim.cmd.colorscheme(original_colorscheme)
     end,
     on_move = function(item)

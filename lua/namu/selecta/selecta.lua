@@ -3,7 +3,7 @@ A minimal, flexible fuzzy finder for Neovim.
 
 Usage:
 require('selecta').pick(items, {
-    -- options
+   -- options
 })
 
 Features:
