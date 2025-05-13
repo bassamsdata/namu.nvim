@@ -1,4 +1,5 @@
 local selecta = require("namu.selecta.selecta")
+local preview_utils = require("namu.core.preview_utils")
 
 local M = {}
 
@@ -36,6 +37,11 @@ M.config = {
   },
 }
 
+local function preview_ui(item, win_id)
+  local preview_st = preview_utils.preview_utils.create_preview_state("workspace_preview")
+  preview_utils.preview_utils.preview_symbol(item, win_id, preview_st)
+end
+
 ---@param items any[]
 ---@param opts SelectaOptions
 ---@param on_choice fun(item: any?, idx: number?)
@@ -60,6 +66,12 @@ function M.select(items, opts, on_choice)
     display = M.config.display,
     movement = vim.tbl_deep_extend("force", M.config.movement, {}),
     current_highlight = M.config.current_highlight,
+    on_move = function(item)
+      -- TODO: we need state
+      -- if item and item.value then
+      --   preview_ui(item, state.original_win)
+      -- end
+    end,
     on_select = function(selected)
       if selected then
         vim.schedule(function()
