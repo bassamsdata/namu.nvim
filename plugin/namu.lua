@@ -166,15 +166,13 @@ local registry = {
     if #args == 0 then
       require("namu.namu_diagnostics").show()
     else
-      -- For workspace diagnostics, first try to load them
       local diag_module = require("namu.namu_diagnostics")
       if args[1] == "workspace" then
-        -- Wait a bit for diagnostics to be collected before showing
-        vim.defer_fn(function()
-          diag_module.show_workspace_diagnostics()
-        end, 1000) -- Give LSP servers a second to process the files
+        diag_module.show_workspace_diagnostics()
+      elseif args[1] == "buffers" then
+        diag_module.show("buffers")
       else
-        diag_module.show("workspace")
+        diag_module.show(args[1])
       end
     end
   end,

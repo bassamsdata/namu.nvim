@@ -10,6 +10,8 @@ local lsp = require("namu.namu_symbols.lsp")
 local notify_opts = { title = "Namu", icon = require("namu").config.icon }
 local api = vim.api
 local M = {}
+M.loaded_workspace_diagnostics = false
+M.cached_workspace_items = {}
 
 -- Store original window and position for preview
 local state = {
@@ -383,11 +385,30 @@ local function get_workspace_files()
     vim.notify("Failed to get workspace files. Is this a git repository?", vim.log.levels.WARN, notify_opts)
     return {}
   end
+  -- Get list of all open buffers
+  local open_buffers = {}
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(bufnr) then
+      local bufname = vim.api.nvim_buf_get_name(bufnr)
+      if bufname and bufname ~= "" then
+        -- Use absolute paths for comparison
+        local abs_path = vim.fn.fnamemodify(bufname, ":p")
+        open_buffers[abs_path] = true
+      end
+    end
+  end
 
   -- Convert paths to absolute
-  return vim.tbl_map(function(path)
-    return vim.fn.fnamemodify(path, ":p")
-  end, output)
+  -- Filter out already open files
+  local filtered_files = {}
+  for _, path in ipairs(output) do
+    local abs_path = vim.fn.fnamemodify(path, ":p")
+    if not open_buffers[abs_path] then
+      table.insert(filtered_files, abs_path)
+    end
+  end
+
+  return filtered_files
 end
 
 ---Check if file should be processed for the given client
@@ -448,11 +469,10 @@ end
 ---@param workspace_files table List of file paths
 ---@param lsp_utils table LSP utilities module
 ---@return table Map of processed client IDs
-local function start_loading_workspace_files(workspace_files, lsp_utils, config)
+local function start_loading_workspace_files(workspace_files, lsp_utils, config, status_provider)
   -- Track which clients have been processed
   M.loaded_clients = M.loaded_clients or {}
   local processed_clients = {}
-  local current_file = api.nvim_buf_get_name(api.nvim_get_current_buf())
 
   -- Process clients and files in batches
   local get_clients_fn = vim.lsp.get_clients
@@ -477,12 +497,9 @@ local function start_loading_workspace_files(workspace_files, lsp_utils, config)
     -- Collect files for this client
     local client_files = {}
     for _, path in ipairs(workspace_files) do
-      -- Skip current file and check filetype match
-      if path ~= current_file then
-        local filetype = vim.filetype.match({ filename = path })
-        if filetype and client.config.filetypes and vim.tbl_contains(client.config.filetypes, filetype) then
-          table.insert(client_files, { path = path, filetype = filetype })
-        end
+      local filetype = vim.filetype.match({ filename = path })
+      if filetype and client.config.filetypes and vim.tbl_contains(client.config.filetypes, filetype) then
+        table.insert(client_files, { path = path, filetype = filetype })
       end
     end
 
@@ -499,12 +516,9 @@ local function start_loading_workspace_files(workspace_files, lsp_utils, config)
     ::continue::
   end
 
-  -- Show initial progress if enabled
-  if config.workspace_diagnostics.preload_progress then
-    vim.notify(
-      "Loading workspace diagnostics: preparing to process " .. progress_total .. " files",
-      vim.log.levels.INFO
-    )
+  -- Update status with initial count
+  if status_provider and progress_total > 0 then
+    status_provider(string.format("Loading %d files", progress_total))
   end
 
   -- Process files in small batches to avoid blocking
@@ -535,19 +549,12 @@ local function start_loading_workspace_files(workspace_files, lsp_utils, config)
         })
       end
       processed = processed + 1
-    end
 
-    -- Show progress if enabled
-    if config.workspace_diagnostics.preload_progress and processed % 10 == 0 then
-      vim.notify(
-        string.format(
-          "Loading workspace diagnostics: %d/%d files (%.1f%%)",
-          processed,
-          progress_total,
-          (processed / progress_total) * 100
-        ),
-        vim.log.levels.INFO
-      )
+      -- Update status periodically
+      if status_provider and (processed % 5 == 0 or processed == progress_total) then
+        local percentage = math.floor((processed / progress_total) * 100)
+        status_provider(string.format("Loading files (%d%%)", percentage))
+      end
     end
 
     -- Schedule next batch if needed
@@ -574,71 +581,51 @@ end
 ---@param config table Configuration table
 ---@return function Source factory function
 local function create_async_diagnostics_source(config)
-  -- Storage for loaded diagnostics
-  local loaded = false
-  local cached_items = {}
-  local update_count = 0
-  local max_updates = 5
-
-  -- Return the async source function
   return function(query)
-    return function(callback)
-      -- If we've already loaded and in load_once mode, use cache
-      if loaded and config.workspace_diagnostics.load_once then
-        callback(cached_items)
+    return function(callback, status_provider)
+      -- Show initial status
+      if status_provider then
+        status_provider("Loading results")
+      end
+
+      -- Start loading workspace files
+      local workspace_files = get_workspace_files()
+      if #workspace_files == 0 then
+        callback({})
         return
       end
 
-      -- Initial loading - if we don't have any diagnostics yet, start loading
-      if not loaded then
-        -- First check for existing diagnostics
-        local diagnostics, buffer_info = get_diagnostics_for_scope("workspace")
-        if #diagnostics > 0 then
-          -- We already have diagnostics - convert and use them
-          local items = diagnostics_to_selecta_items(diagnostics, buffer_info, config)
-          cached_items = items
-          loaded = true
-          callback(items)
-          return
+      -- Start the LSP notifications
+      local lsp_utils = require("namu.namu_symbols.lsp")
+      start_loading_workspace_files(workspace_files, lsp_utils, config, status_provider)
+
+      -- Schedule periodic updates to collect diagnostics as they come in
+      local update_count = 0
+      local max_updates = 5
+
+      local function update_diagnostics()
+        -- Update status with current progress
+        if status_provider then
+          status_provider(string.format("Processing diagnostics (%d/%d)", update_count + 1, max_updates))
         end
 
-        -- Start loading workspace files
-        local workspace_files = get_workspace_files()
-        if #workspace_files == 0 then
-          callback({})
-          return
+        -- Get current diagnostics
+        local current_diagnostics, current_buffer_info = get_diagnostics_for_scope("workspace")
+        local current_items = diagnostics_to_selecta_items(current_diagnostics, current_buffer_info, config)
+
+        -- Call back with current items
+        callback(current_items)
+
+        -- Schedule next update if needed
+        update_count = update_count + 1
+        if update_count < max_updates then
+          local delay = math.min(1000 * update_count, 3000) -- Increase delay for later updates
+          vim.defer_fn(update_diagnostics, delay)
         end
-
-        -- Start the LSP notifications
-        local lsp_utils = require("namu.namu_symbols.lsp")
-        local clients_processed = start_loading_workspace_files(workspace_files, lsp_utils, config)
-
-        -- Schedule periodic updates to collect diagnostics as they come in
-        local function update_diagnostics()
-          -- Get current diagnostics
-          local current_diagnostics, current_buffer_info = get_diagnostics_for_scope("workspace")
-          local current_items = diagnostics_to_selecta_items(current_diagnostics, current_buffer_info, config)
-
-          -- Update cached items
-          cached_items = current_items
-
-          -- Call back with current items
-          callback(current_items)
-
-          -- Schedule next update if needed
-          update_count = update_count + 1
-          if update_count < max_updates then
-            local delay = math.min(1000 * update_count, 3000) -- Increase delay for later updates
-            vim.defer_fn(update_diagnostics, delay)
-          else
-            -- Final update - mark as loaded
-            loaded = true
-          end
-        end
-
-        -- Start the update cycle after initial delay
-        vim.defer_fn(update_diagnostics, 500)
       end
+
+      -- Start the update cycle after initial delay
+      vim.defer_fn(update_diagnostics, 500)
     end
   end
 end
@@ -666,7 +653,7 @@ end
 ---Load workspace diagnostics by notifying LSP servers about all files
 ---@param config table Plugin configuration
 ---@return boolean Success indicator
-function M.joad_workspace_diagnostics(config)
+function M.load_workspace_diagnostics(config)
   local workspace_files = get_workspace_files()
   if #workspace_files == 0 then
     return false
@@ -1025,17 +1012,10 @@ function M.show_workspace_diagnostics(config)
   end
   preview_utils.save_window_state(state.original_win, state.preview_state)
 
-  -- Create placeholder items for when loading
-  local placeholder_items = {
-    {
-      text = "Loading workspace diagnostics...",
-      icon = "󰍉",
-      value = nil,
-      is_placeholder = true,
-    },
-  }
+  -- Check if we've already loaded diagnostics for this session
+  local session_loaded = M.workspace_session_loaded or false
 
-  -- Create pick options
+  -- Common picker options used for both approaches
   local pick_options = vim.tbl_deep_extend("force", {}, {
     title = "Diagnostics - Workspace",
     preserve_order = true,
@@ -1043,10 +1023,7 @@ function M.show_workspace_diagnostics(config)
     current_highlight = config.current_highlight,
     debug = config.debug,
     custom_keymaps = config.custom_keymaps,
-    -- Add async source for workspace diagnostics
-    async_source = create_async_diagnostics_source(config),
-    -- Add load_once option to avoid re-querying
-    load_once_mode = config.workspace_diagnostics.load_once,
+
     -- Filter function
     pre_filter = function(items, query)
       local filter = parse_diagnostic_filter(query, config)
@@ -1064,6 +1041,7 @@ function M.show_workspace_diagnostics(config)
       end
       return items, query
     end,
+
     formatter = function(item)
       if item.is_placeholder then
         return item.text
@@ -1080,6 +1058,7 @@ function M.show_workspace_diagnostics(config)
         apply_diagnostic_highlights(buf, filtered_items, config)
       end,
     },
+
     on_move = function(item)
       if item and item.value then
         preview_utils.preview_symbol(item, state.original_win, state.preview_state, {
@@ -1087,6 +1066,7 @@ function M.show_workspace_diagnostics(config)
         })
       end
     end,
+
     on_select = function(item)
       -- Skip placeholders
       if not item or not item.value then
@@ -1111,6 +1091,7 @@ function M.show_workspace_diagnostics(config)
         end)
       end
     end,
+
     on_cancel = function()
       api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
       api.nvim_buf_clear_namespace(state.original_buf, state.preview_state.preview_ns, 0, -1)
@@ -1120,15 +1101,41 @@ function M.show_workspace_diagnostics(config)
     end,
   })
 
-  -- Check if we already have diagnostics
-  local diagnostics, buffer_info = get_diagnostics_for_scope("workspace")
-  -- If we have diagnostics, use them directly
-  if #diagnostics > 0 then
-    local items = diagnostics_to_selecta_items(diagnostics, buffer_info, config)
-    selecta.pick(items, pick_options)
+  -- Check if we need the async loading approach or can use direct diagnostics
+  if session_loaded then
+    -- We've already loaded workspace files in this session
+    -- Just get current diagnostics directly from LSP
+    local diagnostics, buffer_info = get_diagnostics_for_scope("workspace")
+
+    if #diagnostics > 0 then
+      local items = diagnostics_to_selecta_items(diagnostics, buffer_info, config)
+      selecta.pick(items, pick_options)
+    else
+      -- If no diagnostics found, show a message
+      local no_diagnostics_items = {
+        {
+          text = "No workspace diagnostics found",
+          icon = "✓",
+          value = nil,
+          is_placeholder = true,
+        },
+      }
+      selecta.pick(no_diagnostics_items, pick_options)
+    end
   else
-    -- Otherwise show placeholder and let async source handle loading
+    -- First-time loading: use async approach with status provider
+    -- Add async source
+    pick_options.async_source = create_async_diagnostics_source(config)
+    local placeholder_items = {
+      {
+        text = "Loading workspace diagnostics...",
+        icon = "󰍉",
+        value = nil,
+        is_placeholder = true,
+      },
+    }
     selecta.pick(placeholder_items, pick_options)
+    M.workspace_session_loaded = true
   end
 end
 

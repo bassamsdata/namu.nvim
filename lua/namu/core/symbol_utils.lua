@@ -769,7 +769,8 @@ function M.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
     if new_win then
       -- Most of this is now handled in open_in_split, so we can simplify
       ui.clear_preview_highlight(state.original_win, state.preview_ns)
-      return false
+
+      return true
     end
   end
 
@@ -783,7 +784,7 @@ function M.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
     if new_win then
       -- Most of this is now handled in open_in_split, so we can simplify
       ui.clear_preview_highlight(state.original_win, state.preview_ns)
-      return false
+      return true
     end
   end
 

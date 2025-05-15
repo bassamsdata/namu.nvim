@@ -352,6 +352,19 @@ function M.standard_filter(state, items, query, opts)
   state.filtered_items = matched_items
 end
 
+function M.create_loading_status_provider(state)
+  return function(text)
+    if state and state.active and state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) then
+      vim.api.nvim_buf_clear_namespace(state.prompt_buf, common.loading_ns_id, 0, -1)
+      state.loading_extmark_id = vim.api.nvim_buf_set_extmark(state.prompt_buf, common.loading_ns_id, 0, 0, {
+        virt_text = { { " 󰇚 " .. text, "Comment" } },
+        virt_text_pos = "eol",
+        priority = 200,
+      })
+    end
+  end
+end
+
 local loading_ns_id = common.loading_ns_id
 ---@param state SelectaState
 ---@param query string
@@ -362,24 +375,19 @@ function M.start_async_fetch(state, query, opts, callback)
   -- Generate a unique request ID for this specific request
   local request_id = tostring(vim.uv.now()) .. "_" .. vim.fn.rand()
   state.current_request_id = request_id
-  -- Store the current query
   state.last_query = query
-  -- Set loading state
   state.is_loading = true
   -- Display loading indicator
   if state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) then
     -- Clear any previous loading indicator
     vim.api.nvim_buf_clear_namespace(state.prompt_buf, loading_ns_id, 0, -1)
-
     -- Get loading indicator text and icon with fallbacks
     local loading_icon = opts.loading_indicator and opts.loading_indicator.icon
       or common.config.loading_indicator and common.config.loading_indicator.icon
       or "󰇚"
-
     local loading_text = opts.loading_indicator and opts.loading_indicator.text
       or common.config.loading_indicator and common.config.loading_indicator.text
       or "Loading..."
-
     state.loading_extmark_id = vim.api.nvim_buf_set_extmark(state.prompt_buf, loading_ns_id, 0, 0, {
       virt_text = { { " " .. loading_icon .. " " .. loading_text, "Comment" } },
       virt_text_pos = "eol",
@@ -387,8 +395,9 @@ function M.start_async_fetch(state, query, opts, callback)
     })
   end
 
-  -- Get the process function
-  local process_fn = opts.async_source(query)
+  local process_fn = opts.async_source(query) -- Get the process function
+  -- Create a status provider for this state
+  local status_provider = M.create_loading_status_provider(state)
 
   -- Define the callback to handle processed items
   local function handle_items(items)
@@ -404,12 +413,10 @@ function M.start_async_fetch(state, query, opts, callback)
         vim.api.nvim_buf_clear_namespace(state.prompt_buf, loading_ns_id, 0, -1)
         state.loading_extmark_id = nil
       end
-
       -- Update with results if we have valid data
       if type(items) == "table" then
         state.items = items
         state.filtered_items = items
-
         -- Apply filtering if needed
         if query ~= "" and #items > 0 then
           -- Apply filtering logic
@@ -419,11 +426,7 @@ function M.start_async_fetch(state, query, opts, callback)
         -- Handle error or empty results
         state.filtered_items = { { text = "No matching results found", icon = "󰅚", value = nil } }
       end
-
-      -- Clear loading state
-      state.is_loading = false
-
-      -- Execute the callback
+      state.is_loading = false -- Clear loading state
       if callback then
         callback()
       end
@@ -431,7 +434,7 @@ function M.start_async_fetch(state, query, opts, callback)
   end
 
   -- Start the process
-  process_fn(handle_items)
+  process_fn(handle_items, status_provider)
 
   return true
 end

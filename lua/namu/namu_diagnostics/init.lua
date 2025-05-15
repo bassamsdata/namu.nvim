@@ -33,7 +33,7 @@ M.config = vim.tbl_deep_extend("force", M.config, {
   },
   window = {
     title_prefix = "󰃣 ",
-    min_width = 20,
+    min_width = 60,
     max_width = 80,
     min_height = 1,
     padding = 2,
