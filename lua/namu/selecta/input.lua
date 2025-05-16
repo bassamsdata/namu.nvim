@@ -193,6 +193,43 @@ local function bulk_selection(state, opts, select)
   common.update_selection_highlights(state, opts)
 end
 
+---Helper function to handle selection
+---@param state SelectaState
+---@param opts SelectaOptions
+local function handle_selection(state, opts)
+  if not state or not state.active then
+    return
+  end
+  if #state.filtered_items == 0 then
+    return
+  end
+  local ok, cursor_pos = pcall(function()
+    return vim.api.nvim_win_get_cursor(state.win)[1]
+  end)
+  if not ok or not cursor_pos or cursor_pos < 1 or cursor_pos > #state.filtered_items then
+    -- Invalid cursor position, try to use first item
+    cursor_pos = #state.filtered_items > 0 and 1 or nil
+  end
+  if opts.multiselect and opts.multiselect.enabled then
+    local selected_items = state:get_selected_items()
+    if #selected_items > 0 and opts.multiselect.on_select then
+      opts.multiselect.on_select(selected_items)
+    elseif #selected_items == 0 and cursor_pos then
+      local current = state.filtered_items[cursor_pos]
+      if current and opts.on_select then
+        opts.on_select(current)
+      end
+    end
+  else
+    if cursor_pos then
+      local selected = state.filtered_items[cursor_pos]
+      if selected and opts.on_select then
+        opts.on_select(selected)
+      end
+    end
+  end
+end
+
 local function _set_picker_keymap(prompt_buf_id, is_normal_mode_active, key_lhs, callback_fn, force_modes_list)
   local modes_to_set
   if force_modes_list then
@@ -474,6 +511,7 @@ end
 -- Make bulk_selection available to other modules
 M.bulk_selection = bulk_selection
 M.get_movement_keys = get_movement_keys
+M.handle_selection = handle_selection
 M.handle_toggle = handle_toggle
 M.handle_untoggle = handle_untoggle
 
