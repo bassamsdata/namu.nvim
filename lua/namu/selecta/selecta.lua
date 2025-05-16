@@ -52,77 +52,6 @@ function M.log(message)
 end
 M.clear_log = logger.clear_log
 
--- Add this at the module level
-local cursor_manager = {
-  guicursor = nil,
-  active = false,
-  restore_timer = nil,
-}
-
--- BUG: well, after some time, is better to check if state.active
--- Replace the hide_cursor function
-function cursor_manager.hide(state)
-  -- Don't hide if already hidden
-  if cursor_manager.active then
-    return
-  end
-  -- Store current cursor state
-  cursor_manager.guicursor = vim.o.guicursor
-  cursor_manager.active = true
-  vim.o.guicursor = "a:NamuCursor"
-  -- Set up recurring check every 20 seconds
-  -- Stops when state.active becomes false and restores cursor
-  if cursor_manager.restore_timer then
-    cursor_manager.restore_timer:stop()
-  end
-  local function check_state()
-    if cursor_manager.active and not state.active then
-      cursor_manager.restore()
-      vim.notify("Cursor automatically restored after state became inactive", vim.log.levels.WARN)
-      return false -- stop timer
-    end
-    return true -- continue timer
-  end
-
-  cursor_manager.restore_timer = vim.loop.new_timer()
-  cursor_manager.restore_timer:start(
-    20000, -- initial delay (20 seconds)
-    20000, -- repeat interval (20 seconds)
-    vim.schedule_wrap(function()
-      if not check_state() and cursor_manager.restore_timer then
-        cursor_manager.restore_timer:stop()
-        cursor_manager.restore_timer = nil
-      end
-    end)
-  )
-end
-
--- Replace the restore_cursor function
-function cursor_manager.restore()
-  -- Only restore if we're active
-  if not cursor_manager.active then
-    return
-  end
-  -- Stop the safety timer
-  if cursor_manager.restore_timer then
-    cursor_manager.restore_timer:stop()
-    cursor_manager.restore_timer = nil
-  end
-  -- Handle edge case where guicursor was empty
-  if cursor_manager.guicursor == "" then
-    vim.o.guicursor = "a:"
-  elseif cursor_manager.guicursor then
-    vim.o.guicursor = cursor_manager.guicursor
-  end
-  cursor_manager.guicursor = nil
-  cursor_manager.active = false
-end
-
--- Add a function to check status
-function cursor_manager.is_hidden()
-  return cursor_manager.active
-end
-
 -- Hierarchical filtering implementation
 ---@param state SelectaState
 ---@param items_to_filter SelectaItem[]
@@ -509,52 +438,6 @@ function M.close_picker(state)
   vim.cmd("stopinsert!")
 end
 
----Calculate window position based on preset
----@param row_position? "center"|"top10"|"top10_right"|"center_right"|"bottom"
----@param width number
----@return number row
----@return number col
-function M.get_window_position(width, row_position)
-  local lines = vim.o.lines
-  local columns = vim.o.columns
-  local cmdheight = vim.o.cmdheight
-  local available_lines = lines - cmdheight - 2
-
-  -- Parse the position
-  local pos_info = common.parse_position(row_position)
-  -- this will never return nil. I did tis to satisfy lua annotations
-  if not pos_info then
-    return 0, 0
-  end
-
-  -- Calculate column position once
-  local col
-  if pos_info.type:find("_right$") then -- Changed from row_position:match
-    if config.right_position.fixed then
-      -- Fixed right position regardless of width
-      col = math.floor(columns * config.right_position.ratio)
-    else
-      -- Center position
-      col = columns - width - 4
-    end
-  else
-    -- Center position remains unchanged
-    col = math.floor((columns - width) / 2)
-  end
-
-  -- Calculate row position
-  local row
-  if pos_info.type:match("^top") then
-    row = math.floor(lines * pos_info.ratio)
-  elseif pos_info.type == "bottom" then
-    row = math.floor(lines * pos_info.ratio) - 4
-  else -- center positions
-    row = math.max(1, math.floor(available_lines * pos_info.ratio))
-  end
-
-  return row, col
-end
-
 ---Set up the prompt buffer with event handling and keymaps
 ---@param state SelectaState
 ---@param opts SelectaOptions
@@ -649,20 +532,8 @@ function M.pick(items, opts)
 
   -- Create state
   local state = StateManager.new(items, opts)
-  -- print("state", vim.inspect(state))
   state.picker_id = tostring(vim.uv.hrtime())
-  -- print(vim.inspect(state))
-  -- print(string.format("[DEBUG] Pick function started, picker_id=%s", state.picker_id))
-  -- print(string.format("[DEBUG] opts.window.relative=%s", opts.window.relative or "nil"))
   local initial_dimensions = ui.get_container_dimensions(opts, state.picker_id)
-  -- print(
-  --   string.format(
-  --     "[DEBUG] Initial dimensions: win=%s width=%d height=%d",
-  --     initial_dimensions.win or "nil",
-  --     initial_dimensions.width,
-  --     initial_dimensions.height
-  --   )
-  -- )
   -- Calculate dimensions and position for the state
   local width, height =
     ui.calculate_window_size(opts.initially_hidden and {} or items, opts, opts.formatter, 0, state.picker_id)
@@ -705,7 +576,6 @@ M._test = {
   update_filtered_items = M.update_filtered_items,
   calculate_window_size = M.calculate_window_size,
   validate_input = matcher.validate_input,
-  get_window_position = M.get_window_position,
 }
 
 ---@param opts? table

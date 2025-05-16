@@ -917,26 +917,6 @@ end
 
 ---@param state SelectaState
 ---@param opts SelectaOptions
-local function create_prompt_window(state, opts)
-  state.prompt_buf = vim.api.nvim_create_buf(false, true)
-
-  local prompt_config = {
-    relative = opts.window.relative or config.window.relative,
-    row = state.row, -- this related to the zindex because this cover main menu
-    col = state.col,
-    width = state.width,
-    height = 1,
-    style = "minimal",
-    border = get_prompt_border(opts.window.border),
-    zindex = 60, -- related to row without rhis, row = row -1
-  }
-
-  state.prompt_win = vim.api.nvim_open_win(state.prompt_buf, false, prompt_config)
-  -- vim.api.nvim_win_set_option(state.prompt_win, "winhl", "Normal:NamuPrompt")
-end
-
----@param state SelectaState
----@param opts SelectaOptions
 ---@param show_info boolean Whether to show the info
 local function update_prompt_info(state, opts, show_info)
   if not state.prompt_buf or not vim.api.nvim_buf_is_valid(state.prompt_buf) then

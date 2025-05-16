@@ -20,32 +20,6 @@ M.DEFAULT_POSITIONS = {
   top10 = 0.1,
 }
 
-function M.calculate_max_available_height(position_info, opts)
-  -- Get container dimensions (window or editor)
-  local container
-  if opts and opts.window and opts.window.relative == "win" then
-    local current_win = vim.api.nvim_get_current_win()
-    container = {
-      height = vim.api.nvim_win_get_height(current_win),
-      width = vim.api.nvim_win_get_width(current_win),
-    }
-  else
-    container = {
-      height = vim.o.lines - vim.o.cmdheight - 2,
-      width = vim.o.columns,
-    }
-  end
-
-  if position_info.type:match("^top") then
-    -- Handle any top position (top, top_right, with any percentage)
-    return container.height - math.floor(container.height * position_info.ratio) - 4
-  elseif position_info.type == "bottom" then
-    return math.floor(container.height * 0.2)
-  else
-    return container.height - math.floor(container.height / 2) - 4
-  end
-end
-
 function M.get_prefix_info(item, max_prefix_width)
   local prefix_text = item.kind or ""
   local raw_width = vim.api.nvim_strwidth(prefix_text)
