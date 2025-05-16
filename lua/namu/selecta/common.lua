@@ -261,11 +261,8 @@ function M.update_selection_highlights(state, opts)
     if state.selected[item_id] then
       -- i-1 because buffer lines are 0-indexed
       vim.api.nvim_buf_set_extmark(state.buf, M.selection_ns, i - 1, 0, {
-        -- FIX: fix it please or return the previous behaviour
-        sign_text = indicator,
-        sign_hl_group = "NamuSelected",
-        -- virt_text = { { indicator, "NamuSelected" } },
-        -- virt_text_pos = "overlay",
+        virt_text = { { indicator, "NamuSelected" } },
+        virt_text_pos = "overlay",
         priority = 203, -- higher than current item highlight
       })
     end
