@@ -54,6 +54,7 @@ function StateManager.new(items, opts)
     current_request_id = nil,
     loading_extmark_id = nil,
     last_request_time = nil,
+    original_window = vim.api.nvim_get_current_win(),
   }
 
   return setmetatable(state, StateManager)

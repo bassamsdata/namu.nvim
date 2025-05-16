@@ -1,6 +1,6 @@
 local M = {}
 
-local log_file = vim.fn.stdpath("cache") .. "/selecta_debug.log"
+local log_file = vim.fn.stdpath("cache") .. "/namu_debug.log"
 local debug_enabled = false
 local benchmarks = {}
 local benchmark_results = {}

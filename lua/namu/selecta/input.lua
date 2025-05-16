@@ -2,6 +2,7 @@
 local M = {}
 
 local common = require("namu.selecta.common")
+local config = require("namu.selecta.selecta_config").values
 
 -- Local references to reduce table lookups
 local log = common.log
@@ -10,7 +11,7 @@ local log = common.log
 ---@param opts SelectaOptions
 ---@return table<string, string[]>
 local function get_movement_keys(opts)
-  local movement_config = opts.movement or common.config.movement
+  local movement_config = opts.movement or config.movement
   local keys = {
     next = {},
     previous = {},
@@ -256,7 +257,7 @@ function M.setup_keymaps(state, opts, close_picker_fn, process_query_fn)
   if not state.prompt_buf or not vim.api.nvim_buf_is_valid(state.prompt_buf) then
     return
   end
-  local movement_keys = opts.movement or common.config.movement
+  local movement_keys = opts.movement or config.movement
 
   local function map_key_adapter(key_lhs, callback_fn, force_modes_list)
     _set_picker_keymap(state.prompt_buf, opts.normal_mode, key_lhs, callback_fn, force_modes_list)
@@ -426,7 +427,7 @@ end
 ---@param map_key function Helper function to map keys
 ---@return nil
 function M.setup_multiselect_keymaps(state, opts, close_picker_fn, process_query_fn, map_key)
-  local multiselect_keys = opts.multiselect.keymaps or common.config.multiselect.keymaps
+  local multiselect_keys = opts.multiselect.keymaps or config.multiselect.keymaps
 
   -- Toggle selection
   if multiselect_keys.toggle then

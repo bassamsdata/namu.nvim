@@ -1,4 +1,5 @@
 ---@class SelectaState
+---@field picker_id string Unique identifier for the picker
 ---@field buf number Buffer handle
 ---@field win number Window handle
 ---@field prompt_buf number? Prompt buffer handle

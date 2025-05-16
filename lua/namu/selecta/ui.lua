@@ -1,9 +1,10 @@
--- selecta/ui.lua
 -- UI handling functionality for selecta
 
 local M = {}
 local common = require("namu.selecta.common")
 local matcher = require("namu.selecta.matcher")
+local config = require("namu.selecta.selecta_config").values
+local log = require("namu.utils.logger").log
 
 -- Local references for optimization
 local ns_id = common.ns_id
@@ -11,6 +12,85 @@ local current_selection_ns = common.current_selection_ns
 local selection_ns = common.selection_ns
 local filter_info_ns = common.filter_info_ns
 local prompt_info_ns = common.prompt_info_ns
+
+-- cache for original window dimensions
+local original_dimensions_cache = {}
+---fucntion to get container dimensions
+---@param opts SelectaOptions
+---@param picker_id string
+---@return table
+function M.get_container_dimensions(opts, picker_id)
+  -- Check if we have cached dimensions for this picker
+  if picker_id and original_dimensions_cache[picker_id] then
+    local cached = original_dimensions_cache[picker_id]
+    return cached
+  end
+
+  -- Otherwise calculate dimensions
+  if opts.window.relative == "win" then
+    -- Get current window dimensions
+    local original_win = vim.api.nvim_get_current_win()
+    local win_width = vim.api.nvim_win_get_width(original_win)
+    local win_height = vim.api.nvim_win_get_height(original_win)
+    local dimensions = {
+      width = win_width,
+      height = win_height,
+      win = original_win,
+    }
+    -- Cache these dimensions if we have a picker_id
+    if picker_id then
+      original_dimensions_cache[picker_id] = dimensions
+    end
+
+    return dimensions
+  else
+    -- Default to editor dimensions
+    local dimensions = {
+      width = vim.o.columns,
+      height = vim.o.lines - vim.o.cmdheight - 2,
+      win = nil,
+    }
+    -- Cache these dimensions if we have a picker_id
+    if picker_id then
+      -- print(string.format("[DEBUG] Caching editor dimensions for picker_id=%s", picker_id))
+      original_dimensions_cache[picker_id] = dimensions
+    end
+
+    return dimensions
+  end
+end
+
+-- helper to set dimensions for a specific picker id
+function M.set_original_dimensions(picker_id, dimensions)
+  original_dimensions_cache[picker_id] = dimensions
+end
+
+-- helper to get dimensions for a specific picker id
+function M.get_original_dimensions(picker_id)
+  return original_dimensions_cache[picker_id]
+end
+
+-- helper to clear dimensions when picker is closed
+function M.clear_original_dimensions(picker_id)
+  if original_dimensions_cache[picker_id] then
+    original_dimensions_cache[picker_id] = nil
+  end
+end
+
+function M.calculate_max_available_height(position_info, opts, picker_id)
+  -- Get container dimensions using our existing caching system
+  local container = M.get_original_dimensions(picker_id) or M.get_container_dimensions(opts, picker_id)
+
+  -- Calculate height based on container dimensions and position
+  if position_info.type:match("^top") then
+    -- Handle any top position (top, top_right, with any percentage)
+    return container.height - math.floor(container.height * position_info.ratio) - 3
+  elseif position_info.type == "bottom" then
+    return math.floor(container.height * 0.2)
+  else
+    return container.height - math.floor(container.height / 2) - 4
+  end
+end
 
 -- Calculate maximum prefix width for all items
 ---@param items SelectaItem[]
@@ -112,9 +192,11 @@ function M.create_prompt_window(state, opts)
   -- Initialize with empty content
   -- vim.api.nvim_buf_set_lines(state.prompt_buf, 0, -1, false, { "" })
 
+  -- Get container dimensions to determine if we need a win parameter
+  local container = M.get_original_dimensions(state.picker_id) or M.get_container_dimensions(opts, state.picker_id)
   -- Create window with prompt buffer
   local prompt_config = {
-    relative = opts.window.relative or common.config.window.relative,
+    relative = opts.window.relative or config.window.relative,
     row = state.row,
     col = state.col,
     width = state.width,
@@ -123,6 +205,11 @@ function M.create_prompt_window(state, opts)
     border = get_prompt_border(opts.window.border),
     zindex = 60,
   }
+
+  -- Add win parameter if relative is "window"
+  if opts.window.relative == "win" then
+    prompt_config.win = container.win or vim.api.nvim_get_current_win()
+  end
 
   state.prompt_win = vim.api.nvim_open_win(state.prompt_buf, false, prompt_config)
 
@@ -211,41 +298,62 @@ end
 ---@param items SelectaItem[]
 ---@param opts SelectaOptions
 ---@param formatter fun(item: SelectaItem): string
-function M.calculate_window_size(items, opts, formatter, state_col)
-  local max_width = opts.window.max_width or common.config.window.max_width
-  local min_width = opts.window.min_width or common.config.window.min_width
-  local max_height = opts.window.max_height or common.config.window.max_height
-  local min_height = opts.window.min_height or common.config.window.min_height
-  local padding = opts.window.padding or common.config.window.padding
-
+---@param state_col number
+---@param picker_id string
+function M.calculate_window_size(items, opts, formatter, state_col, picker_id)
+  local max_width = opts.window.max_width or config.window.max_width
+  local min_width = opts.window.min_width or config.window.min_width
+  local max_height = opts.window.max_height or config.window.max_height
+  local min_height = opts.window.min_height or config.window.min_height
+  local padding = opts.window.padding or config.window.padding
+  log(
+    string.format(
+      "[DEBUG] calculate_window_size: max_width=%d min_width=%d max_height=%d min_height=%d padding=%d",
+      max_width,
+      min_width,
+      max_height,
+      min_height,
+      padding
+    )
+  )
+  -- Get container dimensions based on relative setting
+  local container = picker_id and M.get_original_dimensions(picker_id) or M.get_container_dimensions(opts, picker_id)
+  log(
+    string.format(
+      "[DEBUG] calculate_window_size: Container dimensions: win=%s width=%d height=%d",
+      container.win or "nil",
+      container.width,
+      container.height
+    )
+  )
   -- Calculate content width
   local content_width = min_width
-  -- Calculate initial column position
-  local row_position = opts.row_position or common.config.row_position or "top10"
+  -- Calculate position and initial column
+  local row_position = opts.row_position or config.row_position or "top10"
   local position_info = common.parse_position(row_position)
-
   local initial_col = state_col
+  local absolute_max_width = container.width - (2 * padding)
+  max_width = math.min(max_width, absolute_max_width)
   if not initial_col then
     if position_info.type:find("_right$") then
-      if common.config.right_position.fixed then
-        initial_col = math.floor(vim.o.columns * common.config.right_position.ratio)
+      if config.right_position.fixed then
+        initial_col = math.floor(container.width * config.right_position.ratio)
         -- Constrain max_width based on available space
-        max_width = math.min(max_width, vim.o.columns - initial_col - (padding * 2) - 1)
+        max_width = math.min(max_width, container.width - initial_col - (padding * 2) - 1)
       else
         -- Constrain max_width based on available space
-        max_width = math.min(max_width, vim.o.columns - (padding * 2) - 1)
-        initial_col = math.floor((vim.o.columns - max_width) / 2) -- Default to center if not fixed
+        max_width = math.min(max_width, container.width - (padding * 2) - 1)
+        initial_col = math.floor((container.width - max_width) / 2) -- Default to center if not fixed
       end
     else
       -- Constrain max_width based on available space
-      max_width = math.min(max_width, vim.o.columns - (padding * 2) - 1)
-      initial_col = math.floor((vim.o.columns - max_width) / 2) -- Center position
+      max_width = math.min(max_width, container.width - (padding * 2) - 1)
+      initial_col = math.floor((container.width - max_width) / 2) -- Center position
     end
   end
 
   -- Calculate available width based on constrained max_width
   local max_available_width = max_width
-
   if opts.window.auto_size then
     for _, item in ipairs(items) do
       local line = formatter(item)
@@ -258,17 +366,25 @@ function M.calculate_window_size(items, opts, formatter, state_col)
     content_width = math.min(math.max(content_width, min_width), max_width, max_available_width)
   else
     -- Use ratio-based width
-    content_width = math.floor(vim.o.columns * (opts.window.width_ratio or common.config.window.width_ratio))
+    content_width = math.floor(container.width * (opts.window.width_ratio or config.window.width_ratio))
     content_width = math.min(content_width, max_available_width) -- Constrain ratio-based width as well
   end
-
   -- Calculate height based on number of items
-  local max_available_height = common.calculate_max_available_height(position_info)
+  local max_available_height = M.calculate_max_available_height(position_info, opts, picker_id)
+  log(
+    string.format(
+      "[DEBUG] calculate_window_size: max_available_height=%d position_info.type=%s",
+      max_available_height,
+      position_info.type
+    )
+  )
   local content_height = #items
+  log(string.format("[DEBUG] calculate_window_size: content_height=%d", content_height))
   -- Constrain height between min and max values
   content_height = math.min(content_height, max_height)
   content_height = math.min(content_height, max_available_height)
   content_height = math.max(content_height, min_height)
+  log(string.format("[DEBUG] calculate_window_size: Final content_height=%d", content_height))
 
   return content_width, content_height
 end
@@ -279,31 +395,70 @@ function M.resize_window(state, opts)
   if not (state.active and vim.api.nvim_win_is_valid(state.win)) then
     return
   end
-  -- Calculate new dimensions based on filtered items
+  local container = M.get_original_dimensions(state.picker_id) or M.get_container_dimensions(opts, state.picker_id)
+  log(
+    string.format(
+      "[DEBUG] Container dimensions: win=%s width=%d height=%d",
+      container.win or "nil",
+      container.width,
+      container.height
+    )
+  )
   -- BUG: we need to limit the new_width to the available space on the screen so
   -- it doesn't push the col to go left
-  local new_width, new_height = M.calculate_window_size(state.filtered_items, opts, opts.formatter)
+  local new_width, new_height =
+    M.calculate_window_size(state.filtered_items, opts, opts.formatter, state.col, state.picker_id)
+  log(string.format("[DEBUG] Initial calculated dimensions: width=%d height=%d", new_width, new_height))
+  log("[DEBUG]: number if items: " .. #state.filtered_items)
+  -- print(string.format("[DEBUG] Initial calculated dimensions: width=%d height=%d", new_width, new_height))
   local current_config = vim.api.nvim_win_get_config(state.win)
+  log(
+    string.format(
+      "[DEBUG] Current config: relative=%s row=%s col=%s",
+      current_config.relative or "nil",
+      current_config.row or "nil",
+      current_config.col or "nil"
+    )
+  )
   -- Calculate maximum height based on available space below the initial row
-  local max_available_height = common.calculate_max_available_height(common.parse_position(opts.row_position))
+  local max_available_height =
+    M.calculate_max_available_height(common.parse_position(opts.row_position), opts, state.picker_id)
   new_height = math.min(new_height, max_available_height)
-  -- print(
-  --   string.format(
-  --     "Resizing window: row=%d, col=%d, width=%d, height=%d, max_available_height=%d, num_items=%d",
-  --     state.row,
-  --     state.col,
-  --     new_width,
-  --     new_height,
-  --     max_available_height,
-  --     #state.filtered_items
-  --   )
-  -- )
   -- Main window config
   local initial_col = state.col
-  local max_width = opts.window.max_width or common.config.window.max_width
-  local padding = opts.window.padding or common.config.window.padding
-  local max_available_width = vim.o.columns - initial_col - (padding * 2) - 1
+  log(string.format("[DEBUG] Initial column: %d ", initial_col))
+  local max_width = opts.window.max_width or config.window.max_width
+  log(string.format("[DEBUG] Max width: %d ", max_width))
+  local padding = opts.window.padding or config.window.padding
+  log(string.format("[DEBUG] Padding: %d ", padding))
+  local max_available_width = container.width - initial_col - (padding * 2) - 1
+  log(string.format("[DEBUG] Max available width: %d ", max_available_width))
+  log(
+    string.format(
+      "[DEBUG] Width calculation: container.width=%d - initial_col=%d - padding*2=%d - 1 = %d",
+      container.width,
+      initial_col,
+      padding * 2,
+      max_available_width
+    )
+  )
+
+  -- Safety check - ensure width is positive
+  max_available_width = math.max(1, max_available_width)
+  log(string.format("[DEBUG] After safety check: max_available_width=%d", max_available_width))
+  -- print(string.format("[DEBUG] After safety check: max_available_width=%d", max_available_width))
   new_width = math.min(new_width, max_available_width, max_width)
+  log(
+    string.format(
+      "[DEBUG] Final width=%d (min of new_width=%d, max_available_width=%d, max_width=%d)",
+      new_width,
+      new_width,
+      max_available_width,
+      max_width
+    )
+  )
+  new_width = math.max(1, new_width)
+  log(string.format("[DEBUG] Final width: %d", new_width))
   local win_config = {
     relative = current_config.relative,
     row = current_config.row, -- or state.row
@@ -325,6 +480,13 @@ function M.resize_window(state, opts)
     border = get_prompt_border(opts.window.border),
     zindex = 60,
   }
+  -- Add win parameter if using window-relative positioning
+  if opts.window.relative == "win" then
+    win_config.win = container.win or vim.api.nvim_get_current_win()
+  end
+  if opts.window.relative == "win" then
+    prompt_config.win = container.win or vim.api.nvim_get_current_win()
+  end
 
   vim.api.nvim_win_set_config(state.win, win_config)
   if state.prompt_win and vim.api.nvim_win_is_valid(state.prompt_win) then
@@ -759,7 +921,7 @@ local function create_prompt_window(state, opts)
   state.prompt_buf = vim.api.nvim_create_buf(false, true)
 
   local prompt_config = {
-    relative = opts.window.relative or common.config.window.relative,
+    relative = opts.window.relative or config.window.relative,
     row = state.row, -- this related to the zindex because this cover main menu
     col = state.col,
     width = state.width,
@@ -790,6 +952,45 @@ local function update_prompt_info(state, opts, show_info)
   end
 end
 
+-- Enhanced get_window_position function that respects relative setting
+function M.get_window_position(width, row_position, opts, state_win, picker_id)
+  local container = picker_id and M.get_original_dimensions(picker_id) or M.get_container_dimensions(opts, picker_id)
+  local available_width = container.width
+  local available_height = container.height
+  local cmdheight = vim.o.cmdheight
+
+  -- Parse the position
+  local pos_info = common.parse_position(row_position)
+  if not pos_info then
+    return 0, 0
+  end
+
+  -- Calculate column position based on container
+  local col
+  if pos_info.type:find("_right$") then
+    if config.right_position.fixed then
+      col = math.floor(available_width * config.right_position.ratio)
+    else
+      col = available_width - width - 4
+    end
+  else
+    -- Center position
+    col = math.floor((available_width - width) / 2)
+  end
+
+  -- Calculate row position based on container
+  local row
+  if pos_info.type:match("^top") then
+    row = math.floor(available_height * pos_info.ratio)
+  elseif pos_info.type == "bottom" then
+    row = math.floor(available_height * pos_info.ratio) - 4
+  else -- center positions
+    row = math.max(1, math.floor(available_height * pos_info.ratio))
+  end
+
+  return row, col
+end
+
 ---Create the picker windows
 ---@param state SelectaState
 ---@param opts SelectaOptions
@@ -798,20 +999,30 @@ function M.create_windows(state, opts)
   if opts.initially_hidden then
     -- When initially hidden, set minimal dimensions
     state.filtered_items = {}
-    state.width = opts.window.min_width or common.config.window.min_width
-    state.height = opts.window.min_height or common.config.window.min_height
+    state.width = opts.window.min_width or config.window.min_width
+    state.height = opts.window.min_height or config.window.min_height
   end
+  -- Get container dimensions to determine if we need a win parameter
+  local container = M.get_original_dimensions(state.picker_id) or M.get_container_dimensions(opts, state.picker_id)
 
-  -- Create main window
-  local win_config = vim.tbl_deep_extend("force", {
-    relative = opts.window.relative or common.config.window.relative,
+  -- Create main window config
+  local win_config = {
+    relative = opts.window.relative or config.window.relative,
     row = state.row + 1, -- Shift main window down by 1 to make room for prompt
     col = state.col,
     width = state.width,
     height = state.height,
     style = "minimal",
     border = get_border_with_footer(opts),
-  }, opts.window.override or {})
+  }
+
+  -- Add win parameter if relative is "window"
+  if opts.window.relative == "win" then
+    win_config.win = container.win or vim.api.nvim_get_current_win()
+  end
+
+  -- Merge any user-provided overrides
+  win_config = vim.tbl_deep_extend("force", win_config, opts.window.override or {})
 
   -- Set footer if needed
   if opts.window.show_footer then

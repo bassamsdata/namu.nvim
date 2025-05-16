@@ -45,6 +45,7 @@ local StateManager = require("namu.selecta.state").StateManager
 local common = require("namu.selecta.common")
 local input_handler = require("namu.selecta.input")
 local ui = require("namu.selecta.ui")
+local config = require("namu.selecta.selecta_config").values
 
 function M.log(message)
   logger.log(message)
@@ -383,10 +384,10 @@ function M.start_async_fetch(state, query, opts, callback)
     vim.api.nvim_buf_clear_namespace(state.prompt_buf, loading_ns_id, 0, -1)
     -- Get loading indicator text and icon with fallbacks
     local loading_icon = opts.loading_indicator and opts.loading_indicator.icon
-      or common.config.loading_indicator and common.config.loading_indicator.icon
+      or config.loading_indicator and config.loading_indicator.icon
       or "󰇚"
     local loading_text = opts.loading_indicator and opts.loading_indicator.text
-      or common.config.loading_indicator and common.config.loading_indicator.text
+      or config.loading_indicator and config.loading_indicator.text
       or "Loading..."
     state.loading_extmark_id = vim.api.nvim_buf_set_extmark(state.prompt_buf, loading_ns_id, 0, 0, {
       virt_text = { { " " .. loading_icon .. " " .. loading_text, "Comment" } },
@@ -502,6 +503,7 @@ function M.close_picker(state)
       vim.api.nvim_win_close(state.win, true)
     end
   end
+  ui.clear_original_dimensions(state.picker_id)
   -- cursor_manager.restore()
   -- TODO: CHECK THIS BEFORE RELEASE
   vim.cmd("stopinsert!")
@@ -528,9 +530,9 @@ function M.get_window_position(width, row_position)
   -- Calculate column position once
   local col
   if pos_info.type:find("_right$") then -- Changed from row_position:match
-    if common.config.right_position.fixed then
+    if config.right_position.fixed then
       -- Fixed right position regardless of width
-      col = math.floor(columns * common.config.right_position.ratio)
+      col = math.floor(columns * config.right_position.ratio)
     else
       -- Center position
       col = columns - width - 4
@@ -606,18 +608,18 @@ end
 function M.pick(items, opts)
   local base_opts = {
     title = "Select",
-    display = common.config.display,
+    display = config.display,
     filter = function(item, query)
       return query == "" or string.find(string.lower(item.text), string.lower(query))
     end,
     fuzzy = false,
     offset = 0,
-    movement = vim.tbl_deep_extend("force", common.config.movement, {}),
-    auto_select = common.config.auto_select,
-    window = common.config.window,
+    movement = vim.tbl_deep_extend("force", config.movement, {}),
+    auto_select = config.auto_select,
+    window = config.window,
     pre_filter = nil,
-    row_position = common.config.row_position,
-    debug = common.config.debug,
+    row_position = config.row_position,
+    debug = config.debug,
     normal_mode = false, -- New: default to false for backward compatibility
   }
   opts = vim.tbl_deep_extend("force", base_opts, opts or {})
@@ -647,10 +649,24 @@ function M.pick(items, opts)
 
   -- Create state
   local state = StateManager.new(items, opts)
-
+  -- print("state", vim.inspect(state))
+  state.picker_id = tostring(vim.uv.hrtime())
+  -- print(vim.inspect(state))
+  -- print(string.format("[DEBUG] Pick function started, picker_id=%s", state.picker_id))
+  -- print(string.format("[DEBUG] opts.window.relative=%s", opts.window.relative or "nil"))
+  local initial_dimensions = ui.get_container_dimensions(opts, state.picker_id)
+  -- print(
+  --   string.format(
+  --     "[DEBUG] Initial dimensions: win=%s width=%d height=%d",
+  --     initial_dimensions.win or "nil",
+  --     initial_dimensions.width,
+  --     initial_dimensions.height
+  --   )
+  -- )
   -- Calculate dimensions and position for the state
-  local width, height = ui.calculate_window_size(opts.initially_hidden and {} or items, opts, opts.formatter, 0)
-  local row, col = M.get_window_position(width, opts.row_position)
+  local width, height =
+    ui.calculate_window_size(opts.initially_hidden and {} or items, opts, opts.formatter, 0, state.picker_id)
+  local row, col = ui.get_window_position(width, opts.row_position, opts, state.picker_id)
 
   -- Update state with calculated values
   state.row = row
@@ -695,7 +711,7 @@ M._test = {
 ---@param opts? table
 function M.setup(opts)
   opts = opts or {}
-  common.config = vim.tbl_deep_extend("force", common.config, opts)
+  config = vim.tbl_deep_extend("force", config, opts)
   logger.setup(opts)
 end
 
