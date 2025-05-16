@@ -50,7 +50,7 @@ function M.open_in_vertical_split(config, items_or_item, module_state)
   -- TODO: Refactor clearning namespaces
   api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
   api.nvim_buf_clear_namespace(item.bufnr, state.preview_ns, 0, -1)
-  return false
+  return true
 end
 
 ---Open diagnostic in horizontal split
@@ -63,7 +63,7 @@ function M.open_in_horizontal_split(config, items_or_item, module_state)
   -- TODO: Refactor clearning namespaces
   api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
   api.nvim_buf_clear_namespace(item.bufnr, state.preview_ns, 0, -1)
-  return false
+  return true
 end
 
 --- Convert LSP symbols to selecta items, adding source information

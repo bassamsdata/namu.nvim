@@ -764,7 +764,6 @@ function M.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
       vim.notify("No original buffer available", vim.log.levels.ERROR)
       return
     end
-    -- Replace selecta.open_in_split with your new utility function
     local new_win = selecta.open_in_split(item, "vertical", state)
     if new_win then
       -- Most of this is now handled in open_in_split, so we can simplify

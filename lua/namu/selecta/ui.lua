@@ -974,6 +974,7 @@ end
 ---Create the picker windows
 ---@param state SelectaState
 ---@param opts SelectaOptions
+---@return number, number
 function M.create_windows(state, opts)
   -- Handle initially_hidden option
   if opts.initially_hidden then
