@@ -172,29 +172,29 @@ function M.safe_highlight_current_item(state, opts, line_nr)
   end
 
   -- Apply highlight safely
-  local ok, err = pcall(function()
-    vim.api.nvim_buf_set_extmark(state.buf, M.current_selection_ns, line_nr, 0, {
-      end_row = line_nr + 1,
-      end_col = 0,
-      hl_eol = true,
-      hl_group = "NamuCurrentItem",
-      priority = 202,
-    })
+  -- local ok, err = pcall(function()
+  --   vim.api.nvim_buf_set_extmark(state.buf, M.current_selection_ns, line_nr, 0, {
+  --     end_row = line_nr + 1,
+  --     end_col = 0,
+  --     hl_eol = true,
+  --     hl_group = "NamuCurrentItem",
+  --     priority = 202,
+  --   })
+  --
+  --   -- Add the prefix icon if enabled
+  --   if opts.current_highlight.enabled and #opts.current_highlight.prefix_icon > 0 then
+  --     vim.api.nvim_buf_set_extmark(state.buf, M.current_selection_ns, line_nr, 0, {
+  --       virt_text = { { opts.current_highlight.prefix_icon, "NamuCurrentItem" } },
+  --       virt_text_pos = "overlay",
+  --       priority = 202,
+  --     })
+  --   end
+  -- end)
 
-    -- Add the prefix icon if enabled
-    if opts.current_highlight.enabled and #opts.current_highlight.prefix_icon > 0 then
-      vim.api.nvim_buf_set_extmark(state.buf, M.current_selection_ns, line_nr, 0, {
-        virt_text = { { opts.current_highlight.prefix_icon, "NamuCurrentItem" } },
-        virt_text_pos = "overlay",
-        priority = 202,
-      })
-    end
-  end)
-
-  if not ok then
-    logger.error("Error highlighting current item: " .. err)
-    return false
-  end
+  -- if not ok then
+  --   logger.error("Error highlighting current item: " .. err)
+  --   return false
+  -- end
 
   return true
 end
@@ -218,6 +218,15 @@ function M.update_current_highlight(state, opts, line_nr)
     return
   end
 
+  -- Check if we have any selections
+  local has_selections = false
+  if opts.multiselect and opts.multiselect.enabled and state.selected then
+    for _, _ in pairs(state.selected) do
+      has_selections = true
+      break
+    end
+  end
+
   -- Apply highlight to the whole line
   vim.api.nvim_buf_set_extmark(state.buf, M.current_selection_ns, line_nr, 0, {
     end_row = line_nr + 1,
@@ -229,11 +238,23 @@ function M.update_current_highlight(state, opts, line_nr)
 
   -- Add the prefix icon if enabled
   if opts.current_highlight and opts.current_highlight.enabled and #opts.current_highlight.prefix_icon > 0 then
-    vim.api.nvim_buf_set_extmark(state.buf, M.current_selection_ns, line_nr, 0, {
-      virt_text = { { opts.current_highlight.prefix_icon, "NamuCurrentItem" } },
-      virt_text_pos = "overlay",
-      priority = 202, -- Higher priority than the line highlight
-    })
+    -- Position the icon differently based on selection state
+    if has_selections then
+      -- Place at end of line when selections are active
+      vim.api.nvim_buf_set_extmark(state.buf, M.current_selection_ns, line_nr, 0, {
+        virt_text = { { "", "NamuCurrentItem" } },
+        virt_text_pos = "eol",
+        priority = 305,
+      })
+    else
+      -- Original behavior (eol) when no selections
+      vim.api.nvim_buf_set_extmark(state.buf, M.current_selection_ns, line_nr, 0, {
+        -- virt_text = { { "❯ ", "NamuCurrentItem" } },
+        virt_text = { { opts.current_highlight.prefix_icon, "NamuCurrentItem" } },
+        virt_text_pos = "overlay",
+        priority = 253,
+      })
+    end
   end
 end
 
@@ -252,19 +273,41 @@ function M.update_selection_highlights(state, opts)
     return
   end
 
-  -- Get indicator character
-  local indicator = opts.multiselect.indicator or M.config.multiselect.indicator -- Use config as fallback
+  -- Hardcoded icons for indicators
+  local empty_circle = "" -- Empty circle for non-selected items
+  local filled_circle = "" -- Filled circle for selected items
 
-  -- Apply selection highlights to ALL selected items in filtered_items
-  for i, item in ipairs(state.filtered_items) do
-    local item_id = M.get_item_id(item)
-    if state.selected[item_id] then
-      -- i-1 because buffer lines are 0-indexed
-      vim.api.nvim_buf_set_extmark(state.buf, M.selection_ns, i - 1, 0, {
-        virt_text = { { indicator, "NamuSelected" } },
-        virt_text_pos = "overlay",
-        priority = 203, -- higher than current item highlight
-      })
+  -- Check if we have any selections at all
+  local has_selections = false
+  if opts.multiselect and opts.multiselect.enabled and state.selected then
+    for _, _ in pairs(state.selected) do
+      has_selections = true
+      break
+    end
+  end
+
+  -- Apply highlights only if we have at least one selection
+  if has_selections then
+    for i, item in ipairs(state.filtered_items) do
+      local item_id = M.get_item_id(item)
+      local is_selected = state.selected[item_id]
+
+      -- Only show indicators when we have at least one selection
+      if is_selected then
+        -- Show filled circle for selected items
+        vim.api.nvim_buf_set_extmark(state.buf, M.selection_ns, i - 1, 0, {
+          virt_text = { { filled_circle, "NamuSelected" } },
+          virt_text_pos = "overlay",
+          priority = 203,
+        })
+      else
+        -- Show empty circle for non-selected items
+        vim.api.nvim_buf_set_extmark(state.buf, M.selection_ns, i - 1, 0, {
+          virt_text = { { empty_circle, "NamuEmptyIndicator" } },
+          virt_text_pos = "overlay",
+          priority = 203,
+        })
+      end
     end
   end
 end

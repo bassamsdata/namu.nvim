@@ -4,10 +4,11 @@ Integrates with selecta for fuzzy finding and magnet for symbol handling.
 ]]
 
 local M = {}
+local log = require("namu.utils.logger").log
 
 M.config = require("namu.namu_symbols.config").values
 M.config = vim.tbl_deep_extend("force", M.config, {
-  row_position = "top10_right",
+  row_position = "top10",
   highlights = {
     Error = "DiagnosticVirtualTextError",
     Warn = "DiagnosticVirtualTextWarn",
@@ -97,6 +98,7 @@ end
 -- Setup just merges configs
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+  log("Diagnostics config updated" .. vim.inspect(M.config))
 end
 
 function M.get_impl()

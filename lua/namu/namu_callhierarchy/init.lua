@@ -4,6 +4,7 @@ Integrates with selecta for fuzzy finding and navigation.
 ]]
 
 local M = {}
+local log = require("namu.utils.logger").log
 
 -- Inherit defaults from symbols config
 M.config = require("namu.namu_symbols.config").values
@@ -43,6 +44,7 @@ function M.setup(opts)
   if impl_loaded and impl then
     impl.update_config(M.config)
   end
+  log("Namu Call Hierarchy: " .. vim.inspect(M.config))
 end
 
 function M.get_impl()

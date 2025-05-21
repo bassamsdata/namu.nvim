@@ -70,11 +70,12 @@ local command_validators = {
     return #args <= 1, "workspace command accepts an optional search query"
   end,
   diagnostics = function(args)
+    local valid_types = { workspace = true, buffers = true }
     if #args > 1 then
-      return false, "diagnostics command accepts only one optional argument (workspace)"
+      return false, "diagnostics command accepts only one optional argument (workspace or buffers)"
     end
-    if #args == 1 and args[1]:lower() ~= "workspace" then
-      return false, "invalid diagnostics type. Valid type: workspace"
+    if #args == 1 and not valid_types[args[1]:lower()] then
+      return false, "invalid diagnostics type. Valid types: workspace, buffers"
     end
     return true
   end,
@@ -331,7 +332,7 @@ local function command_complete(_, line, col)
     end, help_types)
   end
   if words[2] == "diagnostics" then
-    local diag_types = { "workspace" }
+    local diag_types = { "workspace", "buffers" }
     local prefix = words[3] or ""
     return vim.tbl_filter(function(type)
       return vim.startswith(type, prefix:lower())

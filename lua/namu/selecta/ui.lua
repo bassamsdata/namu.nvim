@@ -521,6 +521,17 @@ function M.safe_highlight_current_item(state, opts, line_nr)
   if line_nr < 0 or line_nr >= vim.api.nvim_buf_line_count(state.buf) then
     return false
   end
+  -- Check if we have any selections
+  local has_selections = false
+  if opts.multiselect and opts.multiselect.enabled and state.selected then
+    print("multiselect enabled, checking selections:")
+    for id, value in pairs(state.selected) do
+      print("  - found selection:", id, value)
+      has_selections = true
+      break
+    end
+    print("has_selections:", has_selections)
+  end
 
   -- Apply highlight safely
   local ok, err = pcall(function()
@@ -533,14 +544,28 @@ function M.safe_highlight_current_item(state, opts, line_nr)
     })
 
     -- Add the prefix icon if enabled
-    if opts.current_highlight and opts.current_highlight.enabled and #opts.current_highlight.prefix_icon > 0 then
-      vim.api.nvim_buf_set_extmark(state.buf, current_selection_ns, line_nr, 0, {
-        sign_text = opts.current_highlight.prefix_icon,
-        sign_hl_group = "NamuCurrentItem",
-        -- virt_text_pos = "overlay",
-        priority = 202,
-      })
-    end
+    -- if opts.current_highlight and opts.current_highlight.enabled and #opts.current_highlight.prefix_icon > 0 then
+    --   -- Position the icon differently based on selection state
+    --   if has_selections then
+    --     print("has selection")
+    --     -- Place at end of line when selections are active
+    --     vim.api.nvim_buf_set_extmark(state.buf, current_selection_ns, line_nr, 0, {
+    --       virt_text = { { opts.current_highlight.prefix_icon, "NamuCurrentItem" } },
+    --       virt_text_pos = "eol",
+    --       priority = 305,
+    --     })
+    --   else
+    --     print("no selection")
+    --     -- Original behavior (sign column) when no selections
+    --     vim.api.nvim_buf_set_extmark(state.buf, current_selection_ns, line_nr, 0, {
+    --       virt_text = { { opts.current_highlight.prefix_icon, "NamuCurrentItem" } },
+    --       virt_text_pos = "eol",
+    --       -- sign_text = opts.current_highlight.prefix_icon,
+    --       -- sign_hl_group = "NamuCurrentItem",
+    --       priority = 253,
+    --     })
+    --   end
+    -- end
   end)
 
   if not ok then
@@ -756,7 +781,8 @@ function M.render_visible_items(state, opts)
   -- Update current line highlight
   local cursor_pos = vim.api.nvim_win_get_cursor(state.win)
   if cursor_pos and cursor_pos[1] > 0 and cursor_pos[1] <= #state.filtered_items then
-    M.safe_highlight_current_item(state, opts, cursor_pos[1] - 1)
+    -- M.safe_highlight_current_item(state, opts, cursor_pos[1] - 1)
+    common.update_current_highlight(state, opts, cursor_pos[1] - 1)
   end
 
   -- Update selection highlights
@@ -933,7 +959,7 @@ local function update_prompt_info(state, opts, show_info)
 end
 
 -- Enhanced get_window_position function that respects relative setting
-function M.get_window_position(width, row_position, opts, state_win, picker_id)
+function M.get_window_position(width, row_position, opts, picker_id)
   local container = picker_id and M.get_original_dimensions(picker_id) or M.get_container_dimensions(opts, picker_id)
   local available_width = container.width
   local available_height = container.height

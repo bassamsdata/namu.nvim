@@ -1,6 +1,5 @@
 local M = {}
--- TEST: Testing this new design to load the plugin lazely so doesn't affect neovim startup
--- Only load config (lightweight)
+local log = require("namu.utils.logger").log
 M.config = require("namu.namu_symbols.config").values
 M.config = vim.tbl_deep_extend("force", M.config, {
   current_highlight = {
@@ -9,7 +8,7 @@ M.config = vim.tbl_deep_extend("force", M.config, {
     prefix_icon = " ",
   },
   window = {
-    min_width = 39,
+    min_width = 50,
     max_width = 75,
   },
 
@@ -18,6 +17,9 @@ M.config = vim.tbl_deep_extend("force", M.config, {
     desc = "Open in vertical split",
     handler = function(items_or_item, state)
       local impl = M.get_impl()
+      if not impl then
+        return
+      end
       return impl.open_in_vertical_split(M.config, items_or_item, state)
     end,
   },
@@ -26,6 +28,9 @@ M.config = vim.tbl_deep_extend("force", M.config, {
     desc = "Open in horizontal split",
     handler = function(items_or_item, state)
       local impl = M.get_impl()
+      if not impl then
+        return
+      end
       return impl.open_in_horizontal_split(M.config, items_or_item, state)
     end,
   },
@@ -33,6 +38,7 @@ M.config = vim.tbl_deep_extend("force", M.config, {
 
 -- Flag to track if implementation is loaded
 local impl_loaded = false
+local impl = nil
 
 -- Function to load the full implementation
 local function load_impl()
@@ -40,35 +46,37 @@ local function load_impl()
     return
   end
   -- Load the actual implementation
-  local impl = require("namu.namu_workspace.impl")
-  -- Copy all implementation functions to the module
-  for k, v in pairs(impl) do
-    if type(v) == "function" then
-      -- Create wrapper that passes config to implementation
-      M[k] = function(...)
-        return v(M.config, ...)
-      end
-    else
-      M[k] = v
-    end
-  end
+  impl = require("namu.namu_workspace.impl")
   impl_loaded = true
+end
+
+-- Function to get the implementation module
+function M.get_impl()
+  load_impl()
+  return impl
 end
 
 -- Setup just merges configs
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+  log("Workspace config updated" .. vim.inspect(M.config))
 end
 
 -- Define API functions that lazy-load the implementation
 function M.show(opts)
   load_impl()
-  return M.show(opts) -- Now calls the implementation version
+  if not impl then
+    return
+  end
+  return impl.show(M.config, opts)
 end
 
 function M.show_with_query(query, opts)
   load_impl()
-  return M.show_with_query(query, opts)
+  if not impl then
+    return
+  end
+  return impl.show_with_query(M.config, query, opts)
 end
 
 return M

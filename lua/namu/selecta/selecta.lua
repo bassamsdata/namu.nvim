@@ -574,8 +574,10 @@ M._test = {
   get_match_positions = matcher.get_match_positions,
   is_word_boundary = matcher.is_word_boundary,
   update_filtered_items = M.update_filtered_items,
-  calculate_window_size = M.calculate_window_size,
+  parse_position = common.parse_position,
+  calculate_window_size = ui.calculate_window_size,
   validate_input = matcher.validate_input,
+  get_window_position = ui.get_window_position,
 }
 
 ---@param opts? table
