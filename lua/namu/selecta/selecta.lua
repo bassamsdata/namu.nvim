@@ -45,7 +45,8 @@ local StateManager = require("namu.selecta.state").StateManager
 local common = require("namu.selecta.common")
 local input_handler = require("namu.selecta.input")
 local ui = require("namu.selecta.ui")
-local config = require("namu.selecta.selecta_config").values
+local selecta_config_module = require("namu.selecta.selecta_config")
+local config = selecta_config_module.values
 
 function M.log(message)
   logger.log(message)
@@ -574,14 +575,19 @@ M._test = {
   get_match_positions = matcher.get_match_positions,
   is_word_boundary = matcher.is_word_boundary,
   update_filtered_items = M.update_filtered_items,
-  calculate_window_size = M.calculate_window_size,
+  calculate_window_size = ui.calculate_window_size,
   validate_input = matcher.validate_input,
+  parse_position = common.parse_position, -- Added this line
+  get_window_position = ui.get_window_position, -- Added this line
 }
 
 ---@param opts? table
 function M.setup(opts)
   opts = opts or {}
+  -- Update the local 'config' reference (which points to selecta_config_module.values initially)
   config = vim.tbl_deep_extend("force", config, opts)
+  -- Also explicitly update the selecta_config_module.values to ensure the shared module reflects changes
+  selecta_config_module.values = vim.tbl_deep_extend("force", selecta_config_module.values, opts)
   logger.setup(opts)
 end
 
