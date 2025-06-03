@@ -214,12 +214,29 @@ function M.find_meaningful_node(node, lnum)
   -- "decorated_definition".
   if filetype == "python" and type == "decorator" then
     return parent_node
-  elseif vim.bo.filetype == "c" then -- need to go one step up to highlight the full node for fn and me
+  end
+  -- need to go one step up to highlight the full node for fn and me
+  if filetype == "c" or filetype == "cpp" or filetype == "cc" then
     current = node
     while current do
-      if current:type() == "function_definition" then
-        node = current
-        break
+      local node_type = current:type()
+      -- Look for function definitions, method definitions, and constructors
+      if
+        node_type == "function_definition"
+        or node_type == "method_definition"
+        or node_type == "constructor_definition"
+        or node_type == "destructor_definition"
+      then
+        return current -- Return the full function node
+      end
+      current = current:parent()
+    end
+    -- If we didn't find a function-like node, check if this is a struct/class
+    current = node
+    while current do
+      local node_type = current:type()
+      if node_type == "struct_specifier" or node_type == "class_specifier" then
+        return current -- Return the full struct/class node
       end
       current = current:parent()
     end
