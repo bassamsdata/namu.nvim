@@ -182,6 +182,7 @@ M.defaults = {
   actions = {
     close_on_yank = false, -- Whether to close picker after yanking
     close_on_delete = true, -- Whether to close picker after deleting
+    close_on_quickfix = false,
   },
   movement = {
     next = { "<C-n>", "<DOWN>" }, -- Support multiple keys
@@ -271,6 +272,11 @@ M.defaults = {
       keys = "<C-t>",
       handler = nil, -- Will be initialized in the module
       desc = "Add symbol to Avante",
+    },
+    quickfix = {
+      keys = { "<C-q>" }, -- or whatever keymap you prefer
+      handler = nil,
+      description = "Add to quickfix",
     },
   },
 }

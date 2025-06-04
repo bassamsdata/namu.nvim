@@ -709,4 +709,89 @@ function M.open_in_split(item, split_type, module_state)
   return new_win
 end
 
+---Convert selecta items to quickfix format and add to quickfix list
+---@param items_or_state SelectaItem|SelectaItem[]|SelectaState Items to add or picker state
+---@param module_state? NamuState Optional state from calling module
+---@return boolean success Whether items were successfully added to quickfix
+function M.add_to_quickfix(items_or_state, module_state)
+  local items_to_process = {}
+  -- Smart detection of what we received
+  if items_or_state and items_or_state.filtered_items then
+    local picker_state = items_or_state
+    if picker_state.selected_count and picker_state.selected_count > 0 then
+      items_to_process = picker_state:get_selected_items()
+    else
+      items_to_process = picker_state.filtered_items
+    end
+  elseif type(items_or_state) == "table" and items_or_state.text then
+    items_to_process = { items_or_state }
+  elseif type(items_or_state) == "table" and #items_or_state > 0 then
+    items_to_process = items_or_state
+  else
+    vim.notify("No valid items to add to quickfix", vim.log.levels.WARN, notify_opts)
+    return false
+  end
+
+  if #items_to_process == 0 then
+    vim.notify("No items to add to quickfix", vim.log.levels.WARN, notify_opts)
+    return false
+  end
+  local qf_items = {}
+  local current_buf = module_state and module_state.original_buf or vim.api.nvim_get_current_buf()
+  for _, item in ipairs(items_to_process) do
+    if not item or not item.value then
+      goto continue
+    end
+    local symbol = item.value
+    local bufnr = symbol.bufnr or item.bufnr or current_buf
+    local filename = ""
+    -- Try to get filename from multiple sources
+    if symbol.file_path then
+      filename = symbol.file_path
+    elseif symbol.uri then
+      filename = vim.uri_to_fname(symbol.uri)
+    elseif symbol.filename then
+      filename = symbol.filename
+    elseif bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+      filename = vim.api.nvim_buf_get_name(bufnr)
+    end
+    -- Get position information
+    local lnum = symbol.lnum or (symbol.range and symbol.range.start.line + 1) or 1
+    local col = symbol.col or (symbol.range and symbol.range.start.character + 1) or 1
+    -- Create quickfix entry
+    local qf_entry = {
+      filename = filename,
+      lnum = lnum,
+      col = col,
+      text = item.text or symbol.name or "",
+      type = symbol.kind and string.sub(symbol.kind, 1, 1):upper() or "I", -- First letter of kind or "I" for Info
+    }
+    -- Add buffer number if available and valid
+    if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+      qf_entry.bufnr = bufnr
+    end
+
+    table.insert(qf_items, qf_entry)
+
+    ::continue::
+  end
+
+  if #qf_items == 0 then
+    vim.notify("No valid quickfix entries created", vim.log.levels.WARN, notify_opts)
+    return false
+  end
+  vim.fn.setqflist(qf_items)
+  vim.cmd("copen")
+  local qf_win = vim.fn.getqflist({ winid = 0 }).winid
+  if qf_win and qf_win ~= 0 and vim.api.nvim_win_is_valid(qf_win) then
+    vim.defer_fn(function()
+      pcall(vim.api.nvim_set_current_win, qf_win)
+    end, 0)
+  end
+  local count = #qf_items
+  local message = count == 1 and "Added 1 item to quickfix" or string.format("Added %d items to quickfix", count)
+  vim.notify(message, vim.log.levels.INFO, notify_opts)
+
+  return true
+end
 return M

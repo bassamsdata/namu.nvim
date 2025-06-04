@@ -743,6 +743,9 @@ end
 function M.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
   local handlers = {}
 
+  -- Capture config in closure for handlers to use
+  local picker_config = config
+
   handlers.yank = function(items_or_item)
     local success = utils.yank_symbol_text(items_or_item, state)
     if success and config.actions.close_on_yank then
@@ -785,6 +788,22 @@ function M.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
       ui.clear_preview_highlight(state.original_win, state.preview_ns)
       return true
     end
+  end
+  handlers.quickfix = function(items_or_item, picker_state)
+    local items_to_send
+
+    if type(items_or_item) == "table" and #items_or_item > 0 then
+      items_to_send = items_or_item
+    else
+      items_to_send = picker_state.filtered_items
+    end
+
+    local success = selecta.add_to_quickfix(items_to_send, state)
+    if success and config.actions.close_on_quickfix then
+      ui.clear_preview_highlight(state.original_win, state.preview_ns)
+      return true
+    end
+    return false
   end
 
   handlers.codecompanion = function(items_or_item)

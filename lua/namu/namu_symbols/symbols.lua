@@ -42,6 +42,7 @@ local function initialize_state(config)
     config.custom_keymaps.horizontal_split.handler = handlers.horizontal_split
     config.custom_keymaps.codecompanion.handler = handlers.codecompanion
     config.custom_keymaps.avante.handler = handlers.avante
+    config.custom_keymaps.quickfix.handler = handlers.quickfix
   end
 end
 
