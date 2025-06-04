@@ -8,6 +8,7 @@ local selecta = require("namu.selecta.selecta")
 local preview_utils = require("namu.core.preview_utils")
 local lsp = require("namu.namu_symbols.lsp")
 local notify_opts = { title = "Namu", icon = require("namu").config.icon }
+local logger = require("namu.utils.logger")
 local api = vim.api
 local M = {}
 M.loaded_workspace_diagnostics = false
@@ -82,9 +83,40 @@ local function format_diagnostic(diagnostic, file_prefix)
   return string.format("%s%s %s%s", message, source, loc, file_info)
 end
 
--- Format diagnostic for display in the picker
-local function format_diagnostic_item(item, config)
-  -- Handle current highlight prefix padding
+---Format diagnostic for display in the picker
+---@param item table
+---@param config table
+---@param available_width number|nil
+---@return string
+local function format_diagnostic_item(item, config, available_width)
+  if item.is_auxiliary then
+    -- Format: [line:col] filename • source
+    local location = string.format("[%d:%d]", item.value.lnum + 1, item.value.col + 1)
+
+    local filename = ""
+    if item.value.bufnr then
+      local bufname = api.nvim_buf_get_name(item.value.bufnr)
+      if bufname and bufname ~= "" then
+        filename = vim.fn.fnamemodify(bufname, ":t") -- Just filename, no brackets
+      end
+    end
+    local source = ""
+    if item.value.diagnostic.source then
+      source = item.value.diagnostic.source -- Just source, no parentheses
+    end
+    -- Build the line: [line:col] filename • source
+    local parts = { location }
+    if filename ~= "" then
+      table.insert(parts, filename)
+    end
+    if source ~= "" then
+      table.insert(parts, source)
+    end
+
+    return "    " .. table.concat(parts, " • ")
+  end
+
+  -- Handle main diagnostic item (same as your current version)
   local prefix_padding = ""
   if
     config.current_highlight
@@ -98,33 +130,19 @@ local function format_diagnostic_item(item, config)
   local value = item.value
   local severity = get_severity_info(value.diagnostic.severity)
   local icon = config.icons[severity] or "󰊠"
+  -- Format message - truncate if width is provided
+  local message = value.diagnostic.message:gsub("\n", " ")
+  if available_width then
+    local icon_width = vim.api.nvim_strwidth(icon) + 1
+    local prefix_width = vim.api.nvim_strwidth(prefix_padding)
+    local available_for_message = available_width - prefix_width - icon_width - 5
 
-  -- Format message - ensure it's not too long
-  local message = value.diagnostic.message
-  if #message > 60 then
-    message = message:sub(1, 57) .. "..."
-  end
-
-  -- Replace newlines with spaces
-  message = message:gsub("\n", " ")
-
-  -- Format source if available
-  local source = ""
-  if value.diagnostic.source then
-    source = string.format(" (%s)", value.diagnostic.source)
-  end
-
-  -- Format location
-  local location = string.format("[%d:%d]", value.lnum + 1, value.col + 1)
-  local file_info = ""
-  if value.bufnr then
-    local bufname = api.nvim_buf_get_name(value.bufnr)
-    if bufname and bufname ~= "" then
-      file_info = " [" .. vim.fn.fnamemodify(bufname, ":t") .. "]"
+    if vim.api.nvim_strwidth(message) > available_for_message and available_for_message > 10 then
+      message = message:sub(1, available_for_message - 3) .. "..."
     end
   end
 
-  return prefix_padding .. icon .. " " .. message .. source .. " " .. location .. file_info
+  return prefix_padding .. icon .. " " .. message
 end
 
 ---Get node text at diagnostic position
@@ -178,29 +196,41 @@ end
 ---@param buffer_info number
 ---@param config table
 ---@return table[]
--- Enhanced conversion function for diagnostics
 local function diagnostics_to_selecta_items(diagnostics, buffer_info, config)
+  logger.log("Starting diagnostics_to_selecta_items with " .. #diagnostics .. " diagnostics")
   local items = {}
+  local seen_diagnostics = {} -- Track unique diagnostics
   local single_buffer = type(buffer_info) == "number"
   local bufnr = single_buffer and buffer_info or nil
 
-  for _, diagnostic in ipairs(diagnostics) do
+  for idx, diagnostic in ipairs(diagnostics) do
     local diag_bufnr = diagnostic.bufnr or bufnr
     if not diag_bufnr then
       goto continue
     end
-
+    -- Create unique key for this diagnostic
+    local diag_key = string.format(
+      "%d:%d:%d:%s",
+      diag_bufnr,
+      diagnostic.lnum,
+      diagnostic.col,
+      diagnostic.message:sub(1, 50) -- First 50 chars to handle similar messages
+    )
+    -- Skip if we've already seen this diagnostic
+    if seen_diagnostics[diag_key] then
+      goto continue
+    end
+    seen_diagnostics[diag_key] = true
     local severity = get_severity_info(diagnostic.severity)
     local file_name = ""
-
     -- Add file name for multi-buffer views
     if not single_buffer then
       local buf_name = buffer_info[diag_bufnr] or "[No Name]"
       file_name = vim.fn.fnamemodify(buf_name, ":t") .. " - "
     end
-
-    local item = {
-      text = format_diagnostic(diagnostic, file_name),
+    -- Create main diagnostic item
+    local main_item = {
+      text = format_diagnostic(diagnostic, file_name), -- Keep original for search
       value = {
         diagnostic = diagnostic,
         severity = severity,
@@ -213,89 +243,124 @@ local function diagnostics_to_selecta_items(diagnostics, buffer_info, config)
       },
       icon = config.icons[severity],
       kind = severity,
+      group_type = "diagnostic_main",
+      group_id = "diag_" .. idx,
     }
-    table.insert(items, item)
+    table.insert(items, main_item)
+
+    -- Create auxiliary item for location info
+    local aux_item = {
+      text = format_diagnostic(diagnostic, file_name), -- SAME text as main for filtering!
+      value = main_item.value, -- Same value as main item
+      icon = "",
+      kind = severity,
+      group_type = "diagnostic_aux",
+      group_id = "diag_" .. idx,
+      is_auxiliary = true,
+    }
+    table.insert(items, aux_item)
 
     ::continue::
   end
 
-  -- Sort by buffer, then by line, then by column
+  -- Sort by buffer, then by line, then by column, but keep groups together
   table.sort(items, function(a, b)
     if a.value.bufnr ~= b.value.bufnr then
       return a.value.bufnr < b.value.bufnr
     elseif a.value.lnum ~= b.value.lnum then
       return a.value.lnum < b.value.lnum
-    else
+    elseif a.value.col ~= b.value.col then
       return a.value.col < b.value.col
+    else
+      -- When position is the same, sort by group_id first, then by type within group
+      if a.group_id ~= b.group_id then
+        -- Different diagnostics - sort by group_id (which includes the index)
+        local a_idx = tonumber(a.group_id:match("diag_(%d+)"))
+        local b_idx = tonumber(b.group_id:match("diag_(%d+)"))
+        return a_idx < b_idx
+      else
+        -- Same diagnostic group - main comes before aux
+        return (a.group_type == "diagnostic_main") and (b.group_type == "diagnostic_aux")
+      end
     end
   end)
 
   return items
 end
 
--- Apply severity-based highlights in the picker UI
----@param buf number
----@param filtered_items table[]
----@param config table
 local function apply_diagnostic_highlights(buf, filtered_items, config)
   local ns_id = api.nvim_create_namespace("namu_diagnostics_picker")
   api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
 
   for idx, item in ipairs(filtered_items) do
-    local line = idx - 1
+    local line = idx - 1 -- 0-indexed for extmarks
     local value = item.value
-    local severity = get_severity_info(value.diagnostic.severity)
-    local hl_group = config.highlights[severity]
-
-    -- Get the line from buffer
-    local lines = api.nvim_buf_get_lines(buf, line, line + 1, false)
-    if #lines == 0 then
-      goto continue
-    end
-
-    local line_text = lines[1]
-
-    -- Find where the location info starts
-    local location_pattern = "%[%d+:%d+%]"
-    local location_start = line_text:find(location_pattern)
-
-    if location_start then
-      -- Highlight the icon and message with severity color
-      api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
-        end_row = line,
-        end_col = location_start - 1,
-        hl_group = hl_group,
-        priority = 110,
-      })
-
-      -- Highlight the location info
-      local location_text = line_text:match(location_pattern)
-      api.nvim_buf_set_extmark(buf, ns_id, line, location_start - 1, {
-        end_row = line,
-        end_col = location_start - 1 + #location_text,
-        hl_group = "Directory",
-        priority = 100,
-      })
-
-      -- Highlight source if present
-      local source_pattern = " %(.-%)$"
-      local source_start = line_text:find(source_pattern)
-      if source_start then
-        api.nvim_buf_set_extmark(buf, ns_id, line, source_start - 1, {
-          end_row = line,
-          end_col = #line_text,
-          hl_group = "Comment",
-          priority = 110,
-        })
+    if not item.is_auxiliary then
+      -- Main diagnostic line - apply severity highlighting
+      local severity = get_severity_info(value.diagnostic.severity)
+      local hl_group = config.highlights[severity]
+      -- Get the line from buffer
+      local lines = api.nvim_buf_get_lines(buf, line, line + 1, false)
+      if #lines == 0 then
+        goto continue
       end
-    else
-      -- Fallback: highlight entire line
+      local line_text = lines[1]
+      -- Highlight the entire diagnostic message line with severity color
       api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
         end_row = line,
         end_col = #line_text,
         hl_group = hl_group,
         priority = 110,
       })
+    else
+      -- Auxiliary line - highlight parts: [5:24] • file.lua • pylsp
+      local lines = api.nvim_buf_get_lines(buf, line, line + 1, false)
+      if #lines == 0 then
+        goto continue
+      end
+
+      local line_text = lines[1]
+      -- 1. Highlight location [12:5]
+      local location_pattern = "%[%d+:%d+%]"
+      local location_start, location_end = line_text:find(location_pattern)
+      if location_start then
+        api.nvim_buf_set_extmark(buf, ns_id, line, location_start - 1, {
+          end_row = line,
+          end_col = location_end,
+          hl_group = "Directory",
+          priority = 100,
+        })
+      end
+      -- 2. Highlight filename (between first • and second •, or between • and end)
+      local first_bullet = line_text:find(" • ")
+      if first_bullet then
+        local second_bullet = line_text:find(" • ", first_bullet + 3)
+        local filename_start = first_bullet + 3 -- After " • "
+        local filename_end
+        if second_bullet then
+          filename_end = second_bullet - 1
+        else
+          filename_end = #line_text
+        end
+        -- Highlight filename
+        api.nvim_buf_set_extmark(buf, ns_id, line, filename_start - 1, {
+          end_row = line,
+          end_col = filename_end,
+          hl_group = "String", -- or "Identifier"
+          priority = 110,
+        })
+
+        -- 3. Highlight source (after second •)
+        if second_bullet then
+          local source_start = second_bullet + 3 -- After " • "
+          api.nvim_buf_set_extmark(buf, ns_id, line, source_start - 1, {
+            end_row = line,
+            end_col = #line_text,
+            hl_group = "Comment",
+            priority = 110,
+          })
+        end
+      end
     end
 
     ::continue::
@@ -382,7 +447,6 @@ end
 local function get_workspace_files()
   local output = vim.fn.systemlist("git ls-files")
   if vim.v.shell_error ~= 0 then
-    vim.notify("Failed to get workspace files. Is this a git repository?", vim.log.levels.WARN, notify_opts)
     return {}
   end
   -- Get list of all open buffers
@@ -591,7 +655,21 @@ local function create_async_diagnostics_source(config)
       -- Start loading workspace files
       local workspace_files = get_workspace_files()
       if #workspace_files == 0 then
-        callback({})
+        -- Not a git repo or no files - fall back to normal workspace diagnostics
+        if status_provider then
+          status_provider("Getting workspace diagnostics")
+        end
+        -- Get current diagnostics directly from LSP
+        local current_diagnostics, current_buffer_info = get_diagnostics_for_scope("workspace")
+        local current_items = diagnostics_to_selecta_items(current_diagnostics, current_buffer_info, config)
+
+        if #current_items == 0 then
+          -- If still no diagnostics, provide a helpful message
+          vim.notify("No workspace diagnostics found", vim.log.levels.INFO, notify_opts)
+          return
+        else
+          callback(current_items)
+        end
         return
       end
 
@@ -656,6 +734,7 @@ end
 function M.load_workspace_diagnostics(config)
   local workspace_files = get_workspace_files()
   if #workspace_files == 0 then
+    vim.notify("Not a git repository - using current workspace diagnostics", vim.log.levels.INFO, notify_opts)
     return false
   end
   -- Track which clients have been processed
@@ -718,17 +797,10 @@ local function find_current_diagnostic_index(items)
   local cursor = api.nvim_win_get_cursor(0)
   local cursor_line = cursor[1] - 1 -- Convert to 0-based
 
-  if M.config.debug then
-    print(string.format("Current cursor line: %d", cursor_line))
-  end
-
   -- First try to find exact line match
   for idx, item in ipairs(items) do
     local diag = item.value.diagnostic
     if diag.lnum == cursor_line then
-      if M.config.debug then
-        print(string.format("Found diagnostic at index %d on same line", idx))
-      end
       return idx
     end
   end
@@ -746,21 +818,7 @@ local function find_current_diagnostic_index(items)
     end
   end
 
-  if M.config.debug then
-    print(string.format("Using closest diagnostic at index %d", closest_idx))
-  end
-
   return closest_idx
-end
-
--- Helper to get numbered context lines
-local function get_numbered_context(bufnr, lnum, end_lnum)
-  local lines = vim.api.nvim_buf_get_lines(bufnr, lnum, (end_lnum or lnum) + 1, false)
-  local numbered = {}
-  for i, line in ipairs(lines) do
-    table.insert(numbered, string.format("%4d | %s", lnum + i, line))
-  end
-  return table.concat(numbered, "\n")
 end
 
 ---Yank diagnostic with its context
@@ -917,6 +975,8 @@ function M.show(config, scope)
     title = titles[scope] or "Diagnostics",
     initial_index = current_index,
     preserve_order = true,
+    grouped_navigation = true,
+    multiline_items = true,
 
     -- These are the custom functions specific to diagnostics
     pre_filter = function(items, query)
@@ -932,7 +992,16 @@ function M.show(config, scope)
     end,
 
     formatter = function(item)
-      return format_diagnostic_item(item, config)
+      -- Calculate available width from current window
+      local available_width = nil
+      if config.window and config.window.max_width then
+        available_width = config.window.max_width + 10 -- Account for borders/padding
+      end
+
+      if item.is_placeholder then
+        return item.text
+      end
+      return format_diagnostic_item(item, config, available_width)
     end,
 
     hooks = {
@@ -1021,8 +1090,11 @@ function M.show_workspace_diagnostics(config)
     preserve_order = true,
     window = config.window,
     current_highlight = config.current_highlight,
+    row_position = config.row_position,
     debug = config.debug,
     custom_keymaps = config.custom_keymaps,
+    grouped_navigation = true,
+    multiline_items = true,
 
     -- Filter function
     pre_filter = function(items, query)
@@ -1111,16 +1183,8 @@ function M.show_workspace_diagnostics(config)
       local items = diagnostics_to_selecta_items(diagnostics, buffer_info, config)
       selecta.pick(items, pick_options)
     else
-      -- If no diagnostics found, show a message
-      local no_diagnostics_items = {
-        {
-          text = "No workspace diagnostics found",
-          icon = "✓",
-          value = nil,
-          is_placeholder = true,
-        },
-      }
-      selecta.pick(no_diagnostics_items, pick_options)
+      vim.notify("No workspace diagnostics found", vim.log.levels.INFO, notify_opts)
+      return
     end
   else
     -- First-time loading: use async approach with status provider

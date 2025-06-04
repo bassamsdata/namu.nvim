@@ -4,7 +4,6 @@ Integrates with selecta for fuzzy finding and magnet for symbol handling.
 ]]
 
 local M = {}
-local log = require("namu.utils.logger").log
 
 M.config = require("namu.namu_symbols.config").values
 M.config = vim.tbl_deep_extend("force", M.config, {
@@ -34,8 +33,8 @@ M.config = vim.tbl_deep_extend("force", M.config, {
   },
   window = {
     title_prefix = "󰃣 ",
-    min_width = 60,
-    max_width = 80,
+    min_width = 70,
+    max_width = 90,
     min_height = 1,
     padding = 2,
   },
@@ -98,7 +97,6 @@ end
 -- Setup just merges configs
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
-  log("Diagnostics config updated" .. vim.inspect(M.config))
 end
 
 function M.get_impl()

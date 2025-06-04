@@ -64,14 +64,18 @@ local function handle_toggle(state, opts, direction)
 
     -- Only move if toggle was successful
     if was_toggled then
-      -- main module will handle process_query
-
-      -- Calculate next position with wrapping
       local next_pos
-      if direction > 0 then
-        next_pos = cursor_pos < #state.filtered_items and cursor_pos + 1 or 1
+
+      -- Use grouped navigation if enabled (like for diagnostics)
+      if opts.grouped_navigation then
+        next_pos = state:find_next_group_item(cursor_pos, direction, opts)
       else
-        next_pos = cursor_pos > 1 and cursor_pos - 1 or #state.filtered_items
+        -- Original logic for non-grouped items
+        if direction > 0 then
+          next_pos = cursor_pos < #state.filtered_items and cursor_pos + 1 or 1
+        else
+          next_pos = cursor_pos > 1 and cursor_pos - 1 or #state.filtered_items
+        end
       end
 
       log(string.format("Moving to position: %d", next_pos))
@@ -109,21 +113,45 @@ local function handle_untoggle(state, opts)
 
   -- Find the previous selected item position
   local prev_selected_pos = nil
-  for i = cursor_pos - 1, 1, -1 do
-    local item = state.filtered_items[i]
-    if item and state.selected[common.get_item_id(item)] then
-      prev_selected_pos = i
-      break
-    end
-  end
 
-  -- If no selected item found before current position, wrap around to end
-  if not prev_selected_pos then
-    for i = #state.filtered_items, cursor_pos, -1 do
+  if opts.grouped_navigation then
+    -- For grouped navigation, look for main diagnostic items only
+    for i = cursor_pos - 1, 1, -1 do
+      local item = state.filtered_items[i]
+      if item and item.group_type == "diagnostic_main" and state.selected[common.get_item_id(item)] then
+        prev_selected_pos = i
+        break
+      end
+    end
+
+    -- If no selected item found before current position, wrap around to end
+    if not prev_selected_pos then
+      for i = #state.filtered_items, cursor_pos, -1 do
+        local item = state.filtered_items[i]
+        if item and item.group_type == "diagnostic_main" and state.selected[common.get_item_id(item)] then
+          prev_selected_pos = i
+          break
+        end
+      end
+    end
+  else
+    -- Original logic for non-grouped items
+    for i = cursor_pos - 1, 1, -1 do
       local item = state.filtered_items[i]
       if item and state.selected[common.get_item_id(item)] then
         prev_selected_pos = i
         break
+      end
+    end
+
+    -- If no selected item found before current position, wrap around to end
+    if not prev_selected_pos then
+      for i = #state.filtered_items, cursor_pos, -1 do
+        local item = state.filtered_items[i]
+        if item and state.selected[common.get_item_id(item)] then
+          prev_selected_pos = i
+          break
+        end
       end
     end
   end

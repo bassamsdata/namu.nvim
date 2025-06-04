@@ -35,6 +35,8 @@
 ---@field is_valid fun(self: SelectaState): boolean
 ---@field cleanup fun(self: SelectaState)
 ---@field query_changed? boolean
+---@field find_next_group_item fun(self: SelectaState, current_pos: number, direction: number, opts: SelectaOptions): number
+---@field in_custom_action? boolean Whether currently in a custom action
 
 ---@class SelectaItem
 ---@field text string Display text
@@ -47,6 +49,11 @@
 ---@field is_loading boolean? Is loading
 ---@field bufnr? number? Buffer number
 ---@field id? string Unique identifier
+---@field group_type? string Type of group item ("diagnostic_main"|"diagnostic_aux")
+---@field group_id? string Unique identifier for the group
+---@field is_auxiliary? boolean Whether this is an auxiliary item
+---@field multiline? boolean Whether this item spans multiple lines
+---@field is_placeholder? boolean Whether this is a placeholder item
 
 ---@class SelectaKeymap
 ---@field key string The key sequence
@@ -118,6 +125,8 @@
 ---@field preserve_hierarchy? boolean
 ---@field right_position? {fixed: boolean, ratio: number}
 ---@field normal_mode? boolean Enable normal mode navigation (default: false)
+---@field grouped_navigation? boolean Enable grouped navigation for multi-line items
+---@field multiline_items? boolean Whether items can span multiple lines
 
 ---@class CurrentHighlightConfig
 ---@field enabled boolean Whether to use custom highlight

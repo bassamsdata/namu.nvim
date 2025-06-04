@@ -152,6 +152,29 @@ function StateManager:get_query_string()
   return self.query_string
 end
 
+function StateManager:find_next_group_item(current_pos, direction, opts)
+  local total_items = #self.filtered_items
+  local new_pos = current_pos
+
+  -- For diagnostics, we need to move by 2 lines (since each diagnostic takes 2 lines)
+  if direction > 0 then
+    -- Moving down
+    new_pos = current_pos + 2
+    if new_pos > total_items then
+      new_pos = 1 -- Wrap to first item
+    end
+  else
+    -- Moving up
+    new_pos = current_pos - 2
+    if new_pos < 1 then
+      -- Find the last diagnostic (should be an odd-numbered line)
+      new_pos = total_items % 2 == 1 and total_items or total_items - 1
+    end
+  end
+
+  return new_pos
+end
+
 ---Handle movement keys (up/down navigation)
 ---@param direction number Direction of movement (1 for down, -1 for up)
 ---@param opts SelectaOptions Configuration options
@@ -171,12 +194,19 @@ function StateManager:handle_movement(direction, opts)
   local current_pos = cursor[1]
   local total_items = #self.filtered_items
 
-  -- Simple cycling calculation
-  local new_pos = current_pos + direction
-  if new_pos < 1 then
-    new_pos = total_items
-  elseif new_pos > total_items then
-    new_pos = 1
+  local new_pos
+
+  -- Handle grouped navigation for multi-line items
+  if opts.grouped_navigation then
+    new_pos = self:find_next_group_item(current_pos, direction, opts)
+  else
+    -- Simple cycling calculation
+    new_pos = current_pos + direction
+    if new_pos < 1 then
+      new_pos = total_items
+    elseif new_pos > total_items then
+      new_pos = 1
+    end
   end
 
   pcall(vim.api.nvim_win_set_cursor, self.win, { new_pos, 0 })
