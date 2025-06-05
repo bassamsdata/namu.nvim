@@ -13,8 +13,6 @@ StateManager.__index = StateManager
 ---@return SelectaState
 function StateManager.new(items, opts)
   local initial_width, initial_height = 0, 0
-  -- NOTE: We'll use the main module's calculate_window_size function later
-  -- We'll use the main module's get_window_position function later
   local row, col = 0, 0
   local state = {
     -- Window and buffer info
@@ -22,6 +20,7 @@ function StateManager.new(items, opts)
     original_buf = vim.api.nvim_get_current_buf(),
     prompt_buf = nil,
     prompt_win = nil,
+    original_opts = opts,
     win = nil,
     -- Position and size
     row = row,

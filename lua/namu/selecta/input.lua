@@ -510,27 +510,76 @@ function M.setup_custom_keymaps(state, opts, close_picker_fn, map_key)
           state.in_custom_action = true
 
           local current_pos = vim.api.nvim_win_get_cursor(state.win)[1]
-          local selected = state.filtered_items[current_pos]
+          local current_item = state.filtered_items[current_pos]
           local should_close
 
           if opts.multiselect and opts.multiselect.enabled and state.selected_count > 0 then
             local selected_items = state:get_selected_items()
             should_close = action.handler(selected_items, state)
           else
-            if selected then
-              should_close = action.handler(selected, state)
-            end
+            should_close = action.handler(current_item, state)
           end
-
           -- After the handler finishes
           state.in_custom_action = false
-
           if should_close then
             close_picker_fn(state)
           end
         end
 
         map_key(key_raw, custom_handler)
+      end
+    end
+  end
+end
+
+function M.setup_sidebar_keymaps(state, opts)
+  -- Close on 'q'
+  vim.keymap.set("n", "q", function()
+    if vim.api.nvim_win_is_valid(state.win) then
+      vim.api.nvim_win_close(state.win, true)
+      if opts.on_move then
+        opts.on_cancel()
+      end
+    end
+  end, { buffer = state.buf, silent = true })
+
+  -- Navigation (j/k work automatically as normal buffer)
+  -- But we need to trigger on_move callback
+  vim.api.nvim_create_autocmd("CursorMoved", {
+    buffer = state.buf,
+    callback = function()
+      local cursor_pos = vim.api.nvim_win_get_cursor(state.win)[1]
+      local item = state.filtered_items[cursor_pos]
+      if item and opts.on_move then
+        opts.on_move(item)
+      end
+      common.update_current_highlight(state, opts, cursor_pos - 1)
+    end,
+  })
+
+  -- Enter to select
+  vim.keymap.set("n", "<CR>", function()
+    local cursor_pos = vim.api.nvim_win_get_cursor(state.win)[1]
+    local item = state.filtered_items[cursor_pos]
+    if item and opts.on_select then
+      opts.on_select(item)
+    end
+  end, { buffer = state.buf, silent = true })
+
+  -- Reuse custom keymaps (yank, delete, split, quickfix, etc.)
+  if opts.custom_keymaps then
+    for _, action in pairs(opts.custom_keymaps) do
+      if action and action.keys then
+        local keys = type(action.keys) == "string" and { action.keys } or action.keys
+        for _, key in ipairs(keys) do
+          vim.keymap.set("n", key, function()
+            local cursor_pos = vim.api.nvim_win_get_cursor(state.win)[1]
+            local current_item = state.filtered_items[cursor_pos]
+            if action.handler then
+              action.handler(current_item, state)
+            end
+          end, { buffer = state.buf, silent = true })
+        end
       end
     end
   end

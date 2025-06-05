@@ -805,6 +805,29 @@ function M.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
     end
     return false
   end
+  handlers.sidebar = function(items_or_item, picker_state)
+    local items_to_show
+    if picker_state.selected_count > 0 then
+      items_to_show = picker_state:get_selected_items()
+    else
+      items_to_show = picker_state.filtered_items
+    end
+    local original_picker_opts = picker_state.original_opts or {}
+    if original_picker_opts then
+      logger.log("Original picker options found: " .. vim.inspect(picker_state))
+    end
+    -- Create sidebar options by copying ALL original options
+    local sidebar_opts = vim.tbl_deep_extend("force", original_picker_opts, {
+      -- Only override sidebar-specific settings
+      sidebar_mode = true,
+      position = picker_config.sidebar and picker_config.sidebar.position or "right",
+      width = picker_config.sidebar and picker_config.sidebar.width or 40,
+    })
+
+    selecta.create_sidebar(items_to_show, sidebar_opts, state)
+
+    return true -- Close original picker
+  end
 
   handlers.codecompanion = function(items_or_item)
     ext.codecompanion_handler(items_or_item, state.original_buf)

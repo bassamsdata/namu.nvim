@@ -229,10 +229,7 @@ function M.update_current_highlight(state, opts, line_nr)
 
   -- Apply highlight to the whole line
   vim.api.nvim_buf_set_extmark(state.buf, M.current_selection_ns, line_nr, 0, {
-    end_row = line_nr + 1,
-    end_col = 0,
-    hl_eol = true,
-    hl_group = "NamuCurrentItem",
+    line_hl_group = "NamuCurrentItem",
     priority = 202, -- Higher than regular highlights but lower than matches
   })
 
