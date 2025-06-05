@@ -44,7 +44,6 @@ function M.setup(opts)
   if impl_loaded and impl then
     impl.update_config(M.config)
   end
-  log("Namu Call Hierarchy: " .. vim.inspect(M.config))
 end
 
 function M.get_impl()

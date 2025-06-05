@@ -52,7 +52,6 @@ function M.get_container_dimensions(opts, picker_id)
     }
     -- Cache these dimensions if we have a picker_id
     if picker_id then
-      -- print(string.format("[DEBUG] Caching editor dimensions for picker_id=%s", picker_id))
       original_dimensions_cache[picker_id] = dimensions
     end
 
@@ -306,26 +305,8 @@ function M.calculate_window_size(items, opts, formatter, state_col, picker_id)
   local max_height = opts.window.max_height or config.window.max_height
   local min_height = opts.window.min_height or config.window.min_height
   local padding = opts.window.padding or config.window.padding
-  log(
-    string.format(
-      "[DEBUG] calculate_window_size: max_width=%d min_width=%d max_height=%d min_height=%d padding=%d",
-      max_width,
-      min_width,
-      max_height,
-      min_height,
-      padding
-    )
-  )
   -- Get container dimensions based on relative setting
   local container = picker_id and M.get_original_dimensions(picker_id) or M.get_container_dimensions(opts, picker_id)
-  log(
-    string.format(
-      "[DEBUG] calculate_window_size: Container dimensions: win=%s width=%d height=%d",
-      container.win or "nil",
-      container.width,
-      container.height
-    )
-  )
   -- Calculate content width
   local content_width = min_width
   -- Calculate position and initial column
@@ -371,20 +352,11 @@ function M.calculate_window_size(items, opts, formatter, state_col, picker_id)
   end
   -- Calculate height based on number of items
   local max_available_height = M.calculate_max_available_height(position_info, opts, picker_id)
-  log(
-    string.format(
-      "[DEBUG] calculate_window_size: max_available_height=%d position_info.type=%s",
-      max_available_height,
-      position_info.type
-    )
-  )
   local content_height = #items
-  log(string.format("[DEBUG] calculate_window_size: content_height=%d", content_height))
   -- Constrain height between min and max values
   content_height = math.min(content_height, max_height)
   content_height = math.min(content_height, max_available_height)
   content_height = math.max(content_height, min_height)
-  log(string.format("[DEBUG] calculate_window_size: Final content_height=%d", content_height))
 
   return content_width, content_height
 end
@@ -396,69 +368,25 @@ function M.resize_window(state, opts)
     return
   end
   local container = M.get_original_dimensions(state.picker_id) or M.get_container_dimensions(opts, state.picker_id)
-  log(
-    string.format(
-      "[DEBUG] Container dimensions: win=%s width=%d height=%d",
-      container.win or "nil",
-      container.width,
-      container.height
-    )
-  )
   -- BUG: we need to limit the new_width to the available space on the screen so
   -- it doesn't push the col to go left
   local new_width, new_height =
     M.calculate_window_size(state.filtered_items, opts, opts.formatter, state.col, state.picker_id)
-  log(string.format("[DEBUG] Initial calculated dimensions: width=%d height=%d", new_width, new_height))
-  log("[DEBUG]: number if items: " .. #state.filtered_items)
-  -- print(string.format("[DEBUG] Initial calculated dimensions: width=%d height=%d", new_width, new_height))
   local current_config = vim.api.nvim_win_get_config(state.win)
-  log(
-    string.format(
-      "[DEBUG] Current config: relative=%s row=%s col=%s",
-      current_config.relative or "nil",
-      current_config.row or "nil",
-      current_config.col or "nil"
-    )
-  )
   -- Calculate maximum height based on available space below the initial row
   local max_available_height =
     M.calculate_max_available_height(common.parse_position(opts.row_position), opts, state.picker_id)
   new_height = math.min(new_height, max_available_height)
   -- Main window config
   local initial_col = state.col
-  log(string.format("[DEBUG] Initial column: %d ", initial_col))
   local max_width = opts.window.max_width or config.window.max_width
-  log(string.format("[DEBUG] Max width: %d ", max_width))
   local padding = opts.window.padding or config.window.padding
-  log(string.format("[DEBUG] Padding: %d ", padding))
   local max_available_width = container.width - initial_col - (padding * 2) - 1
-  log(string.format("[DEBUG] Max available width: %d ", max_available_width))
-  log(
-    string.format(
-      "[DEBUG] Width calculation: container.width=%d - initial_col=%d - padding*2=%d - 1 = %d",
-      container.width,
-      initial_col,
-      padding * 2,
-      max_available_width
-    )
-  )
 
   -- Safety check - ensure width is positive
   max_available_width = math.max(1, max_available_width)
-  log(string.format("[DEBUG] After safety check: max_available_width=%d", max_available_width))
-  -- print(string.format("[DEBUG] After safety check: max_available_width=%d", max_available_width))
   new_width = math.min(new_width, max_available_width, max_width)
-  log(
-    string.format(
-      "[DEBUG] Final width=%d (min of new_width=%d, max_available_width=%d, max_width=%d)",
-      new_width,
-      new_width,
-      max_available_width,
-      max_width
-    )
-  )
   new_width = math.max(1, new_width)
-  log(string.format("[DEBUG] Final width: %d", new_width))
   local win_config = {
     relative = current_config.relative,
     row = current_config.row, -- or state.row
@@ -524,13 +452,10 @@ function M.safe_highlight_current_item(state, opts, line_nr)
   -- Check if we have any selections
   local has_selections = false
   if opts.multiselect and opts.multiselect.enabled and state.selected then
-    print("multiselect enabled, checking selections:")
     for id, value in pairs(state.selected) do
-      print("  - found selection:", id, value)
       has_selections = true
       break
     end
-    print("has_selections:", has_selections)
   end
 
   -- Apply highlight safely

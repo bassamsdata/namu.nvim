@@ -59,7 +59,6 @@ end
 -- Setup just merges configs
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
-  log("Workspace config updated" .. vim.inspect(M.config))
 end
 
 -- Define API functions that lazy-load the implementation

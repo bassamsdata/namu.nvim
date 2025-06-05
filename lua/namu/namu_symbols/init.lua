@@ -33,10 +33,8 @@ vim.keymap.set('n', 'gs', require('namu').jump, {
 
 local M = {}
 
--- Import only the minimal configuration dependency
 local config = require("namu.namu_symbols.config")
 
--- For backward compatibility
 ---@NamuSymbolsConfig
 M.config = config.values
 M.config = vim.tbl_deep_extend("force", M.config, {
@@ -55,7 +53,6 @@ local function load_impl()
   if impl_loaded then
     return
   end
-  -- Load the actual implementation
   impl = require("namu.namu_symbols.symbols")
   impl_loaded = true
 end
@@ -65,7 +62,6 @@ function M.get_impl()
   return impl
 end
 
--- Setup just merges configs and initializes UI if impl is loaded
 function M.setup(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts or {})
 end
@@ -85,14 +81,6 @@ function M.show_treesitter(opts)
     return
   end
   return impl.show_treesitter(M.config, opts)
-end
-
--- Sets up default keymappings for symbol navigation
-function M.setup_keymaps()
-  vim.keymap.set("n", "<leader>ss", M.show, {
-    desc = "Jump to LSP symbol",
-    silent = true,
-  })
 end
 
 -- Expose test utilities if implementation is loaded
