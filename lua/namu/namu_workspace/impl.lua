@@ -304,9 +304,13 @@ end
 
 -- Show workspace symbols picker with optional query
 function impl.show_with_query(config, query, opts)
-  -- Load dependencies
   load_deps()
-  -- Save state
+  local notify_opts = { title = "Namu", icon = config.icon }
+  -- Check LSP availability first
+  if not impl.lsp.has_capability("workspaceSymbolProvider") then
+    vim.notify("No LSP server with workspace symbol support found", vim.log.levels.WARN, notify_opts)
+    return
+  end
   state.config = config
   state.original_win = api.nvim_get_current_win()
   state.original_buf = api.nvim_get_current_buf()
@@ -316,12 +320,8 @@ function impl.show_with_query(config, query, opts)
   if not state.preview_state then
     state.preview_state = impl.preview_utils.create_preview_state("workspace_preview")
   end
-
   impl.preview_utils.save_window_state(state.original_win, state.preview_state)
-
-  -- Set options
   opts = opts or {}
-
   -- Create placeholder items to show even when no initial symbols
   local placeholder_items = {
     {
@@ -337,11 +337,11 @@ function impl.show_with_query(config, query, opts)
     local initial_items = placeholder_items
 
     if err then
-      vim.notify("Error fetching workspace symbols: " .. tostring(err), vim.log.levels.WARN)
+      vim.notify("Error fetching workspace symbols: " .. tostring(err), vim.log.levels.WARN, notify_opts)
+      return
     elseif symbols and #symbols > 0 then
       -- If we got actual symbols, use them
       initial_items = symbols_to_selecta_items(symbols, config)
-    else
     end
 
     -- Always show picker, even with placeholder items

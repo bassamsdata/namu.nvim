@@ -6,6 +6,21 @@ local state = {
   current_request = nil,
 }
 
+---Check if any LSP client supports a specific capability
+---@param capability string The capability to check (e.g., "workspaceSymbolProvider", "documentSymbolProvider")
+---@param bufnr? number Buffer number (defaults to current buffer)
+---@return boolean has_capability Whether any client supports the capability
+function M.has_capability(capability, bufnr)
+  bufnr = bufnr or 0
+  local clients = vim.lsp.get_clients({ bufnr = bufnr })
+  for _, client in ipairs(clients) do
+    if client.server_capabilities and client.server_capabilities[capability] then
+      return true
+    end
+  end
+  return false
+end
+
 ---Thanks to @folke snacks lsp for this handling, basically this function mostly borrowed from him
 ---Fixes old style clients
 ---@param client vim.lsp.Client
