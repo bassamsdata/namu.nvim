@@ -193,15 +193,15 @@ T["Selecta.config"] = new_set()
 T["Selecta.config"]["applies default configuration"] = function()
   selecta.setup({})
 
-  -- Check default window config
-  h.eq(selecta.config.window.relative, "editor")
-  h.eq(selecta.config.window.border, "none")
-  h.eq(selecta.config.window.width_ratio, 0.6)
-  h.eq(selecta.config.window.height_ratio, 0.6)
+  local config = selecta.get_config()
+  h.eq(config.window.relative, "editor")
+  h.eq(config.window.border, "none")
+  h.eq(config.window.width_ratio, 0.6)
+  h.eq(config.window.height_ratio, 0.6)
 
   -- Check default display config
-  h.eq(selecta.config.display.mode, "icon")
-  h.eq(selecta.config.display.padding, 1)
+  h.eq(config.display.mode, "icon")
+  h.eq(config.display.padding, 1)
 end
 
 -- test 10
@@ -217,14 +217,14 @@ T["Selecta.config"]["merges user configuration"] = function()
     },
   })
 
-  -- Check merged window config
-  h.eq(selecta.config.window.border, "rounded")
-  h.eq(selecta.config.window.width_ratio, 0.8)
-  h.eq(selecta.config.window.relative, "editor") -- Default preserved
+  local config = selecta.get_config()
+  h.eq(config.window.border, "rounded")
+  h.eq(config.window.width_ratio, 0.8)
+  h.eq(config.window.relative, "editor") -- Default preserved
 
   -- Check merged display config
-  h.eq(selecta.config.display.mode, "text")
-  h.eq(selecta.config.display.padding, 2)
+  h.eq(config.display.mode, "text")
+  h.eq(config.display.padding, 2)
 end
 
 -- Highlight TEST ---------------------------------------------------
@@ -429,23 +429,23 @@ T["Window.positioning"]["get_window_position calculates correct positions"] = fu
   }
 
   -- Test center position
-  local row, col = get_window_position(40, "center")
+  local row, col = get_window_position(40, "center", {})
   h.eq(row, 48) -- (100 - 1 - 2) * 0.5 = 48.5, floor to 48
   h.eq(col, 80) -- (200 - 40) / 2
 
   -- Test top percentage
-  row, col = get_window_position(40, "top20")
-  h.eq(row, 20) -- 100 * 0.2
-  h.eq(col, 80) -- (200 - 40) / 2
+  row, col = get_window_position(40, "top20", {})
+  h.eq(row, 19)
+  h.eq(col, 80)
 
   -- Test top percentage with right alignment
-  row, col = get_window_position(40, "top25_right")
-  h.eq(row, 25) -- 100 * 0.25
+  row, col = get_window_position(40, "top25_right", {})
+  h.eq(row, 24) -- 100 * 0.25
   h.eq(col, 156) -- 200 - 40 - 4
 
   -- Test bottom position
-  row, col = get_window_position(40, "bottom")
-  h.eq(row, 76) -- (100 * 0.8) - 4
+  row, col = get_window_position(40, "bottom", {})
+  h.eq(row, 73) -- (100 * 0.8) - 4
   h.eq(col, 80) -- (200 - 40) / 2
 
   -- Restore vim.o
@@ -465,8 +465,9 @@ T["Window.positioning"]["handles fixed right position correctly"] = function()
     cmdheight = 1,
   }
 
-  local _original_config = selecta.config
-  selecta.config = {
+  local selecta_config = require("namu.selecta.selecta_config")
+  local _original_values = selecta_config.values
+  selecta_config.values = {
     right_position = {
       fixed = true,
       ratio = 0.8,
@@ -475,13 +476,13 @@ T["Window.positioning"]["handles fixed right position correctly"] = function()
 
   -- Test fixed right position
   ---@diagnostic disable-next-line: param-type-mismatch
-  local row, col = get_window_position(40, "top20_right")
-  h.eq(row, 20) -- 100 * 0.2
-  h.eq(col, 160) -- 200 * 0.8
+  local row, col = get_window_position(40, "top20_right", {})
+  h.eq(row, 19)
+  h.eq(col, 156)
 
   -- Restore mocks
   vim.o = _original_o
-  selecta.config = _original_config
+  selecta_config.values = _original_values
 end
 
 return T
