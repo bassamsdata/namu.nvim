@@ -4,7 +4,6 @@ local M = {}
 local common = require("namu.selecta.common")
 local matcher = require("namu.selecta.matcher")
 local config = require("namu.selecta.selecta_config").values
-local log = require("namu.utils.logger").log
 
 -- Local references for optimization
 local ns_id = common.ns_id
@@ -27,7 +26,7 @@ function M.get_container_dimensions(opts, picker_id)
   end
 
   -- Otherwise calculate dimensions
-  if opts.window.relative == "win" then
+  if opts.window and opts.window.relative == "win" then
     -- Get current window dimensions
     local original_win = vim.api.nvim_get_current_win()
     local win_width = vim.api.nvim_win_get_width(original_win)
@@ -118,14 +117,12 @@ local function get_prompt_border(border)
     if border == "none" then
       return "none"
     end
-
     local borders = {
       rounded = { "╭", "─", "╮", "│", "", "", "", "│" },
       single = { "┌", "─", "┐", "│", "", "", "", "│" },
       double = { "╔", "═", "╗", "║", "", "", "", "║" },
       solid = { "▛", "▀", "▜", "▌", "", "", "", "▐" },
     }
-
     -- If it's a predefined style
     if borders[border] then
       return borders[border]
@@ -134,22 +131,20 @@ local function get_prompt_border(border)
     -- If it's a single character for all borders
     return { border, border, border, border, "", "", "", border }
   elseif type(border) == "table" then
-    local config = vim.deepcopy(border)
-
+    local border_config = vim.deepcopy(border)
     -- Handle array of characters
-    if #config == 8 and type(config[1]) == "string" then
-      config[5] = "" -- bottom-right
-      config[6] = "" -- bottom
-      config[7] = "" -- bottom-left
-      return config
+    if #border_config == 8 and type(border_config[1]) == "string" then
+      border_config[5] = "" -- bottom-right
+      border_config[6] = "" -- bottom
+      border_config[7] = "" -- bottom-left
+      return border_config
     end
-
     -- Handle full border spec with highlight groups
-    if #config == 8 and type(config[1]) == "table" then
-      config[5] = { "", config[5][2] } -- bottom-right
-      config[6] = { "", config[6][2] } -- bottom
-      config[7] = { "", config[7][2] } -- bottom-left
-      return config
+    if #border_config == 8 and type(border_config[1]) == "table" then
+      border_config[5] = { "", border_config[5][2] } -- bottom-right
+      border_config[6] = { "", border_config[6][2] } -- bottom
+      border_config[7] = { "", border_config[7][2] } -- bottom-left
+      return border_config
     end
   end
 
@@ -173,7 +168,7 @@ local function get_border_with_footer(opts)
     rounded = { "╭", "─", "╮", "│", "╯", "─", "╰", "│" },
   }
 
-  return borders[opts.window.border] or opts.window.border
+  return borders[opts.window.border] or opts.window.border or "single"
 end
 
 ---Create the prompt window for input
@@ -184,12 +179,8 @@ end
 function M.create_prompt_window(state, opts)
   state.prompt_buf = vim.api.nvim_create_buf(false, true)
   -- Set buffer options for editing
-  vim.api.nvim_buf_set_option(state.prompt_buf, "filetype", "namu_prompt")
+  vim.api.nvim_set_option_value("filetype", "namu_prompt", { buf = state.prompt_buf })
   vim.b[state.prompt_buf].completion = false
-
-  -- vim.bo[state.prompt_buf].buftype = "prompt" -- Setting buffer type to "prompt"
-  -- Initialize with empty content
-  -- vim.api.nvim_buf_set_lines(state.prompt_buf, 0, -1, false, { "" })
 
   -- Get container dimensions to determine if we need a win parameter
   local container = M.get_original_dimensions(state.picker_id) or M.get_container_dimensions(opts, state.picker_id)
@@ -203,6 +194,8 @@ function M.create_prompt_window(state, opts)
     style = "minimal",
     border = get_prompt_border(opts.window.border),
     zindex = 60,
+    title = opts.title,
+    title_pos = opts.window.title_pos or "center",
   }
 
   -- Add win parameter if relative is "window"
@@ -271,6 +264,8 @@ function M.update_filter_info(state, filter_metadata)
       end
     end
   end
+
+  return state.win, state.buf
 end
 
 -- Update the footer whenever filtered items change
@@ -282,7 +277,16 @@ function M.update_footer(state, win, opts)
     return
   end
 
-  local footer_text = string.format(" %d/%d ", #state.filtered_items, #state.items)
+  -- Allow modules to provide custom counting logic for multiline items
+  local filtered_count = #state.filtered_items
+  local total_count = #state.items
+
+  if opts.logical_item_counter then
+    filtered_count = opts.logical_item_counter(state.filtered_items)
+    total_count = opts.logical_item_counter(state.items)
+  end
+
+  local footer_text = string.format(" %d/%d ", filtered_count, total_count)
   local footer_pos = opts.window.footer_pos or "right"
 
   -- Now we update the footer separately using win_set_config with footer option
@@ -407,6 +411,8 @@ function M.resize_window(state, opts)
     style = "minimal",
     border = get_prompt_border(opts.window.border),
     zindex = 60,
+    title = opts.title,
+    title_pos = opts.window.title_pos or "center",
   }
   -- Add win parameter if using window-relative positioning
   if opts.window.relative == "win" then
@@ -449,13 +455,9 @@ function M.safe_highlight_current_item(state, opts, line_nr)
   if line_nr < 0 or line_nr >= vim.api.nvim_buf_line_count(state.buf) then
     return false
   end
-  -- Check if we have any selections
   local has_selections = false
   if opts.multiselect and opts.multiselect.enabled and state.selected then
-    for id, value in pairs(state.selected) do
-      has_selections = true
-      break
-    end
+    has_selections = next(state.selected) ~= nil
   end
 
   -- Apply highlight safely
@@ -517,7 +519,7 @@ function M.update_prompt_prefix(state, opts, query)
     return
   end
   -- Enable signcolumn in the prompt buffer
-  vim.api.nvim_buf_set_option(state.prompt_buf, "signcolumn", "yes")
+  vim.api.nvim_set_option_value("signcolumn", "yes", { win = state.prompt_win })
   -- Determine highlight group based on filter status
   local highlight_group = "NamuFilter"
   -- Check if this is a symbol filter query
@@ -654,7 +656,6 @@ function M.apply_highlights(buf, line_nr, item, opts, query, line_length, state)
   end
 end
 
--- Add this function to render only visible items
 ---@param state SelectaState
 ---@param opts SelectaOptions
 function M.render_visible_items(state, opts)
@@ -714,11 +715,22 @@ function M.render_visible_items(state, opts)
   common.update_selection_highlights(state, opts)
 end
 
----@param state SelectaState
 ---@param opts SelectaOptions
 function M.update_cursor_position(state, opts)
   -- Early return if there are no items to position the cursor on
   if #state.filtered_items == 0 then
+    return
+  end
+
+  -- If we're just doing a bulk selection change, preserve current cursor position
+  if state.bulk_selection_change then
+    local cur_pos = vim.api.nvim_win_get_cursor(state.win)
+    local new_pos = { math.min(cur_pos[1], #state.filtered_items), 0 }
+    -- Set cursor position and update highlights
+    if state.win and vim.api.nvim_win_is_valid(state.win) then
+      pcall(vim.api.nvim_win_set_cursor, state.win, new_pos)
+      common.update_current_highlight(state, opts, new_pos[1] - 1) -- 0-indexed for extmarks
+    end
     return
   end
 
@@ -782,8 +794,6 @@ function M.update_cursor_position(state, opts)
   end
 end
 
----@param state SelectaState
----@param opts SelectaOptions
 function M.update_display(state, opts)
   if not state.active then
     return
@@ -792,6 +802,12 @@ function M.update_display(state, opts)
   local query = state:get_query_string()
   -- M.update_prompt(state, opts)
   M.update_prompt_info(state, opts, #query == 0) -- Show only if query is empty
+
+  -- Safety check: Clear loading indicators if we're not actually loading
+  if not state.is_loading and state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) then
+    vim.api.nvim_buf_clear_namespace(state.prompt_buf, common.loading_ns_id, 0, -1)
+    state.loading_extmark_id = nil
+  end
 
   -- Special handling for loading state
   if state.is_loading then
@@ -885,10 +901,10 @@ end
 
 -- Enhanced get_window_position function that respects relative setting
 function M.get_window_position(width, row_position, opts, picker_id)
+  opts = opts or { window = {} }
   local container = picker_id and M.get_original_dimensions(picker_id) or M.get_container_dimensions(opts, picker_id)
   local available_width = container.width
   local available_height = container.height
-  local cmdheight = vim.o.cmdheight
 
   -- Parse the position
   local pos_info = common.parse_position(row_position)
@@ -949,7 +965,7 @@ function M.create_windows(state, opts)
   }
 
   -- Add win parameter if relative is "window"
-  if opts.window.relative == "win" then
+  if opts.window and opts.window.relative == "win" then
     win_config.win = container.win or vim.api.nvim_get_current_win()
   end
 
@@ -958,8 +974,17 @@ function M.create_windows(state, opts)
 
   -- Set footer if needed
   if opts.window.show_footer then
+    -- Allow modules to provide custom counting logic for multiline items
+    local filtered_count = #state.filtered_items
+    local total_count = #state.items
+
+    if opts.logical_item_counter then
+      filtered_count = opts.logical_item_counter(state.filtered_items)
+      total_count = opts.logical_item_counter(state.items)
+    end
+
     win_config.footer = {
-      { string.format(" %d/%d ", #state.filtered_items, #state.items), "NamuFooter" },
+      { string.format(" %d/%d ", filtered_count, total_count), "NamuFooter" },
     }
     win_config.footer_pos = opts.window.footer_pos or "right"
   end

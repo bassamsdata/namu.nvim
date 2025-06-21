@@ -195,8 +195,6 @@ function M.update_filtered_items(state, query, opts)
 
   local items_to_filter = state.items
   local actual_query = query
-
-  -- Run pre-filter hook if available
   if opts.pre_filter then
     local new_items, new_query, metadata = opts.pre_filter(state.items, query)
     if new_items then
@@ -242,7 +240,7 @@ function M.standard_filter(state, items, query, opts)
   local match_scores = {}
 
   -- First pass: identify matches and collect scores
-  for i, item in ipairs(items) do
+  for _, item in ipairs(items) do
     local match = matcher.get_match_positions(item.text, query)
     if match then
       -- Store matched items and scores
@@ -326,7 +324,7 @@ function M.start_async_fetch(state, query, opts, callback)
     })
   end
 
-  local process_fn = opts.async_source(query) -- Get the process function
+  local process_fn = opts.async_source(query, opts) -- Get the process function
   -- Create a status provider for this state
   local status_provider = M.create_loading_status_provider(state)
 
@@ -378,28 +376,49 @@ function M.process_query(state, opts)
   if state.initial_open then
     state.initial_open = false
   end
-  -- Step 1: Try async fetch if configured
-  if opts.async_source then
-    -- Try to start async fetch, pass callback for display update
-    local started_async = M.start_async_fetch(state, query, opts, function()
-      -- This callback runs after async operation completes
-      M.update_filtered_items(state, query, opts)
-      ui.update_display(state, opts)
-      common.update_selection_highlights(state, opts)
-      -- Handle cursor positioning and on_move callback
-      -- state:handle_post_filter_cursor(opts)
-      vim.cmd("redraw")
-    end)
+  -- Check if items are fully loaded (e.g., workspace diagnostics completed)
+  -- If so, switch to fast sync filtering to avoid unnecessary async operations
+  if opts.async_source and opts.items_fully_loaded then
+    opts.async_source = nil
+  end
 
-    -- If async started successfully, return early without updating display
-    -- The display update will happen in the callback when async completes
-    if started_async then
-      return
+  if opts.async_source then
+    -- Double-check items_fully_loaded before starting async operation
+    if opts.items_fully_loaded then
+      M.log("Items already fully loaded, skipping async and using sync filtering")
+      opts.async_source = nil
+      if state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) then
+        vim.api.nvim_buf_clear_namespace(state.prompt_buf, common.loading_ns_id, 0, -1)
+        state.loading_extmark_id = nil
+        state.is_loading = false
+      end
+    else
+      -- Try to start async fetch, pass callback for display update
+      local started_async = M.start_async_fetch(state, query, opts, function()
+        -- This callback runs after async operation completes
+        M.update_filtered_items(state, query, opts)
+        ui.update_display(state, opts)
+        common.update_selection_highlights(state, opts)
+        -- Handle cursor positioning and on_move callback
+        -- state:handle_post_filter_cursor(opts)
+        vim.cmd("redraw")
+      end)
+
+      -- If async started successfully, return early without updating display
+      -- The display update will happen in the callback when async completes
+      if started_async then
+        return
+      end
     end
   end
 
-  -- Step 2: If we didn't start an async operation, filter and update normally
   M.update_filtered_items(state, query, opts)
+  -- Ensure loading state is cleared when doing sync filtering
+  state.is_loading = false
+  if state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) then
+    vim.api.nvim_buf_clear_namespace(state.prompt_buf, common.loading_ns_id, 0, -1)
+    state.loading_extmark_id = nil
+  end
   ui.update_display(state, opts)
   common.update_selection_highlights(state, opts)
   -- Handle cursor positioning and on_move callback
@@ -424,7 +443,7 @@ function M.close_picker(state)
     if state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) and state.loading_extmark_id then
       vim.api.nvim_buf_clear_namespace(state.prompt_buf, loading_ns_id, 0, -1)
       state.loading_extmark_id = nil
-      vim.api.nvim_buf_clear_namespace(state.prompt_buf, prompt_info_ns, 0, -1)
+      vim.api.nvim_buf_clear_namespace(state.prompt_buf, common.prompt_info_ns, 0, -1)
     end
     if state.prompt_win and vim.api.nvim_win_is_valid(state.prompt_win) then
       vim.api.nvim_win_close(state.prompt_win, true)
@@ -434,8 +453,6 @@ function M.close_picker(state)
     end
   end
   ui.clear_original_dimensions(state.picker_id)
-  -- cursor_manager.restore()
-  -- TODO: CHECK THIS BEFORE RELEASE
   vim.cmd("stopinsert!")
 end
 
@@ -451,7 +468,7 @@ function M.setup_prompt_buffer(state, opts)
 
   -- Set up buffer change tracking using nvim_buf_attach
   vim.api.nvim_buf_attach(state.prompt_buf, false, {
-    on_lines = function(_, bufnr, _, firstline, lastline, new_lastline, _)
+    on_lines = function(_, bufnr, _, _, _, _, _)
       if bufnr ~= state.prompt_buf or not state.active then
         return false
       end
@@ -477,11 +494,8 @@ function M.setup_prompt_buffer(state, opts)
     end,
   })
 
-  -- Set up keymaps by passing our functions to avoid circular dependencies
   input_handler.setup_keymaps(state, opts, M.close_picker, M.process_query)
-  -- Add prefix to prompt in signcolumn
   ui.update_prompt_prefix(state, opts, state:get_query_string())
-  -- Start in insert mode
   vim.cmd("startinsert")
 end
 
@@ -504,7 +518,7 @@ function M.pick(items, opts)
     pre_filter = nil,
     row_position = config.row_position,
     debug = config.debug,
-    normal_mode = false, -- New: default to false for backward compatibility
+    normal_mode = false,
   }
   opts = vim.tbl_deep_extend("force", base_opts, opts or {})
 
@@ -534,7 +548,8 @@ function M.pick(items, opts)
   -- Create state
   local state = StateManager.new(items, opts)
   state.picker_id = tostring(vim.uv.hrtime())
-  local initial_dimensions = ui.get_container_dimensions(opts, state.picker_id)
+
+  local _ = ui.get_container_dimensions(opts, state.picker_id)
   -- Calculate dimensions and position for the state
   local width, height =
     ui.calculate_window_size(opts.initially_hidden and {} or items, opts, opts.formatter, 0, state.picker_id)
@@ -584,8 +599,15 @@ M._test = {
 ---@param opts? table
 function M.setup(opts)
   opts = opts or {}
-  config = vim.tbl_deep_extend("force", config, opts)
+  -- Update the config module values
+  local selecta_config = require("namu.selecta.selecta_config")
+  selecta_config.values = vim.tbl_deep_extend("force", selecta_config.defaults, opts)
   logger.setup(opts)
+end
+
+-- Expose config for testing
+M.get_config = function()
+  return require("namu.selecta.selecta_config").values
 end
 
 -- Add to a core utility module (e.g., namu.core.split_utils)
@@ -631,7 +653,8 @@ function M.open_in_split(item, split_type, module_state)
   local original_pos = module_state.original_pos or vim.api.nvim_win_get_cursor(original_win)
 
   -- Get target info
-  local target_bufnr = item.value.bufnr or item.bufnr -- fallback hierarchy: buffer_symbols -> item bufnr -> original buf
+  -- fallback hierarchy: buffer_symbols -> item bufnr -> original buf
+  local target_bufnr = item.value.bufnr or item.bufnr
   local target_path = nil
   -- Try to get path from multiple possible sources
   if item.value.file_path then
@@ -715,7 +738,7 @@ end
 ---@param module_state? NamuState Optional state from calling module
 ---@return boolean success Whether items were successfully added to quickfix
 function M.add_to_quickfix(items_or_state, module_state)
-  local items_to_process = {}
+  local items_to_process
   -- Smart detection of what we received
   if items_or_state and items_or_state.filtered_items then
     local picker_state = items_or_state
@@ -756,10 +779,16 @@ function M.add_to_quickfix(items_or_state, module_state)
     elseif bufnr and vim.api.nvim_buf_is_valid(bufnr) then
       filename = vim.api.nvim_buf_get_name(bufnr)
     end
-    -- Get position information
-    local lnum = symbol.lnum or (symbol.range and symbol.range.start.line + 1) or 1
+    -- Handle different line number conventions
+    local lnum
+    if symbol.diagnostic then
+      -- Diagnostics use 0-based line numbers, convert to 1-based for quickfix
+      lnum = (symbol.lnum and symbol.lnum + 1) or 1
+    else
+      -- Other symbols (LSP, etc.) may already be 1-based or use range
+      lnum = symbol.lnum or (symbol.range and symbol.range.start.line + 1) or 1
+    end
     local col = symbol.col or (symbol.range and symbol.range.start.character + 1) or 1
-    -- Create quickfix entry
     local qf_entry = {
       filename = filename,
       lnum = lnum,
@@ -767,7 +796,6 @@ function M.add_to_quickfix(items_or_state, module_state)
       text = item.text or symbol.name or "",
       type = symbol.kind and string.sub(symbol.kind, 1, 1):upper() or "I", -- First letter of kind or "I" for Info
     }
-    -- Add buffer number if available and valid
     if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
       qf_entry.bufnr = bufnr
     end
@@ -801,20 +829,16 @@ function M.create_sidebar(items, opts, module_state)
   -- Create sidebar state with complete options
   local sidebar_state = StateManager.new(items, opts)
   sidebar_state.filtered_items = items
-
   -- Create split window config
   local win_config = {
     split = opts.position or "right",
     win = module_state.original_win,
   }
-
   if opts.position == "left" or opts.position == "right" then
     win_config.width = opts.width or 40
   end
-
   -- Create the split window
   sidebar_state.win = vim.api.nvim_open_win(sidebar_state.buf, true, win_config)
-
   local win_opts = {
     cursorline = true,
     cursorlineopt = "both",
@@ -842,7 +866,6 @@ function M.create_sidebar(items, opts, module_state)
 
   input_handler.setup_sidebar_keymaps(sidebar_state, opts)
   ui.render_visible_items(sidebar_state, opts)
-  -- Make buffer read-only again
   vim.api.nvim_set_option_value("modifiable", false, { buf = sidebar_state.buf })
   -- Update highlights
   common.update_current_highlight(sidebar_state, opts, 0)

@@ -151,7 +151,7 @@ function StateManager:get_query_string()
   return self.query_string
 end
 
-function StateManager:find_next_group_item(current_pos, direction, opts)
+function StateManager:find_next_group_item(current_pos, direction)
   local total_items = #self.filtered_items
   local new_pos = current_pos
 
@@ -197,7 +197,7 @@ function StateManager:handle_movement(direction, opts)
 
   -- Handle grouped navigation for multi-line items
   if opts.grouped_navigation then
-    new_pos = self:find_next_group_item(current_pos, direction, opts)
+    new_pos = self:find_next_group_item(current_pos, direction)
   else
     -- Simple cycling calculation
     new_pos = current_pos + direction

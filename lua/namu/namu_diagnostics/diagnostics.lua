@@ -6,7 +6,6 @@ It is loaded only when required to improve startup performance.
 -- Dependencies are only loaded when the module is actually used
 local selecta = require("namu.selecta.selecta")
 local preview_utils = require("namu.core.preview_utils")
-local lsp = require("namu.namu_symbols.lsp")
 local notify_opts = { title = "Namu", icon = require("namu").config.icon }
 local logger = require("namu.utils.logger")
 local api = vim.api
@@ -22,7 +21,6 @@ local state = {
   preview_ns = api.nvim_create_namespace("diagnostic_preview"),
   preview_state = nil,
 }
--- We need to store the config when passed in to be used by local functions
 M.config = {}
 
 ---Get severity name from severity number
@@ -90,9 +88,7 @@ end
 ---@return string
 local function format_diagnostic_item(item, config, available_width)
   if item.is_auxiliary then
-    -- Format: [line:col] filename • source
-    local location = string.format("[%d:%d]", item.value.lnum + 1, item.value.col + 1)
-
+    -- Format: filename • [line:col] • source
     local filename = ""
     if item.value.bufnr then
       local bufname = api.nvim_buf_get_name(item.value.bufnr)
@@ -100,15 +96,14 @@ local function format_diagnostic_item(item, config, available_width)
         filename = vim.fn.fnamemodify(bufname, ":t") -- Just filename, no brackets
       end
     end
-    local source = ""
-    if item.value.diagnostic.source then
-      source = item.value.diagnostic.source -- Just source, no parentheses
-    end
+    local location = string.format("[%d:%d]", item.value.lnum + 1, item.value.col + 1)
+    local source = item.value.diagnostic.source or ""
     -- Build the line: [line:col] filename • source
-    local parts = { location }
+    local parts = {}
     if filename ~= "" then
       table.insert(parts, filename)
     end
+    table.insert(parts, location)
     if source ~= "" then
       table.insert(parts, source)
     end
@@ -197,7 +192,6 @@ end
 ---@param config table
 ---@return table[]
 local function diagnostics_to_selecta_items(diagnostics, buffer_info, config)
-  logger.log("Starting diagnostics_to_selecta_items with " .. #diagnostics .. " diagnostics")
   local items = {}
   local seen_diagnostics = {} -- Track unique diagnostics
   local single_buffer = type(buffer_info) == "number"
@@ -320,44 +314,42 @@ local function apply_diagnostic_highlights(buf, filtered_items, config)
       end
 
       local line_text = lines[1]
-      -- 1. Highlight location [12:5]
-      local location_pattern = "%[%d+:%d+%]"
-      local location_start, location_end = line_text:find(location_pattern)
-      if location_start then
-        api.nvim_buf_set_extmark(buf, ns_id, line, location_start - 1, {
-          end_row = line,
-          end_col = location_end,
-          hl_group = "Directory",
-          priority = 100,
-        })
-      end
-      -- 2. Highlight filename (between first • and second •, or between • and end)
       local first_bullet = line_text:find(" • ")
       if first_bullet then
-        local second_bullet = line_text:find(" • ", first_bullet + 3)
-        local filename_start = first_bullet + 3 -- After " • "
-        local filename_end
-        if second_bullet then
-          filename_end = second_bullet - 1
-        else
-          filename_end = #line_text
-        end
         -- Highlight filename
-        api.nvim_buf_set_extmark(buf, ns_id, line, filename_start - 1, {
+        api.nvim_buf_set_extmark(buf, ns_id, line, 0, {
           end_row = line,
-          end_col = filename_end,
-          hl_group = "String", -- or "Identifier"
+          end_col = first_bullet - 1,
+          hl_group = "String",
           priority = 110,
         })
-
-        -- 3. Highlight source (after second •)
+        -- 2. Highlight location (between first and second bullet)
+        local second_bullet = line_text:find(" • ", first_bullet + 3)
         if second_bullet then
-          local source_start = second_bullet + 3 -- After " • "
+          local location_start = first_bullet + 3
+          local location_end = second_bullet - 1
+          api.nvim_buf_set_extmark(buf, ns_id, line, location_start - 1, {
+            end_row = line,
+            end_col = location_end,
+            hl_group = "Directory",
+            priority = 100,
+          })
+          -- 3. Highlight source (after second bullet)
+          local source_start = second_bullet + 3
           api.nvim_buf_set_extmark(buf, ns_id, line, source_start - 1, {
             end_row = line,
             end_col = #line_text,
             hl_group = "Comment",
             priority = 110,
+          })
+        else
+          -- Only filename and location, highlight location to end of line
+          local location_start = first_bullet + 3
+          api.nvim_buf_set_extmark(buf, ns_id, line, location_start - 1, {
+            end_row = line,
+            end_col = #line_text,
+            hl_group = "Directory",
+            priority = 100,
           })
         end
       end
@@ -475,60 +467,6 @@ local function get_workspace_files()
   return filtered_files
 end
 
----Check if file should be processed for the given client
----@param path string File path
----@param current_file string Currently open file path
----@param client table LSP client
----@return boolean
-local function should_process_file(path, current_file, client)
-  -- Skip current file - it's already open
-  if path == current_file then
-    return false
-  end
-
-  -- Skip unreadable files
-  if vim.fn.filereadable(path) ~= 1 then
-    return false
-  end
-
-  -- Check if file type matches client's supported filetypes
-  local filetype = vim.filetype.match({ filename = path })
-  if not filetype or not client.config.filetypes then
-    return false
-  end
-
-  return vim.tbl_contains(client.config.filetypes, filetype), filetype
-end
-
----Notify LSP server about a file
----@param client table LSP client
----@param path string File path
----@param filetype string File type
----@return boolean success
-local function notify_file_to_lsp(client, path, filetype)
-  -- Read file content
-  local ok, content = pcall(function()
-    return table.concat(vim.fn.readfile(path), "\n")
-  end)
-
-  if not ok then
-    return false
-  end
-
-  -- Notify LSP server about file
-  local params = {
-    textDocument = {
-      uri = vim.uri_from_fname(path),
-      version = 0,
-      text = content,
-      languageId = filetype,
-    },
-  }
-
-  client.notify("textDocument/didOpen", params)
-  return true
-end
-
 ---Start loading workspace files via LSP
 ---@param workspace_files table List of file paths
 ---@param lsp_utils table LSP utilities module
@@ -641,152 +579,130 @@ local function start_loading_workspace_files(workspace_files, lsp_utils, config,
 
   return processed_clients
 end
----Create an async source for workspace diagnostics
+
+---Create an async source for workspace diagnostics with completion flag
 ---@param config table Configuration table
 ---@return function Source factory function
 local function create_async_diagnostics_source(config)
-  return function(query)
+  local ASYNC_CONFIG = {
+    MAX_UPDATES = 4,
+    MIN_STABLE_UPDATES = 2,
+    MAX_OSCILLATIONS = 3,
+    INITIAL_DELAY = 500,
+    UPDATE_DELAY_BASE = 1000,
+    UPDATE_DELAY_MAX = 2000,
+  }
+  -- Extract diagnostics fetching to avoid repetition
+  local function get_current_diagnostics_items()
+    local current_diagnostics, current_buffer_info = get_diagnostics_for_scope("workspace")
+    return diagnostics_to_selecta_items(current_diagnostics, current_buffer_info, config)
+  end
+  -- Mark items as fully loaded and cleanup
+  local function mark_fully_loaded(picker_opts)
+    if picker_opts then
+      picker_opts.items_fully_loaded = true
+      picker_opts.async_source = nil
+      logger.log("DIAGNOSTICS: Marked items as fully loaded")
+    end
+  end
+
+  -- Clear loading status
+  local function clear_loading_status(status_provider)
+    if status_provider then
+      status_provider("")
+    end
+  end
+
+  return function(query, picker_opts)
     return function(callback, status_provider)
+      -- Early return if async already started or completed
+      if picker_opts and (picker_opts.items_fully_loaded or picker_opts.async_loading_started) then
+        logger.log("DIAGNOSTICS: Async already started or completed, using existing data")
+        local current_items = get_current_diagnostics_items()
+        clear_loading_status(status_provider)
+        callback(current_items)
+        return
+      end
+      -- Initialize request tracking
+      local request_id = tostring(vim.uv.now()) .. "_" .. math.random(1000, 9999)
+      if picker_opts then
+        picker_opts.current_request_id = request_id
+        picker_opts.async_loading_started = true
+      end
       -- Show initial status
       if status_provider then
         status_provider("Loading results")
       end
-
-      -- Start loading workspace files
       local workspace_files = get_workspace_files()
       if #workspace_files == 0 then
-        -- Not a git repo or no files - fall back to normal workspace diagnostics
+        -- Fallback to direct diagnostics (no git repo or no files)
         if status_provider then
           status_provider("Getting workspace diagnostics")
         end
-        -- Get current diagnostics directly from LSP
-        local current_diagnostics, current_buffer_info = get_diagnostics_for_scope("workspace")
-        local current_items = diagnostics_to_selecta_items(current_diagnostics, current_buffer_info, config)
-
+        local current_items = get_current_diagnostics_items()
         if #current_items == 0 then
-          -- If still no diagnostics, provide a helpful message
           vim.notify("No workspace diagnostics found", vim.log.levels.INFO, notify_opts)
           return
-        else
-          callback(current_items)
         end
+        callback(current_items)
+        mark_fully_loaded(picker_opts)
         return
       end
-
-      -- Start the LSP notifications
       local lsp_utils = require("namu.namu_symbols.lsp")
       start_loading_workspace_files(workspace_files, lsp_utils, config, status_provider)
+      local update_state = {
+        count = 0,
+        last_diagnostic_count = 0,
+        stable_count = 0,
+        oscillation_count = 0,
+      }
 
-      -- Schedule periodic updates to collect diagnostics as they come in
-      local update_count = 0
-      local max_updates = 5
+      local function is_request_valid()
+        return picker_opts and picker_opts.current_request_id == request_id and not picker_opts.items_fully_loaded
+      end
 
       local function update_diagnostics()
-        -- Update status with current progress
+        if not is_request_valid() then
+          logger.log("DIAGNOSTICS: Request no longer valid, stopping updates")
+          return
+        end
         if status_provider then
-          status_provider(string.format("Processing diagnostics (%d/%d)", update_count + 1, max_updates))
+          status_provider(
+            string.format("Processing diagnostics (%d/%d)", update_state.count + 1, ASYNC_CONFIG.MAX_UPDATES)
+          )
         end
-
-        -- Get current diagnostics
-        local current_diagnostics, current_buffer_info = get_diagnostics_for_scope("workspace")
-        local current_items = diagnostics_to_selecta_items(current_diagnostics, current_buffer_info, config)
-
-        -- Call back with current items
+        local current_items = get_current_diagnostics_items()
+        local current_count = #current_items
+        -- Update stability tracking
+        if current_count == update_state.last_diagnostic_count then
+          update_state.stable_count = update_state.stable_count + 1
+          update_state.oscillation_count = 0
+        else
+          update_state.stable_count = 0
+          update_state.oscillation_count = update_state.oscillation_count + 1
+        end
+        update_state.last_diagnostic_count = current_count
+        -- Return current results
         callback(current_items)
+        -- Determine if we should continue
+        update_state.count = update_state.count + 1
+        local should_continue = update_state.count < ASYNC_CONFIG.MAX_UPDATES
+          and update_state.stable_count < ASYNC_CONFIG.MIN_STABLE_UPDATES
+          and update_state.oscillation_count < ASYNC_CONFIG.MAX_OSCILLATIONS
 
-        -- Schedule next update if needed
-        update_count = update_count + 1
-        if update_count < max_updates then
-          local delay = math.min(1000 * update_count, 3000) -- Increase delay for later updates
+        if should_continue then
+          local delay = math.min(ASYNC_CONFIG.UPDATE_DELAY_BASE * update_state.count, ASYNC_CONFIG.UPDATE_DELAY_MAX)
           vim.defer_fn(update_diagnostics, delay)
+          logger.log("DIAGNOSTICS: Update cycle continues")
+        else
+          logger.log("DIAGNOSTICS: Update cycle completed")
+          mark_fully_loaded(picker_opts)
+          clear_loading_status(status_provider)
         end
       end
-
-      -- Start the update cycle after initial delay
-      vim.defer_fn(update_diagnostics, 500)
+      -- Start the update cycle
+      vim.defer_fn(update_diagnostics, ASYNC_CONFIG.INITIAL_DELAY)
     end
-  end
-end
-
----Process files for a single LSP client
----@param client table LSP client
----@param workspace_files table List of files
----@param current_file string Currently open file
----@return number Number of files processed
-local function process_client_files(client, workspace_files, current_file)
-  local file_count = 0
-
-  for _, path in ipairs(workspace_files) do
-    local should_process, filetype = should_process_file(path, current_file, client)
-    if should_process then
-      if notify_file_to_lsp(client, path, filetype) then
-        file_count = file_count + 1
-      end
-    end
-  end
-
-  return file_count
-end
-
----Load workspace diagnostics by notifying LSP servers about all files
----@param config table Plugin configuration
----@return boolean Success indicator
-function M.load_workspace_diagnostics(config)
-  local workspace_files = get_workspace_files()
-  if #workspace_files == 0 then
-    vim.notify("Not a git repository - using current workspace diagnostics", vim.log.levels.INFO, notify_opts)
-    return false
-  end
-  -- Track which clients have been processed
-  M.loaded_clients = M.loaded_clients or {}
-  local current_file = api.nvim_buf_get_name(api.nvim_get_current_buf())
-  local current_bufnr = api.nvim_get_current_buf()
-  local loaded_clients_count = 0
-
-  -- Get all clients that support textDocument/didOpen
-  local get_clients_fn = vim.lsp.get_clients
-  local all_clients = get_clients_fn({ bufnr = current_bufnr })
-
-  -- Process each LSP client
-  for _, client in ipairs(all_clients) do
-    -- Ensure compatibility (using your existing wrapper)
-    client = lsp.ensure_client_compatibility(client)
-
-    -- Skip already processed clients
-    if vim.tbl_contains(M.loaded_clients, client.id) then
-      goto continue
-    end
-
-    -- Check if client supports textDocument/didOpen
-    if not vim.tbl_get(client.server_capabilities, "textDocumentSync", "openClose") then
-      goto continue
-    end
-
-    -- Process this client's files
-    local file_count = process_client_files(client, workspace_files, current_file)
-
-    if file_count > 0 then
-      table.insert(M.loaded_clients, client.id)
-      loaded_clients_count = loaded_clients_count + 1
-      -- TODO: no need for this notification
-      vim.notify(string.format("Loaded %d files for %s", file_count, client.name), vim.log.levels.INFO, notify_opts)
-    end
-
-    ::continue::
-  end
-
-  if loaded_clients_count > 0 then
-    -- TODO: No need for this one
-    vim.notify(
-      "Workspace diagnostics triggered for " .. loaded_clients_count .. " LSP clients",
-      vim.log.levels.INFO,
-      notify_opts
-    )
-    return true
-  else
-    -- TODO: no need for this one
-    vim.notify("No files were loaded for workspace diagnostics", vim.log.levels.WARN, notify_opts)
-    return false
   end
 end
 
@@ -821,13 +737,56 @@ local function find_current_diagnostic_index(items)
   return closest_idx
 end
 
----Yank diagnostic with its context
+---Deduplicate diagnostic items by group_id (removes auxiliary duplicates)
+---@param items table[]
+---@return table[]
+local function deduplicate_diagnostic_items(items)
+  local seen_groups = {}
+  local deduplicated = {}
+
+  for _, item in ipairs(items) do
+    if item.group_id and not seen_groups[item.group_id] then
+      -- Only include the main diagnostic item, skip auxiliary
+      if item.group_type == "diagnostic_main" then
+        seen_groups[item.group_id] = true
+        table.insert(deduplicated, item)
+      end
+    elseif not item.group_id then
+      -- Include items without group_id (shouldn't happen in diagnostics, but safety)
+      table.insert(deduplicated, item)
+    end
+  end
+
+  return deduplicated
+end
+
+---Count logical diagnostic items (ignoring auxiliary items for UI display)
+---@param items table[]
+---@return number
+local function count_logical_diagnostic_items(items)
+  local count = 0
+  local seen_groups = {}
+
+  for _, item in ipairs(items) do
+    if item.group_id and not seen_groups[item.group_id] then
+      seen_groups[item.group_id] = true
+      count = count + 1
+    elseif not item.group_id then
+      -- Count items without group_id (shouldn't happen in diagnostics, but safety)
+      count = count + 1
+    end
+  end
+
+  return count
+end
+
 ---@param config table
 ---@param items_or_item table|table[]
 ---@param state table
 ---@return boolean
 function M.yank_diagnostic_with_context(config, items_or_item, state)
-  local items = vim.islist(items_or_item) and items_or_item or { items_or_item }
+  local raw_items = vim.islist(items_or_item) and items_or_item or { items_or_item }
+  local items = deduplicate_diagnostic_items(raw_items)
   local texts = {}
 
   for _, item in ipairs(items) do
@@ -853,11 +812,9 @@ Context: %s
   vim.fn.setreg('"', final_text)
   vim.fn.setreg("+", final_text)
 
-  vim.notify(string.format("Yanked %d diagnostic(s) with context", #items), notify_opts)
-  return true
+  return false
 end
 
----Add diagnostic(s) to CodeCompanion
 ---@param config table
 ---@param items_or_item table|table[]
 ---@param state table
@@ -866,7 +823,8 @@ function M.add_to_codecompanion(config, items_or_item, state)
   if not status then
     return
   end
-  local items = vim.islist(items_or_item) and items_or_item or { items_or_item }
+  local raw_items = vim.islist(items_or_item) and items_or_item or { items_or_item }
+  local items = deduplicate_diagnostic_items(raw_items)
   local texts = {}
 
   for _, item in ipairs(items) do
@@ -908,24 +866,231 @@ Context:
   chat.ui:open()
 end
 
----Open diagnostic in vertical split
+---Send diagnostic to CodeCompanion inline for AI-powered fixing
 ---@param config table
 ---@param items_or_item table|table[]
----@param module_state table
-function M.open_in_vertical_split(config, items_or_item, module_state)
+---@param picker_state table
+---@return boolean
+function M.send_to_codecompanion_inline(config, items_or_item, picker_state)
   local item = vim.islist(items_or_item) and items_or_item[1] or items_or_item
-  selecta.open_in_split(item, "vertical", state)
-  return false
+  if not item or not item.value or not item.value.diagnostic then
+    vim.notify("No diagnostic selected", vim.log.levels.WARN, notify_opts)
+    return false
+  end
+  -- Check if CodeCompanion is available
+  local status, _ = pcall(require, "codecompanion")
+  if not status then
+    vim.notify("CodeCompanion not found", vim.log.levels.WARN, notify_opts)
+    return false
+  end
+  local diagnostic = item.value.diagnostic
+  local bufnr = item.value.bufnr
+  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+    vim.notify("Invalid buffer for diagnostic", vim.log.levels.WARN, notify_opts)
+    return false
+  end
+  local original_win = state.original_win
+  local target_winnr = original_win
+  -- If original window is not valid or doesn't have our buffer, find a suitable window
+  if
+    not original_win
+    or not vim.api.nvim_win_is_valid(original_win)
+    or vim.api.nvim_win_get_buf(original_win) ~= bufnr
+  then
+    -- Find a window that has our target buffer
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+      if vim.api.nvim_win_get_buf(win) == bufnr then
+        target_winnr = win
+        break
+      end
+    end
+    if not target_winnr or vim.api.nvim_win_get_buf(target_winnr) ~= bufnr then
+      vim.cmd("split")
+      target_winnr = vim.api.nvim_get_current_win()
+      vim.api.nvim_win_set_buf(target_winnr, bufnr)
+    end
+  end
+  vim.api.nvim_set_current_win(target_winnr)
+  vim.api.nvim_set_current_buf(bufnr)
+  vim.api.nvim_win_set_cursor(target_winnr, { diagnostic.lnum + 1, diagnostic.col })
+  local context_lines = {}
+  local selection_start_line, selection_end_line
+  local selection_start_col, selection_end_col
+
+  -- Emulate exactly how CodeCompanion gets lines using nvim_buf_get_lines
+  -- Get a few lines around the diagnostic for context
+  -- Calculate the same range that CodeCompanion would use for a visual selection around the diagnostic
+  selection_start_line = math.max(1, diagnostic.lnum + 1 - 2) -- diagnostic.lnum is 0-based, convert to 1-based and go 2 lines up
+  selection_end_line = math.min(vim.api.nvim_buf_line_count(bufnr), diagnostic.lnum + 1 + 4) -- 4 lines down from diagnostic
+
+  -- Calculate column positions based on diagnostic position
+  local diagnostic_line = diagnostic.lnum + 1 -- Convert to 1-based
+  if diagnostic_line >= selection_start_line and diagnostic_line <= selection_end_line then
+    -- If diagnostic is within our selection range, use its exact column position
+    selection_start_col = diagnostic.col + 1 -- Convert from 0-based to 1-based
+    -- If diagnostic has end_col, use it; otherwise extend to end of error or reasonable length
+    if diagnostic.end_col then
+      selection_end_col = diagnostic.end_col
+    else
+      -- Get the line content to determine a reasonable end column
+      local line_content = vim.api.nvim_buf_get_lines(bufnr, diagnostic.lnum, diagnostic.lnum + 1, false)[1] or ""
+      selection_end_col = math.min(#line_content, selection_start_col + 10) -- Reasonable default span
+    end
+  else
+    -- If diagnostic is outside our context range, select full lines
+    selection_start_col = 1
+    selection_end_col = 0 -- 0 means end of line in vim
+  end
+
+  -- Get lines exactly like CodeCompanion does: using nvim_buf_get_lines
+  local start_line_0 = selection_start_line - 1 -- Convert to 0-based for nvim_buf_get_lines
+  local end_line_0 = selection_end_line
+  context_lines = vim.api.nvim_buf_get_lines(bufnr, start_line_0, end_line_0, false)
+
+  -- Create context for CodeCompanion inline
+  local context = {
+    bufnr = bufnr,
+    winnr = target_winnr,
+    buftype = vim.api.nvim_get_option_value("buftype", { buf = bufnr }) or "",
+    filetype = vim.api.nvim_get_option_value("filetype", { buf = bufnr }),
+    filename = vim.api.nvim_buf_get_name(bufnr),
+    line_count = vim.api.nvim_buf_line_count(bufnr),
+    mode = "v",
+    is_normal = false,
+    start_line = selection_start_line,
+    end_line = selection_end_line,
+    start_col = selection_start_col,
+    end_col = selection_end_col,
+    is_visual = true, -- Treat as visual selection to include context
+    lines = context_lines,
+    cursor_pos = { selection_start_line, selection_start_col }, -- Start of selection, like CodeCompanion
+  }
+  -- Create a more detailed diagnostic-specific prompt that matches CodeCompanion's style
+  local severity_text = item.value.severity:lower()
+  local source_text = diagnostic.source and (" from " .. diagnostic.source) or ""
+  local prompt = string.format(
+    "Please fix the %s%s in this %s code: %s",
+    severity_text,
+    source_text,
+    context.filetype,
+    diagnostic.message
+  )
+  local inline_strategy = require("codecompanion.strategies.inline")
+  local inline = inline_strategy.new({
+    context = context,
+    placement = "replace",
+  })
+  if not inline then
+    vim.notify("Failed to create CodeCompanion inline instance", vim.log.levels.ERROR, notify_opts)
+    return false
+  end
+  inline:prompt(prompt)
+  logger.log("CodeCompanion inline started for diagnostic fix")
+  return true
 end
 
----Open diagnostic in horizontal split
----@param config table
----@param items_or_item table|table[]
----@param module_state table
+function M.open_in_vertical_split(config, items_or_item)
+  local item = vim.islist(items_or_item) and items_or_item[1] or items_or_item
+  selecta.open_in_split(item, "vertical", state)
+  return true
+end
+
 function M.open_in_horizontal_split(config, items_or_item, module_state)
   local item = vim.islist(items_or_item) and items_or_item[1] or items_or_item
   selecta.open_in_split(item, "horizontal", state)
-  return false
+  return true
+end
+---Cleanup preview highlights from all buffers
+---Invoke code actions for the diagnostic
+---@param config table
+---@param items_or_item table|table[]
+---@param picker_state table
+---@return boolean
+function M.invoke_code_action(config, items_or_item, picker_state)
+  local item = vim.islist(items_or_item) and items_or_item[1] or items_or_item
+  if not item or not item.value or not item.value.diagnostic then
+    vim.notify("No diagnostic selected", vim.log.levels.WARN, notify_opts)
+    return false
+  end
+  local diagnostic = item.value.diagnostic
+  local bufnr = item.value.bufnr
+  -- Validate buffer
+  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+    vim.notify("Invalid buffer for diagnostic", vim.log.levels.WARN, notify_opts)
+    return false
+  end
+  local current_win = vim.api.nvim_get_current_win()
+  vim.api.nvim_set_current_buf(bufnr)
+  vim.api.nvim_win_set_cursor(current_win, { diagnostic.lnum + 1, diagnostic.col })
+  vim.lsp.buf.code_action()
+  return true
+end
+
+---Cleanup preview highlights from all buffers
+---@param state table Module state
+local function cleanup_preview_highlights(state)
+  -- Clear from original buffer
+  pcall(api.nvim_buf_clear_namespace, state.original_buf, state.preview_ns, 0, -1)
+  if state.preview_state then
+    pcall(api.nvim_buf_clear_namespace, state.original_buf, state.preview_state.preview_ns, 0, -1)
+    -- Clear diagnostic-specific preview highlights from all buffers
+    for _, bufnr in ipairs(api.nvim_list_bufs()) do
+      if api.nvim_buf_is_valid(bufnr) then
+        pcall(api.nvim_buf_clear_namespace, bufnr, state.preview_state.preview_ns, 0, -1)
+      end
+    end
+  end
+end
+
+function M.create_keymap_handlers(config, state)
+  return {
+    vertical_split = function(items_or_item, picker_state)
+      return M.open_in_vertical_split(config, items_or_item, state)
+    end,
+    horizontal_split = function(items_or_item, picker_state)
+      return M.open_in_horizontal_split(config, items_or_item, state)
+    end,
+    yank = function(items_or_item, picker_state)
+      return M.yank_diagnostic_with_context(config, items_or_item, state)
+    end,
+    codecompanion = function(items_or_item, picker_state)
+      return M.add_to_codecompanion(config, items_or_item, state)
+    end,
+    codecompanion_inline = function(items_or_item, picker_state)
+      return M.send_to_codecompanion_inline(config, items_or_item, picker_state)
+    end,
+    bookmark = function(items_or_item, picker_state)
+      local bookmarks = require("namu.bookmarks")
+      return bookmarks.create_keymap_handler()(items_or_item, picker_state)
+    end,
+    code_action = function(items_or_item, picker_state)
+      return M.invoke_code_action(config, items_or_item, picker_state)
+    end,
+    quickfix = function(items_or_item, picker_state)
+      -- Handle quickfix specially for diagnostics
+
+      local items_to_send
+
+      -- Check if we have selections
+      if picker_state and picker_state.selected_count and picker_state.selected_count > 0 then
+        -- Use selected items and deduplicate them
+        local selected_items = picker_state:get_selected_items()
+        items_to_send = deduplicate_diagnostic_items(selected_items)
+      elseif vim.islist(items_or_item) then
+        -- Multiple items passed (shouldn't happen for single item selection)
+        items_to_send = deduplicate_diagnostic_items(items_or_item)
+      else
+        -- No selections - send ALL filtered items (like other modules)
+        if picker_state and picker_state.filtered_items then
+          items_to_send = deduplicate_diagnostic_items(picker_state.filtered_items)
+        else
+          items_to_send = deduplicate_diagnostic_items({ items_or_item })
+        end
+      end
+
+      return selecta.add_to_quickfix(items_to_send, state)
+    end,
+  }
 end
 
 ---Show diagnostics picker
@@ -939,6 +1104,30 @@ function M.show(config, scope)
   state.original_win = api.nvim_get_current_win()
   state.original_buf = api.nvim_get_current_buf()
   state.original_pos = api.nvim_win_get_cursor(state.original_win)
+  local handlers = M.create_keymap_handlers(config, state)
+  if config.custom_keymaps then
+    if config.custom_keymaps.vertical_split then
+      config.custom_keymaps.vertical_split.handler = handlers.vertical_split
+    end
+    if config.custom_keymaps.horizontal_split then
+      config.custom_keymaps.horizontal_split.handler = handlers.horizontal_split
+    end
+    if config.custom_keymaps.yank then
+      config.custom_keymaps.yank.handler = handlers.yank
+    end
+    if config.custom_keymaps.codecompanion then
+      config.custom_keymaps.codecompanion.handler = handlers.codecompanion
+    end
+    if config.custom_keymaps.codecompanion_inline then
+      config.custom_keymaps.codecompanion_inline.handler = handlers.codecompanion_inline
+    end
+    if config.custom_keymaps.code_action then
+      config.custom_keymaps.code_action.handler = handlers.code_action
+    end
+    if config.custom_keymaps.quickfix then
+      config.custom_keymaps.quickfix.handler = handlers.quickfix
+    end
+  end
 
   -- Save window state for potential restoration
   if not state.preview_state then
@@ -954,7 +1143,7 @@ function M.show(config, scope)
   end
 
   -- Convert to selecta items
-  local items = diagnostics_to_selecta_items(diagnostics, buffer_info, config)
+  local items = diagnostics_to_selecta_items(diagnostics, buffer_info or api.nvim_get_current_buf(), config)
 
   -- Find current diagnostic (for current file only)
   local current_index = nil
@@ -977,6 +1166,7 @@ function M.show(config, scope)
     preserve_order = true,
     grouped_navigation = true,
     multiline_items = true,
+    logical_item_counter = count_logical_diagnostic_items,
 
     -- These are the custom functions specific to diagnostics
     pre_filter = function(items, query)
@@ -1019,8 +1209,6 @@ function M.show(config, scope)
     end,
 
     on_select = function(item)
-      api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
-      api.nvim_buf_clear_namespace(state.original_buf, state.preview_state.preview_ns, 0, -1)
       if
         state.original_win
         and state.original_pos
@@ -1040,10 +1228,19 @@ function M.show(config, scope)
     end,
 
     on_cancel = function()
-      api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
-      api.nvim_buf_clear_namespace(state.original_buf, state.preview_state.preview_ns, 0, -1)
       if state.preview_state then
         preview_utils.restore_window_state(state.original_win, state.preview_state)
+      end
+    end,
+
+    on_close = function()
+      pcall(api.nvim_buf_clear_namespace, state.original_buf, state.preview_ns, 0, -1)
+      pcall(api.nvim_buf_clear_namespace, state.original_buf, state.preview_state.preview_ns, 0, -1)
+      -- TODO: pass items insitead of this
+      for _, bufnr in ipairs(api.nvim_list_bufs()) do
+        if api.nvim_buf_is_valid(bufnr) then
+          pcall(api.nvim_buf_clear_namespace, bufnr, state.preview_state.preview_ns, 0, -1)
+        end
       end
     end,
   })
@@ -1075,6 +1272,32 @@ function M.show_workspace_diagnostics(config)
   state.original_buf = api.nvim_get_current_buf()
   state.original_pos = api.nvim_win_get_cursor(state.original_win)
 
+  -- Create keymap handlers and update config
+  local handlers = M.create_keymap_handlers(config, state)
+  if config.custom_keymaps then
+    if config.custom_keymaps.vertical_split then
+      config.custom_keymaps.vertical_split.handler = handlers.vertical_split
+    end
+    if config.custom_keymaps.horizontal_split then
+      config.custom_keymaps.horizontal_split.handler = handlers.horizontal_split
+    end
+    if config.custom_keymaps.yank then
+      config.custom_keymaps.yank.handler = handlers.yank
+    end
+    if config.custom_keymaps.codecompanion then
+      config.custom_keymaps.codecompanion.handler = handlers.codecompanion
+    end
+    if config.custom_keymaps.codecompanion_inline then
+      config.custom_keymaps.codecompanion_inline.handler = handlers.codecompanion_inline
+    end
+    if config.custom_keymaps.code_action then
+      config.custom_keymaps.code_action.handler = handlers.code_action
+    end
+    if config.custom_keymaps.quickfix then
+      config.custom_keymaps.quickfix.handler = handlers.quickfix
+    end
+  end
+
   -- Save window state for potential restoration
   if not state.preview_state then
     state.preview_state = preview_utils.create_preview_state("diagnostic_preview")
@@ -1084,7 +1307,6 @@ function M.show_workspace_diagnostics(config)
   -- Check if we've already loaded diagnostics for this session
   local session_loaded = M.workspace_session_loaded or false
 
-  -- Common picker options used for both approaches
   local pick_options = vim.tbl_deep_extend("force", {}, {
     title = "Diagnostics - Workspace",
     preserve_order = true,
@@ -1095,6 +1317,10 @@ function M.show_workspace_diagnostics(config)
     custom_keymaps = config.custom_keymaps,
     grouped_navigation = true,
     multiline_items = true,
+    multiselect = config.multiselect,
+    movement = config.movement,
+    logical_item_counter = count_logical_diagnostic_items,
+    items_fully_loaded = false,
 
     -- Filter function
     pre_filter = function(items, query)
@@ -1144,8 +1370,6 @@ function M.show_workspace_diagnostics(config)
       if not item or not item.value then
         return
       end
-      api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
-      api.nvim_buf_clear_namespace(state.original_buf, state.preview_state.preview_ns, 0, -1)
       if
         state.original_win
         and state.original_pos
@@ -1165,30 +1389,37 @@ function M.show_workspace_diagnostics(config)
     end,
 
     on_cancel = function()
-      api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
-      api.nvim_buf_clear_namespace(state.original_buf, state.preview_state.preview_ns, 0, -1)
       if state.preview_state then
         preview_utils.restore_window_state(state.original_win, state.preview_state)
       end
     end,
-  })
 
+    on_close = function()
+      -- Always clean up preview highlights when picker closes
+      pcall(api.nvim_buf_clear_namespace, state.original_buf, state.preview_ns, 0, -1)
+      pcall(api.nvim_buf_clear_namespace, state.original_buf, state.preview_state.preview_ns, 0, -1)
+      -- Clear diagnostic-specific preview highlights from all buffers
+      for _, bufnr in ipairs(api.nvim_list_bufs()) do
+        if api.nvim_buf_is_valid(bufnr) then
+          pcall(api.nvim_buf_clear_namespace, bufnr, state.preview_state.preview_ns, 0, -1)
+        end
+      end
+    end,
+  })
   -- Check if we need the async loading approach or can use direct diagnostics
   if session_loaded then
     -- We've already loaded workspace files in this session
     -- Just get current diagnostics directly from LSP
     local diagnostics, buffer_info = get_diagnostics_for_scope("workspace")
-
     if #diagnostics > 0 then
-      local items = diagnostics_to_selecta_items(diagnostics, buffer_info, config)
+      local items = diagnostics_to_selecta_items(diagnostics, buffer_info or api.nvim_get_current_buf(), config)
       selecta.pick(items, pick_options)
     else
       vim.notify("No workspace diagnostics found", vim.log.levels.INFO, notify_opts)
       return
     end
   else
-    -- First-time loading: use async approach with status provider
-    -- Add async source
+    -- First-time loading: use async approach with flag setting
     pick_options.async_source = create_async_diagnostics_source(config)
     local placeholder_items = {
       {
@@ -1200,6 +1431,7 @@ function M.show_workspace_diagnostics(config)
     }
     selecta.pick(placeholder_items, pick_options)
     M.workspace_session_loaded = true
+    pick_options.items_fully_loaded = true
   end
 end
 

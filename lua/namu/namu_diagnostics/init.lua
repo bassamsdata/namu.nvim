@@ -14,12 +14,6 @@ M.config = vim.tbl_deep_extend("force", M.config, {
     Info = "DiagnosticVirtualTextInfo",
     Hint = "DiagnosticVirtualTextHint",
   },
-  workspace_diagnostics = {
-    load_once = true,
-    load_timeout = 5000, -- 5 seconds timeout for initial loading
-    progressive_updates = true,
-    preload_progress = true,
-  },
   icons = {
     Error = "",
     Warn = "󰀦",
@@ -33,8 +27,8 @@ M.config = vim.tbl_deep_extend("force", M.config, {
   },
   window = {
     title_prefix = "󰃣 ",
-    min_width = 70,
-    max_width = 90,
+    min_width = 79,
+    max_width = 100,
     max_height = 15,
     min_height = 1,
     padding = 2,
@@ -67,15 +61,30 @@ M.config = vim.tbl_deep_extend("force", M.config, {
       desc = "Open in vertical split",
       handler = function(items_or_item, state)
         local impl = M.get_impl()
-        return impl.open_in_vertical_split(M.config, items_or_item, state)
+        return impl.open_in_vertical_split(M.config, items_or_item)
       end,
     },
     horizontal_split = {
-      keys = { "<C-s>", "<C-x>" },
+      keys = { "<c-h>" },
       desc = "Open in horizontal split",
       handler = function(items_or_item, state)
         local impl = M.get_impl()
         return impl.open_in_horizontal_split(M.config, items_or_item, state)
+      end,
+    },
+    code_action = {
+      keys = { "<C-CR>", "<D-CR>" },
+      handler = function(items_or_item, state)
+        local impl = M.get_impl()
+        return impl.invoke_code_action(M.config, items_or_item, state)
+      end,
+    },
+    codecompanion_inline = {
+      keys = {}, -- FIX: needs some integration from the codecompanion to be robust
+      desc = "Fix diagnostic with AI",
+      handler = function(items_or_item, state)
+        local impl = M.get_impl()
+        return impl.send_to_codecompanion_inline(M.config, items_or_item, state)
       end,
     },
   },
@@ -128,14 +137,6 @@ function M.show_buffer_diagnostics()
     return
   end
   return impl.show_buffer_diagnostics(M.config)
-end
-
-function M.load_workspace_diagnostics()
-  load_impl()
-  if not impl then
-    return false
-  end
-  return impl.load_workspace_diagnostics(M.config)
 end
 
 function M.show_workspace_diagnostics()

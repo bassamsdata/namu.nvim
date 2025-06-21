@@ -3,9 +3,7 @@ local M = {}
 
 local common = require("namu.selecta.common")
 local config = require("namu.selecta.selecta_config").values
-
--- Local references to reduce table lookups
-local log = common.log
+local log = require("namu.utils.logger").log
 
 -- Pre-compute the movement keys
 ---@param opts SelectaOptions
@@ -54,13 +52,10 @@ end
 ---@return boolean handled Whether the toggle was handled
 local function handle_toggle(state, opts, direction)
   local cursor_pos = vim.api.nvim_win_get_cursor(state.win)[1]
-  log(string.format("Toggle pressed - cursor_pos: %d, total items: %d", cursor_pos, #state.filtered_items))
 
   local current_item = state.filtered_items[cursor_pos]
   if current_item then
-    log(string.format("Current item: %s", current_item.text))
     local was_toggled = state:toggle_selection(current_item, opts)
-    log(string.format("Item toggled: %s", tostring(was_toggled)))
 
     -- Only move if toggle was successful
     if was_toggled then
@@ -68,7 +63,7 @@ local function handle_toggle(state, opts, direction)
 
       -- Use grouped navigation if enabled (like for diagnostics)
       if opts.grouped_navigation then
-        next_pos = state:find_next_group_item(cursor_pos, direction, opts)
+        next_pos = state:find_next_group_item(cursor_pos, direction)
       else
         -- Original logic for non-grouped items
         if direction > 0 then
@@ -78,8 +73,6 @@ local function handle_toggle(state, opts, direction)
         end
       end
 
-      log(string.format("Moving to position: %d", next_pos))
-
       -- Set new cursor position
       pcall(vim.api.nvim_win_set_cursor, state.win, { next_pos, 0 })
       common.update_current_highlight(state, opts, next_pos - 1)
@@ -88,7 +81,6 @@ local function handle_toggle(state, opts, direction)
       if opts.on_move then
         local new_item = state.filtered_items[next_pos]
         if new_item then
-          log(string.format("Triggering on_move with item: %s", new_item.text))
           opts.on_move(new_item)
         end
       end
@@ -109,7 +101,6 @@ end
 ---@return boolean handled Whether the untoggle was handled
 local function handle_untoggle(state, opts)
   local cursor_pos = vim.api.nvim_win_get_cursor(state.win)[1]
-  log(string.format("Untoggle pressed - current cursor_pos: %d", cursor_pos))
 
   -- Find the previous selected item position
   local prev_selected_pos = nil
@@ -156,11 +147,8 @@ local function handle_untoggle(state, opts)
     end
   end
 
-  log(string.format("Previous selected item position: %s", prev_selected_pos or "none found"))
-
   if prev_selected_pos then
     local prev_item = state.filtered_items[prev_selected_pos]
-    log(string.format("Moving to and unselecting item: %s at position %d", prev_item.text, prev_selected_pos))
 
     -- Move to the selected item
     pcall(vim.api.nvim_win_set_cursor, state.win, { prev_selected_pos, 0 })
@@ -179,7 +167,6 @@ local function handle_untoggle(state, opts)
 
     -- Trigger move callback if exists
     if opts.on_move then
-      log(string.format("Triggering on_move with item: %s", prev_item.text))
       opts.on_move(prev_item)
     end
 
@@ -191,7 +178,7 @@ local function handle_untoggle(state, opts)
   end
 end
 
----Select or deselect all visible items
+---Select or deselect all items in the current filtered list
 ---@param state SelectaState
 ---@param opts SelectaOptions
 ---@param select boolean Whether to select or deselect
@@ -206,6 +193,9 @@ local function bulk_selection(state, opts, select)
 
   local new_count = select and #state.filtered_items or 0
 
+  -- Mark that we're doing a bulk selection change to preserve cursor position
+  state.bulk_selection_change = true
+
   -- Reset selection state
   state.selected = {}
   state.selected_count = 0
@@ -219,6 +209,11 @@ local function bulk_selection(state, opts, select)
 
   -- Update all selection highlights after bulk selection change
   common.update_selection_highlights(state, opts)
+
+  -- Clear the flag after a short delay to allow the display update to complete
+  vim.schedule(function()
+    state.bulk_selection_change = false
+  end)
 end
 
 ---Helper function to handle selection
@@ -307,10 +302,8 @@ function M.setup_keymaps(state, opts, close_picker_fn, process_query_fn)
         local current_win = vim.api.nvim_get_current_win()
         if current_win ~= state.win and current_win ~= state.prompt_win then
           if not state.in_custom_action then
-            if opts.on_cancel then
-              opts.on_cancel()
-            end
-            close_picker_fn(state)
+            -- Use the new callback-aware close function for auto-close (treat as cancellation)
+            common.close_picker_with_cleanup(state, opts, close_picker_fn, true) -- true = is a cancellation
           end
         end
       end)
@@ -352,13 +345,9 @@ function M.setup_keymaps(state, opts, close_picker_fn, process_query_fn)
       end
     end, { buffer = state.prompt_buf, nowait = true, silent = true, desc = "Namu: previous" })
 
-    -- <Esc> in Normal mode always closes the picker
     vim.keymap.set("n", "<esc>", function()
       if state.active then
-        if opts.on_cancel then
-          opts.on_cancel()
-        end
-        close_picker_fn(state)
+        common.close_picker_with_cleanup(state, opts, close_picker_fn, true) -- true = is a cancellation
       end
     end, { buffer = state.prompt_buf, nowait = true, silent = true, desc = "Namu: Esc Close" })
   end
@@ -397,10 +386,7 @@ function M.setup_keymaps(state, opts, close_picker_fn, process_query_fn)
   if movement_keys.close then
     local close_callback = function()
       if state.active then
-        if opts.on_cancel then
-          opts.on_cancel()
-        end
-        close_picker_fn(state)
+        common.close_picker_with_cleanup(state, opts, close_picker_fn, true) -- true = is a cancellation
       end
     end
 
@@ -429,13 +415,12 @@ function M.setup_keymaps(state, opts, close_picker_fn, process_query_fn)
         return
       end
       if #state.filtered_items == 0 then
-        if opts.on_cancel then
-          opts.on_cancel()
-        end
+        common.close_picker_with_cleanup(state, opts, close_picker_fn, true) -- true = is a cancellation (no items to select)
       else
         M.handle_selection(state, opts)
+        -- Use the new callback-aware close function for selection
+        common.close_picker_with_cleanup(state, opts, close_picker_fn, false) -- false = not a cancellation (successful selection)
       end
-      close_picker_fn(state)
     end)
   end
 
@@ -519,10 +504,10 @@ function M.setup_custom_keymaps(state, opts, close_picker_fn, map_key)
           else
             should_close = action.handler(current_item, state)
           end
-          -- After the handler finishes
           state.in_custom_action = false
           if should_close then
-            close_picker_fn(state)
+            -- Use the new callback-aware close function
+            common.close_picker_with_cleanup(state, opts, close_picker_fn, false) -- false = not a cancellation
           end
         end
 

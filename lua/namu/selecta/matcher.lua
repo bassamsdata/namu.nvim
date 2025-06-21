@@ -295,7 +295,6 @@ function M.sort_items(items, query, preserve_order)
     local match = M.get_match_positions(item.text, query)
     if match then
       -- Log detailed scoring information
-      -- print(string.format("Item: %-30s Score: %d Type: %-8s Gaps: %d", item.text, match.score, match.type, match.gaps))
       table.insert(item_matches, {
         item = item,
         match = match,
