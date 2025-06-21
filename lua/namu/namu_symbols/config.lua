@@ -32,6 +32,7 @@ M.defaults = {
       "Function",
       "Method",
       "Class",
+      "Struct",
       "Module",
       "Property",
       "Variable",
