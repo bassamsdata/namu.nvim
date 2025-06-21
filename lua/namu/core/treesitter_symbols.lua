@@ -34,6 +34,7 @@ local special_filetypes = {
   vimdoc = true,
   markdown = true,
   make = true,
+  toml = true,
 }
 
 -- Extract name from node using query captures
@@ -73,7 +74,7 @@ local function get_kind_from_metadata(node, captures_by_id)
 end
 
 -- Create a symbol from a node
-local function create_symbol_from_node(node, name, kind, bufnr)
+local function create_symbol_from_node(node, name, kind)
   local range = { node:range() }
   if not (range[1] and range[2] and range[3] and range[4]) then
     return nil
@@ -288,7 +289,7 @@ local function get_symbols_standard(bufnr)
   local seen_defs = {}
   -- Process query captures
   for _, tree in ipairs(parser:trees()) do
-    for id, node, meta in query:iter_captures(tree:root(), bufnr) do
+    for id, node, _ in query:iter_captures(tree:root(), bufnr) do
       local capture_name = query.captures[id]
       -- Process scopes that are meaningful
       if capture_name == "local.scope" then
@@ -376,7 +377,7 @@ local function build_hierarchy(definitions, scopes)
   end
   -- Add orphaned definitions as root items
   if #root_symbols == 0 then
-    for def_id, def in pairs(definitions) do
+    for _, def in pairs(definitions) do
       if not def.is_scope_name and not find_parent_scope(def.node, scopes) then
         table.insert(root_symbols, def)
       end

@@ -218,6 +218,26 @@ M.json = [[
 )
 ]]
 
+M.toml = [[
+(table
+  [
+    (bare_key)
+    (dotted_key)
+    (quoted_key)
+  ] @name
+  (#set! "kind" "Class")
+) @symbol
+
+(table_array_element
+  [
+    (bare_key)
+    (dotted_key)
+    (quoted_key)
+  ] @name
+  (#set! "kind" "Enum")
+) @symbol
+]]
+
 -- Get the appropriate query for a filetype
 function M.get_query_for_filetype(filetype)
   return M[filetype]
