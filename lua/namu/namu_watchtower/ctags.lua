@@ -433,8 +433,8 @@ function M.show()
           picker_config,
           ui,
           selecta,
-          "Watchtower Symbols (ctags)",
-          { title = "Namu" },
+          "Namu Watchtower (ctags)",
+          { title = "Namu", icon = config.values.icon },
           false,
           "open",
           prompt_info

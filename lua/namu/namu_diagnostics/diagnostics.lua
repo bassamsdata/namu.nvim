@@ -1153,15 +1153,15 @@ function M.show(config, scope)
 
   -- Create picker title based on scope
   local titles = {
-    current = "Diagnostics - Current File",
-    buffers = "Diagnostics - Open Buffers",
-    workspace = "Diagnostics - Workspace",
+    current = "Namu Diagnostics - Current File",
+    buffers = "Namu Diagnostics - Open Buffers",
+    workspace = "Namu Diagnostics - Workspace",
   }
 
   -- Show picker
   -- Create pick options with only the necessary modifications
   local pick_options = vim.tbl_deep_extend("force", config, {
-    title = titles[scope] or "Diagnostics",
+    title = titles[scope] or "Namu Diagnostics",
     initial_index = current_index,
     preserve_order = true,
     grouped_navigation = true,
@@ -1308,7 +1308,7 @@ function M.show_workspace_diagnostics(config)
   local session_loaded = M.workspace_session_loaded or false
 
   local pick_options = vim.tbl_deep_extend("force", {}, {
-    title = "Diagnostics - Workspace",
+    title = "Namu Diagnostics - Workspace",
     preserve_order = true,
     window = config.window,
     current_highlight = config.current_highlight,

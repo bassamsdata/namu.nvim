@@ -393,7 +393,7 @@ function M.show(config)
           config,
           ui,
           selecta,
-          "Watchtower Symbols (LSP)",
+          "Namu Watchtower Symbols",
           { title = "Namu" },
           false,
           "open",

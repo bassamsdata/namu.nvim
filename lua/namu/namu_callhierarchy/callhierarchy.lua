@@ -724,7 +724,7 @@ function M.show_call_picker(selectaItems, notify_opts)
   -- selectaItems = navigation.sort_by_nesting_depth(selectaItems)
 
   local picker_opts = {
-    title = "Call Hierarchy",
+    title = "Namu Call Hierarchy",
     fuzzy = false,
     preserve_order = true,
     window = M.config.window,

@@ -365,7 +365,7 @@ function impl.show_with_query(config, query, opts)
     impl.selecta.pick(
       initial_items,
       vim.tbl_deep_extend("force", config, {
-        title = "Namu Workspace ",
+        title = "Namu Workspace  ",
         initial_prompt_info = prompt_info,
         config,
         async_source = create_async_symbol_source(state.original_buf, config),
