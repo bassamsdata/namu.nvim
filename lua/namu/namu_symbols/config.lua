@@ -183,7 +183,7 @@ M.defaults = {
     padding = 2,
     -- this is borrored from @mini.nvim, thanks :), it's for >= 0.11
     border = (vim.fn.exists("+winborder") == 1 and vim.o.winborder ~= "") and vim.o.winborder or "rounded",
-    title_pos = "left",
+    title_pos = "center",
     show_footer = true,
     footer_pos = "right",
     relative = "editor",
@@ -273,44 +273,55 @@ M.defaults = {
   custom_keymaps = {
     yank = {
       keys = { "<C-y>" },
-      handler = nil, -- Will be initialized in the module
+      handler = nil,
       desc = "Yank symbol text",
     },
     delete = {
       keys = { "<C-d>" },
-      handler = nil, -- Will be initialized in the module
+      handler = nil,
       desc = "Delete symbol text",
     },
     vertical_split = {
       keys = { "<C-v>" },
-      handler = nil, -- Will be initialized in the module
+      handler = nil,
       desc = "Open in vertical split",
     },
     horizontal_split = {
       keys = { "<C-h>" },
-      handler = nil, -- Will be initialized in the module
+      handler = nil,
       desc = "Open in horizontal split",
     },
     codecompanion = {
       keys = "<C-o>",
-      handler = nil, -- Will be initialized in the module
+      handler = nil,
       desc = "Add symbol to CodeCompanion",
     },
     avante = {
       keys = "<C-t>",
-      handler = nil, -- Will be initialized in the module
+      handler = nil,
       desc = "Add symbol to Avante",
     },
     quickfix = {
-      keys = { "<C-q>" }, -- or whatever keymap you prefer
+      keys = { "<C-q>" },
       handler = nil,
       description = "Add to quickfix",
     },
     sidebar = {
-      keys = { "<C-s>" }, -- or whatever keymap you prefer
+      keys = {}, -- FIX: we need it later, but for now nothing
       handler = nil,
       description = "Add to sidebar",
     },
+    bookmark = {
+      keys = {},
+      handler = nil,
+      description = "Add to bookmarks",
+    },
+  },
+  bookmarks = {
+    enabled = true,
+    storage_path = vim.fn.stdpath("config") .. "/namu-bookmarks.json",
+    auto_save = true,
+    max_items = 100,
   },
 }
 

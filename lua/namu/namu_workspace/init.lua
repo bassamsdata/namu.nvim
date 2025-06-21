@@ -11,29 +11,6 @@ M.config = vim.tbl_deep_extend("force", M.config, {
     min_width = 50,
     max_width = 75,
   },
-
-  vertical_split = {
-    keys = { "<C-v>" },
-    desc = "Open in vertical split",
-    handler = function(items_or_item, state)
-      local impl = M.get_impl()
-      if not impl then
-        return
-      end
-      return impl.open_in_vertical_split(M.config, items_or_item, state)
-    end,
-  },
-  horizontal_split = {
-    keys = { "<C-s>", "<C-x>" },
-    desc = "Open in horizontal split",
-    handler = function(items_or_item, state)
-      local impl = M.get_impl()
-      if not impl then
-        return
-      end
-      return impl.open_in_horizontal_split(M.config, items_or_item, state)
-    end,
-  },
 })
 
 -- Flag to track if implementation is loaded

@@ -11,11 +11,13 @@ local Promise = async_module.Promise
 local lsp = require("namu.namu_symbols.lsp")
 local ui = require("namu.namu_symbols.ui")
 local selecta = require("namu.selecta.selecta")
+local ext = require("namu.namu_symbols.external_plugins")
 local symbol_utils = require("namu.core.symbol_utils")
 local format_utils = require("namu.core.format_utils")
 local treesitter_symbols = require("namu.core.treesitter_symbols")
 local test_patterns = require("namu.namu_symbols.lua_tests")
-local utils = require("namu.core.utils")
+local core_utils = require("namu.core.utils")
+local utils = require("namu.namu_symbols.utils")
 local logger = require("namu.utils.logger")
 local api = vim.api
 
@@ -23,8 +25,9 @@ local M = {}
 
 ---@type NamuState
 local state = nil
+local handlers = nil
 
-local function initialize_state()
+local function initialize_state(config)
   if state and state.original_win and state.preview_ns then
     ui.clear_preview_highlight(state.original_win, state.preview_ns)
     state.original_win = nil
@@ -38,16 +41,24 @@ local function initialize_state()
   state.original_buf = api.nvim_get_current_buf()
   state.original_ft = vim.bo.filetype
   state.original_pos = api.nvim_win_get_cursor(state.original_win)
+
+  handlers = symbol_utils.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
+  if config.custom_keymaps then
+    config.custom_keymaps.yank.handler = handlers.yank
+    config.custom_keymaps.delete.handler = handlers.delete
+    config.custom_keymaps.codecompanion.handler = handlers.codecompanion
+    config.custom_keymaps.quickfix.handler = handlers.quickfix
+    config.custom_keymaps.sidebar.handler = handlers.sidebar
+  end
 end
 
----Open diagnostic in vertical split
+---Open in vertical split
 ---@param config table
 ---@param items_or_item table|table[]
 ---@param module_state table
 function M.open_in_vertical_split(config, items_or_item, module_state)
   local item = vim.islist(items_or_item) and items_or_item[1] or items_or_item
   selecta.open_in_split(item, "vertical", state)
-  -- TODO: Refactor clearning namespaces
   api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
   api.nvim_buf_clear_namespace(item.bufnr, state.preview_ns, 0, -1)
   return true
@@ -60,7 +71,6 @@ end
 function M.open_in_horizontal_split(config, items_or_item, module_state)
   local item = vim.islist(items_or_item) and items_or_item[1] or items_or_item
   selecta.open_in_split(item, "horizontal", state)
-  -- TODO: Refactor clearning namespaces
   api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
   api.nvim_buf_clear_namespace(item.bufnr, state.preview_ns, 0, -1)
   return true
@@ -151,7 +161,7 @@ local function symbols_to_selecta_items(raw_symbols, source, bufnr, config_value
 
     local parent_signature = depth > 0 and parent_stack[depth] or "buffer:" .. bufnr
 
-    local clean_name = utils.clean_symbol_name(result.name, state.original_ft, is_test_file)
+    local clean_name = core_utils.clean_symbol_name(result.name, state.original_ft, is_test_file)
     -- local clean_name = result.name:match("^([^%s%(]+)") or result.name
     -- clean_name = buffer_filetype == "markdown" and result.name or clean_name
     local style = tonumber(config_values.display.style) or 2
@@ -237,7 +247,7 @@ local function process_buffer(bufnr, config)
     or vim.bo[bufnr].buftype ~= ""
     or not api.nvim_buf_is_valid(bufnr)
     or not api.nvim_buf_is_loaded(bufnr)
-    or utils.is_big_buffer(bufnr, { line_threshold = 50000, byte_threshold_mb = false })
+    or core_utils.is_big_buffer(bufnr, { line_threshold = 50000, byte_threshold_mb = false })
   then
     promise:resolve({}, "Buffer invalid or not loaded")
     return promise
@@ -272,7 +282,7 @@ end
 --- Main function to show open buffer symbols
 ---@param config table
 function M.show(config)
-  initialize_state()
+  initialize_state(config)
 
   local bufs = api.nvim_list_bufs()
   local buffer_results = {}
@@ -327,7 +337,7 @@ function M.show(config)
           -- Get file icon and highlight for the buffer
           local icon, icon_hl = "󰈙", "Normal" -- Default icon
           if buf_name and buf_name ~= "" then
-            icon, icon_hl = utils.get_file_icon(buf_name)
+            icon, icon_hl = core_utils.get_file_icon(buf_name)
           end
           local source_indicator = ""
           if #items > 0 then

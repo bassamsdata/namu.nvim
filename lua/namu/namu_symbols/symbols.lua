@@ -34,7 +34,6 @@ local function initialize_state(config)
   state.original_pos = vim.api.nvim_win_get_cursor(state.original_win)
 
   handlers = symbol_utils.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
-  -- Update keymap handlers
   if config.custom_keymaps then
     config.custom_keymaps.yank.handler = handlers.yank
     config.custom_keymaps.delete.handler = handlers.delete
@@ -44,6 +43,7 @@ local function initialize_state(config)
     config.custom_keymaps.avante.handler = handlers.avante
     config.custom_keymaps.quickfix.handler = handlers.quickfix
     config.custom_keymaps.sidebar.handler = handlers.sidebar
+    config.custom_keymaps.bookmark.handler = handlers.bookmark
   end
 end
 
@@ -117,7 +117,8 @@ local function symbols_to_selecta_items(raw_symbols, config, source)
     end
 
     if
-      state.original_ft == "lua"
+      state
+      and state.original_ft == "lua"
       and is_test_file
       and config.enhance_lua_test_symbols
       and (result.name == "" or result.name == " " or result.name:match("^function"))
@@ -149,13 +150,10 @@ local function symbols_to_selecta_items(raw_symbols, config, source)
       end
       return
     end
-
     -- Get parent signature from the stack based on depth
     local parent_signature = result.parent_signature or (depth > 0 and parent_stack[depth] or nil)
-
     -- Create the item - Don't use regex for clean_name to prevent truncation
     local clean_name = core_utils.clean_symbol_name(result.name, state.original_ft, is_test_file)
-
     -- For TreeSitter, we need to map the kind string to a number
     local kind
     if source == "treesitter" then
@@ -244,7 +242,7 @@ function M.show(config, opts)
       config,
       ui,
       selecta,
-      "LSP Symbols",
+      "Namu Symbols",
       notify_opts,
       false,
       "buffer",
@@ -313,7 +311,7 @@ function M.show(config, opts)
       config,
       ui,
       selecta,
-      "LSP Symbols",
+      "Namu Symbols",
       notify_opts,
       false,
       "buffer",

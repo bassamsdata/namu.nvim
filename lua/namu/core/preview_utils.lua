@@ -95,6 +95,12 @@ local function apply_preview_to_window(bufnr, win_id, lnum, col, options, previe
     else
       cursor_line = cursor_line + 1
     end
+    -- Validate cursor position is within buffer bounds
+    local line_count = vim.api.nvim_buf_line_count(bufnr)
+    cursor_line = math.max(1, math.min(cursor_line, line_count))
+    local line_content = vim.api.nvim_buf_get_lines(bufnr, cursor_line - 1, cursor_line, false)[1] or ""
+    col = math.max(0, math.min(col, #line_content))
+
     vim.api.nvim_win_set_cursor(win_id, { cursor_line, col })
     vim.cmd("normal! zz")
     vim.api.nvim_buf_clear_namespace(bufnr, preview_state.preview_ns, 0, -1)
@@ -103,6 +109,10 @@ local function apply_preview_to_window(bufnr, win_id, lnum, col, options, previe
     if options.highlight_line_offset then
       highlight_line = highlight_line + options.highlight_line_offset
     end
+
+    -- Validate highlight line is within bounds
+    highlight_line = math.max(0, math.min(highlight_line, line_count - 1))
+
     pcall(vim.api.nvim_buf_set_extmark, bufnr, preview_state.preview_ns, highlight_line, 0, {
       end_row = highlight_line + 1,
       hl_eol = true,
@@ -131,13 +141,13 @@ function M.preview_symbol(item, win_id, preview_state, options)
 
   local lnum = value.lnum or 0
   local col = value.col or 0
-  local name = value.name or item.text
   options = options or {}
 
   local cache_eventignore = vim.o.eventignore
   vim.o.eventignore = "BufEnter"
   -- If buffer is valid and loaded, use it directly
   if bufnr and vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_is_loaded(bufnr) then
+    logger.log("Using existing buffer for preview: " .. bufnr)
     apply_preview_to_window(bufnr, win_id, lnum, col, options, preview_state, item)
     vim.o.eventignore = cache_eventignore
     return

@@ -1,5 +1,4 @@
 local M = {}
-local logger = require("namu.utils.logger")
 
 -- Find the parent of an item
 function M.find_parent_item(items, current_index)
@@ -91,7 +90,7 @@ end
 function M.navigate_with_feedback(selecta_state, new_index, message)
   if new_index then
     -- Save current position for highlighting
-    local prev_index = selecta_state:get_selected_index()
+    local _ = selecta_state:get_selected_index()
 
     -- Move to new position
     selecta_state:select_item(new_index)
@@ -236,7 +235,7 @@ function M.sort_by_nesting_depth(items)
   local children_by_parent = {}
 
   -- Build maps
-  for i, item in ipairs(items) do
+  for _, item in ipairs(items) do
     local sig = item.value and item.value.signature
     if sig then
       item_by_sig[sig] = item
@@ -296,7 +295,7 @@ function M.sort_by_nesting_depth(items)
   end
 
   -- Step 3: Sort each group of siblings by their descendant count
-  for parent_sig, children in pairs(children_by_parent) do
+  for _, children in pairs(children_by_parent) do
     table.sort(children, function(a, b)
       local a_count = descendant_counts[a.value.signature] or 0
       local b_count = descendant_counts[b.value.signature] or 0

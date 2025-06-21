@@ -1,7 +1,6 @@
 local M = {}
 local logger = require("namu.utils.logger")
 local format_utils = require("namu.core.format_utils")
-local config = require("namu.namu_symbols.config")
 local core = require("namu.core.utils")
 local api = vim.api
 
@@ -190,9 +189,9 @@ end
 
 ---Parse symbol filter from query string
 ---@param query string The query string to parse
----@param config table Configuration containing filter_symbol_types
+---@param opts table Configuration containing filter_symbol_types
 ---@return table|nil Filter information or nil if no filter found
-function M.parse_symbol_filter(query, config)
+function M.parse_symbol_filter(query, opts)
   -- First check for buffer filter syntax with possible chained search
   local buffer_pattern, remaining_search = query:match("^/bf:([^:]+):?(.*)")
 
@@ -222,7 +221,7 @@ function M.parse_symbol_filter(query, config)
   -- (existing code unchanged)
   if #query >= 3 and query:sub(1, 1) == "/" then
     local type_code = query:sub(2, 3)
-    local symbol_type = config.filter_symbol_types[type_code]
+    local symbol_type = opts.filter_symbol_types[type_code]
 
     if symbol_type then
       return {
@@ -271,11 +270,11 @@ end
 ---Find all matching buffer IDs from the items list
 ---@param items table[] List of items to search
 ---@param filter table Filter configuration
----@param config table Module configuration
+---@param opts table Module configuration
 ---@param result table Table to store matching buffer items
 ---@return table matching_buffers Table of matching buffer IDs
 ---@return number count Number of matching buffers
-local function find_matching_buffers(items, filter, config, result)
+local function find_matching_buffers(items, filter, opts, result)
   local matching_buffers = {}
   local count = 0
 
@@ -300,7 +299,7 @@ local function find_matching_buffers(items, filter, config, result)
       count = count + 1
       table.insert(result, item)
 
-      if config.debug then
+      if opts.debug then
         logger.log("Added buffer item to results: " .. item.text)
       end
     end
@@ -314,9 +313,9 @@ end
 ---Add all symbols belonging to matching buffers
 ---@param items table[] List of all items
 ---@param matching_buffers table Table of buffer IDs that matched
----@param config table Module configuration
+---@param opts table Module configuration
 ---@param result table Table to store matching items
-local function add_buffer_symbols(items, matching_buffers, config, result)
+local function add_buffer_symbols(items, matching_buffers, opts, result)
   for _, item in ipairs(items) do
     -- Skip buffer items (already processed)
     if item.kind == "buffer" then
@@ -332,7 +331,7 @@ local function add_buffer_symbols(items, matching_buffers, config, result)
     -- If this item belongs to a matching buffer, include it
     if matching_buffers[tostring(bufnr)] then
       table.insert(result, item)
-      if config.debug then
+      if opts.debug then
         logger.log("Including item from matching buffer: " .. tostring(bufnr))
       end
     end
@@ -344,35 +343,35 @@ end
 ---Main buffer filtering function that combines the helper functions
 ---@param items table[] All items to filter
 ---@param filter table Filter configuration
----@param config table Module configuration
+---@param opts table Module configuration
 ---@param metadata table Metadata to update
 ---@return table filtered_items Filtered items
 ---@return string remaining Remaining filter text
 ---@return table metadata Updated metadata
-local function filter_by_buffer(items, filter, config, metadata)
+local function filter_by_buffer(items, filter, opts, metadata)
   local buffer_filtered = {}
 
-  if config.debug then
+  if opts.debug then
     logger.log("Buffer filtering for pattern: " .. filter.buffer_pattern)
   end
 
   -- Step 1: Find all matching buffer headers
-  local matching_buffers, direct_match_count = find_matching_buffers(items, filter, config, buffer_filtered)
+  local matching_buffers, direct_match_count = find_matching_buffers(items, filter, opts, buffer_filtered)
 
-  if config.debug then
+  if opts.debug then
     logger.log("Matching buffers found: " .. vim.inspect(matching_buffers))
     logger.log("Buffer filtered items after first pass: " .. #buffer_filtered)
   end
 
   -- Step 2: Add all symbols from matching buffers
-  add_buffer_symbols(items, matching_buffers, config, buffer_filtered)
+  add_buffer_symbols(items, matching_buffers, opts, buffer_filtered)
 
   -- Step 3: Update metadata
   metadata.filter_type = "Buffer: " .. filter.buffer_pattern
   metadata.description = filter.description
   metadata.direct_match_count = direct_match_count
 
-  if config.debug then
+  if opts.debug then
     logger.log("Final filtered items count: " .. #buffer_filtered)
   end
 
@@ -415,11 +414,12 @@ end
 ---Filter symbols hierarchically, preserving parent-child relationships
 ---@param items table[] List of items to filter
 ---@param kinds_lookup table Lookup table of symbol kinds to match
----@param config table Module configuration
+---@param opts table Module configuration
 ---@return table result_items Filtered items
 ---@return number direct_matches Number of direct matches
 ---@return number parent_count Number of parent items included
-local function filter_symbols_hierarchy(items, kinds_lookup, config)
+local function filter_symbols_hierarchy(items, kinds_lookup, opts)
+  local _ = opts or {}
   -- First identify direct matches
   local direct_match_indices = {}
   local direct_match_count = 0
@@ -482,12 +482,12 @@ end
 ---Main symbol filtering function
 ---@param items table[] All items to filter
 ---@param filter table Filter configuration
----@param config table Module configuration
+---@param opts table Module configuration
 ---@param metadata table Metadata to update
 ---@return table filtered_items Filtered items
 ---@return string remaining Remaining filter text
 ---@return table metadata Updated metadata
-local function filter_by_symbol(items, filter, config, metadata)
+local function filter_by_symbol(items, filter, opts, metadata)
   -- Create a lookup table for faster kind matching
   local kinds_lookup = {}
   for _, kind in ipairs(filter.kinds) do
@@ -495,7 +495,7 @@ local function filter_by_symbol(items, filter, config, metadata)
   end
 
   -- If not preserving hierarchy, use a simple optimized filter
-  if not config.preserve_hierarchy then
+  if not opts.preserve_hierarchy then
     local filtered, count = filter_symbols_simple(items, kinds_lookup)
 
     -- Update metadata
@@ -507,10 +507,10 @@ local function filter_by_symbol(items, filter, config, metadata)
   end
 
   -- For preserving hierarchy, use the hierarchical filter
-  local result_items, direct_match_count, parent_count = filter_symbols_hierarchy(items, kinds_lookup, config)
+  local result_items, direct_match_count, parent_count = filter_symbols_hierarchy(items, kinds_lookup, opts)
 
   -- Conditionally log only when debugging is enabled
-  if config.debug then
+  if opts.debug then
     logger.log(
       string.format(
         "Filter results: %d items (%d direct + %d parents)",
@@ -530,38 +530,10 @@ local function filter_by_symbol(items, filter, config, metadata)
   return result_items, filter.remaining, metadata
 end
 
--- Main pre_filter function with all functionality
-local function pre_filter(items, query, config)
-  -- First check if there's a filter
-  local filter = M.parse_symbol_filter(query, config)
-
-  -- If no filter, return items unchanged
-  if not filter then
-    return items, query
-  end
-
-  local metadata = {
-    is_symbol_filter = true,
-    remaining = filter.remaining,
-  }
-
-  -- Handle buffer filtering
-  if filter.buffer_filter then
-    return filter_by_buffer(items, filter, config, metadata)
-  end
-
-  -- Handle symbol type filtering
-  if filter.kinds then
-    return filter_by_symbol(items, filter, config, metadata)
-  end
-
-  return items, query
-end
-
 ---Displays the fuzzy finder UI with symbol list
 ---@param selectaItems table[] Items to display
 ---@param state table State object
----@param config table Configuration
+---@param opts table Configuration
 ---@param ui table UI module with helper functions
 ---@param selecta table Selecta module
 ---@param title string Title for the picker
@@ -571,7 +543,7 @@ end
 function M.show_picker(
   selectaItems,
   state,
-  config,
+  opts,
   ui,
   selecta,
   title,
@@ -597,17 +569,17 @@ function M.show_picker(
     title = title or "Symbols",
     fuzzy = false,
     preserve_order = true,
-    window = config.window,
-    display = config.display,
-    auto_select = config.auto_select,
-    initially_hidden = config.initially_hidden,
-    movement = vim.tbl_deep_extend("force", config.movement, {}),
-    current_highlight = config.current_highlight,
-    row_position = config.row_position,
-    custom_keymaps = vim.tbl_deep_extend("force", config.custom_keymaps, {}),
-    normal_mode = config.normal_mode,
-    debug = config.debug,
-    preserve_hierarchy = config.preserve_hierarchy or false,
+    window = opts.window,
+    display = opts.display,
+    auto_select = opts.auto_select,
+    initially_hidden = opts.initially_hidden,
+    movement = vim.tbl_deep_extend("force", opts.movement, {}),
+    current_highlight = opts.current_highlight,
+    row_position = opts.row_position,
+    custom_keymaps = vim.tbl_deep_extend("force", opts.custom_keymaps, {}),
+    normal_mode = opts.normal_mode,
+    debug = opts.debug,
+    preserve_hierarchy = opts.preserve_hierarchy or false,
     -- root_item_first = true,
     -- always_include_root = true,
     is_root_item = function(item)
@@ -617,11 +589,11 @@ function M.show_picker(
       return item.value and item.value.parent_signature
     end,
     formatter = function(item)
-      return format_utils.format_item_for_display(item, config)
+      return format_utils.format_item_for_display(item, opts)
     end,
     pre_filter = function(items, query)
       -- First check if there's a filter
-      local filter = M.parse_symbol_filter(query, config)
+      local filter = M.parse_symbol_filter(query, opts)
       -- If no filter, return items unchanged
       if not filter then
         return items, query
@@ -632,18 +604,18 @@ function M.show_picker(
       }
       -- Handle buffer filtering
       if filter.buffer_filter then
-        return filter_by_buffer(items, filter, config, metadata)
+        return filter_by_buffer(items, filter, opts, metadata)
       end
       -- Handle symbol type filtering
       if filter.kinds then
-        return filter_by_symbol(items, filter, config, metadata)
+        return filter_by_symbol(items, filter, opts, metadata)
       end
 
       return items, query
     end,
     hooks = {
       on_render = function(buf, filtered_items)
-        ui.apply_highlights(buf, filtered_items, config)
+        ui.apply_highlights(buf, filtered_items, opts)
       end,
       on_buffer_clear = function()
         ui.clear_preview_highlight(state.original_win, state.preview_ns)
@@ -656,13 +628,13 @@ function M.show_picker(
       end,
     },
     multiselect = {
-      enabled = config.multiselect.enabled,
-      indicator = config.multiselect.indicator,
+      enabled = opts.multiselect.enabled,
+      indicator = opts.multiselect.indicator,
       on_select = function(selected_items)
-        if config.preview.highlight_mode == "select" then
+        if opts.preview.highlight_mode == "select" then
           ui.clear_preview_highlight(state.original_win, state.preview_ns)
           if type(selected_items) == "table" and selected_items[1] then
-            ui.preview_symbol(selected_items[1].value, state.original_win, state.preview_ns, state, config.highlight)
+            ui.preview_symbol(selected_items[1].value, state.original_win, state.preview_ns, state, opts.highlight)
           end
         end
         if type(selected_items) == "table" and selected_items[1] then
@@ -670,19 +642,17 @@ function M.show_picker(
         end
       end,
     },
-    initial_index = config.focus_current_symbol
+    initial_index = opts.focus_current_symbol
         and current_symbol
         and ui.find_symbol_index(selectaItems, current_symbol, is_ctags, context, state)
       or nil,
     initial_prompt_info = initial_prompt_info,
     on_select = function(item)
-      ui.clear_preview_highlight(state.original_win, state.preview_ns)
       M.jump_to_symbol(item.value, state)
     end,
     -- FIX: we need to move the oroiginal buffer first for watchtower symbols
     -- check preview_symbol first if we're doing that there first, but don't think so
     on_cancel = function()
-      ui.clear_preview_highlight(state.original_win, state.preview_ns)
       local buf = api.nvim_get_current_buf()
       if buf ~= state.original_buf then
         api.nvim_win_call(state.original_win, function()
@@ -693,14 +663,18 @@ function M.show_picker(
         core.restore_focus_and_cursor(state.original_win, state.original_pos)
       end
     end,
+    on_close = function()
+      -- Always clean up preview highlights when picker closes
+      ui.clear_preview_highlight(state.original_win, state.preview_ns)
+    end,
     -- BUG: cursor position outside
     -- Error /namu.nvim/lua/namu/core/symbol_utils.lua:889: Cursor position outside buffer
     -- it looks like if we're moving very fast, and pressed esc to _on_cancel then I have the error:
     -- not sure if we wrapped on_cancel fucntion with vim.schedule will affect performance
     on_move = function(item)
-      if config.preview.highlight_on_move and config.preview.highlight_mode == "always" then
+      if opts.preview.highlight_on_move and opts.preview.highlight_mode == "always" then
         if item then
-          ui.preview_symbol(item, state.original_win, state.preview_ns, state, config.highlight)
+          ui.preview_symbol(item, state.original_win, state.preview_ns, state, opts.highlight)
         end
       end
     end,
@@ -729,7 +703,6 @@ function M.show_picker(
       group = augroup,
       pattern = tostring(picker_win),
       callback = function()
-        ui.clear_preview_highlight(state.original_win, state.preview_ns)
         api.nvim_del_augroup_by_name("NamuCleanup")
       end,
       once = true,
@@ -740,24 +713,22 @@ function M.show_picker(
 end
 
 -- Create handlers for different actions
-function M.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
+function M.create_keymaps_handlers(opts, state, ui, selecta, ext, utils)
   local handlers = {}
 
   -- Capture config in closure for handlers to use
-  local picker_config = config
+  local picker_config = opts
 
   handlers.yank = function(items_or_item)
     local success = utils.yank_symbol_text(items_or_item, state)
-    if success and config.actions.close_on_yank then
-      ui.clear_preview_highlight(state.original_win, state.preview_ns)
+    if success and opts.actions.close_on_yank then
       return false
     end
   end
 
   handlers.delete = function(items_or_item)
     local deleted = utils.delete_symbol_text(items_or_item, state)
-    if deleted and config.actions.close_on_delete then
-      ui.clear_preview_highlight(state.original_win, state.preview_ns)
+    if deleted and opts.actions.close_on_delete then
       return false
     end
   end
@@ -770,7 +741,6 @@ function M.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
     local new_win = selecta.open_in_split(item, "vertical", state)
     if new_win then
       -- Most of this is now handled in open_in_split, so we can simplify
-      ui.clear_preview_highlight(state.original_win, state.preview_ns)
 
       return true
     end
@@ -785,7 +755,6 @@ function M.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
     local new_win = selecta.open_in_split(item, "horizontal", state)
     if new_win then
       -- Most of this is now handled in open_in_split, so we can simplify
-      ui.clear_preview_highlight(state.original_win, state.preview_ns)
       return true
     end
   end
@@ -799,19 +768,46 @@ function M.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
     end
 
     local success = selecta.add_to_quickfix(items_to_send, state)
-    if success and config.actions.close_on_quickfix then
-      ui.clear_preview_highlight(state.original_win, state.preview_ns)
+    if success and opts.actions.close_on_quickfix then
       return true
     end
     return false
   end
   handlers.sidebar = function(items_or_item, picker_state)
-    local items_to_show
-    if picker_state.selected_count > 0 then
-      items_to_show = picker_state:get_selected_items()
-    else
-      items_to_show = picker_state.filtered_items
+    -- Debug: Log the parameters
+    logger.log("=== SIDEBAR DEBUG ===")
+    logger.log("items_or_item type: " .. type(items_or_item))
+    if type(items_or_item) == "table" and items_or_item.text then
+      logger.log("items_or_item is single item: " .. items_or_item.text)
+    elseif type(items_or_item) == "table" and #items_or_item > 0 then
+      logger.log("items_or_item is array with " .. #items_or_item .. " items")
     end
+
+    logger.log("picker_state type: " .. type(picker_state))
+    if picker_state then
+      logger.log("picker_state.selected_count: " .. tostring(picker_state.selected_count))
+      logger.log("picker_state.filtered_items count: " .. (#picker_state.filtered_items or 0))
+    end
+
+    local items_to_show
+
+    -- Check if we received selected items as first parameter
+    if type(items_or_item) == "table" and #items_or_item > 0 and items_or_item[1] and items_or_item[1].text then
+      -- We received an array of selected items
+      items_to_show = items_or_item
+      logger.log("Using selected items passed as parameter")
+    else
+      -- We received a single item, use all filtered items from picker state
+      items_to_show = picker_state.filtered_items
+      logger.log("Using all filtered items from picker state")
+    end
+
+    logger.log("items_to_show type: " .. type(items_to_show))
+    if items_to_show then
+      logger.log("items_to_show count: " .. #items_to_show)
+    end
+    logger.log("=== END SIDEBAR DEBUG ===")
+
     local original_picker_opts = picker_state.original_opts or {}
     if original_picker_opts then
       logger.log("Original picker options found: " .. vim.inspect(picker_state))
@@ -829,12 +825,19 @@ function M.create_keymaps_handlers(config, state, ui, selecta, ext, utils)
     return true -- Close original picker
   end
 
+  handlers.bookmark = function(items_or_item, picker_state)
+    local bookmarks = require("namu.bookmarks")
+    return bookmarks.create_keymap_handler()(items_or_item, picker_state)
+  end
+
   handlers.codecompanion = function(items_or_item)
     ext.codecompanion_handler(items_or_item, state.original_buf)
+    return true
   end
 
   handlers.avante = function(items_or_item)
     ext.avante_handler(items_or_item, state.original_buf)
+    return true
   end
 
   return handlers

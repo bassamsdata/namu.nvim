@@ -284,7 +284,6 @@ function M.preview_symbol(symbol, win, ns_id, state, highlight_group)
   if state and state.last_highlighted_bufnr and vim.api.nvim_buf_is_valid(state.last_highlighted_bufnr) then
     vim.api.nvim_buf_clear_namespace(state.last_highlighted_bufnr, ns_id, 0, -1)
   end
-  -- TODO: use state.original_buffer
   local current_bufnr = vim.api.nvim_win_get_buf(win)
   local target_bufnr = nil
   -- Check if we have buffer info in symbol

@@ -5,6 +5,7 @@
 ---@field prompt_buf number? Prompt buffer handle
 ---@field prompt_win number? Prompt window handle
 ---@field query string[] Current search query
+---@field query_changed boolean Whether the query has changed since last render
 ---@field cursor_pos number Cursor position in query
 ---@field items SelectaItem[] All items
 ---@field filtered_items SelectaItem[] Filtered items
@@ -34,9 +35,9 @@
 ---@field get_selected_items fun(self: SelectaState): SelectaItem[]
 ---@field is_valid fun(self: SelectaState): boolean
 ---@field cleanup fun(self: SelectaState)
----@field query_changed? boolean
----@field find_next_group_item fun(self: SelectaState, current_pos: number, direction: number, opts: SelectaOptions): number
+---@field find_next_group_item fun(self: SelectaState, current_pos: number, direction: number): number
 ---@field in_custom_action? boolean Whether currently in a custom action
+---@field bulk_selection_change? boolean Flag to preserve cursor position during bulk selection operations
 
 ---@class SelectaItem
 ---@field text string Display text
@@ -119,7 +120,7 @@
 ---@field prefix_highlighter? fun(buf: number, line_nr: number, item: SelectaItem, icon_end: number, ns_id: number)
 ---@field parent_key? fun(item: SelectaItem): string
 ---@field root_item_first? boolean
----@field always_include_root? boolean
+---@field always_include_root? boolean Whether to always include the root item in the results
 ---@field is_root_item? fun(item: SelectaItem): boolean
 ---@field current_highlight? CurrentHighlightConfig
 ---@field preserve_hierarchy? boolean
@@ -127,6 +128,9 @@
 ---@field normal_mode? boolean Enable normal mode navigation (default: false)
 ---@field grouped_navigation? boolean Enable grouped navigation for multi-line items
 ---@field multiline_items? boolean Whether items can span multiple lines
+---@field items_fully_loaded? boolean Whether all items have been loaded (async)
+---@field on_close? fun() Function to call when picker closes
+---@field logical_item_counter? fun(items: SelectaItem[]): number Custom function to count logical items (for multiline/grouped items)
 
 ---@class CurrentHighlightConfig
 ---@field enabled boolean Whether to use custom highlight

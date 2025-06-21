@@ -194,6 +194,8 @@ function M.show(opts)
       else
         vim.notify("No colorscheme selected.", vim.log.levels.WARN, notify_opts)
       end
+      vim.api.nvim_set_current_win(state.original_win)
+      vim.api.nvim_win_set_cursor(state.original_win, state.original_pos)
     end,
     on_cancel = function()
       vim.api.nvim_set_current_win(state.original_win)

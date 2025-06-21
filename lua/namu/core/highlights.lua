@@ -1,6 +1,4 @@
 local M = {}
-
--- Store all highlight groups
 local hl_groups = {}
 
 -- Thanks to @nvim-snacks for this one
@@ -12,38 +10,68 @@ function M.set_highlights(groups, opts)
     local hl_name = opts.prefix and (opts.prefix .. name) or name
     -- Convert string to link definition
     local hl_def = type(def) == "string" and { link = def } or def
-    -- Add default flag if specified
     if opts.default ~= false then
       hl_def.default = true
     end
-    -- Store for colorscheme changes
     hl_groups[hl_name] = hl_def
-    -- Set the highlight
     vim.api.nvim_set_hl(0, hl_name, hl_def)
   end
 end
 
--- Get background-only highlight
-function M.get_bg_highlight(hl_name)
-  local bg_name = hl_name .. "BG"
-
-  -- Return cached highlight if it exists
-  if vim.fn.hlexists(bg_name) == 1 then
-    return bg_name
+-- Get foreground color from a highlight group (handles links)
+local function get_fg_color(group_name)
+  local hl = vim.api.nvim_get_hl(0, { name = group_name, link = false })
+  if hl.fg then
+    return hl.fg
   end
-
-  -- Get original highlight background
-  local orig_hl = vim.api.nvim_get_hl(0, { name = hl_name })
-  if orig_hl.bg then
-    -- Create background-only highlight
-    M.set_highlights({ [bg_name] = { bg = string.format("#%06x", orig_hl.bg) } })
-    return bg_name
+  local linked_hl = vim.api.nvim_get_hl(0, { name = group_name })
+  if linked_hl.link then
+    local resolved_hl = vim.api.nvim_get_hl(0, { name = linked_hl.link, link = false })
+    return resolved_hl.fg
   end
-
-  return hl_name -- Fallback
+  return nil
 end
 
--- Create the autocmd for colorscheme changes
+-- Get background color from a highlight group (handles links)
+local function get_bg_color(group_name)
+  local hl = vim.api.nvim_get_hl(0, { name = group_name, link = false })
+  if hl.bg then
+    return hl.bg
+  end
+
+  -- If no bg found, try to resolve link
+  local linked_hl = vim.api.nvim_get_hl(0, { name = group_name })
+  if linked_hl.link then
+    local resolved_hl = vim.api.nvim_get_hl(0, { name = linked_hl.link, link = false })
+    return resolved_hl.bg
+  end
+
+  return nil
+end
+
+function M.create_combined_highlight(fg_group, bg_group, result_group, opts)
+  opts = opts or {}
+  local fg_color = get_fg_color(fg_group)
+  local bg_color = get_bg_color(bg_group)
+
+  local combined_hl = {}
+  if fg_color then
+    combined_hl.fg = fg_color
+  end
+  if bg_color then
+    combined_hl.bg = bg_color
+  end
+
+  -- Apply additional styling options
+  for key, value in pairs(opts) do
+    if key ~= "fg" and key ~= "bg" then -- Don't override fg/bg from groups
+      combined_hl[key] = value
+    end
+  end
+
+  M.set_highlights({ [result_group] = combined_hl })
+end
+
 vim.api.nvim_create_autocmd("ColorScheme", {
   group = vim.api.nvim_create_augroup("NamuHighlights", { clear = true }),
   callback = function()
@@ -51,12 +79,14 @@ vim.api.nvim_create_autocmd("ColorScheme", {
     for name, def in pairs(hl_groups) do
       vim.api.nvim_set_hl(0, name, def)
     end
+    M.create_combined_highlight("Special", "NamuCurrentItem", "NamuCurrentItemIcon", { bold = true })
+    M.create_combined_highlight("Error", "NamuCurrentItem", "NamuCurrentItemIconSelection", { bold = true })
   end,
 })
 
 -- Initialize all Namu highlights
 function M.setup()
-  -- Selecta highlights
+  -- Namu Core
   M.set_highlights({
     NamuCursor = { blend = 100, nocombine = true },
     NamuPrefix = "Special",
@@ -65,8 +95,10 @@ function M.setup()
     NamuFilter = "Type", -- the prefix in prompt window
     NamuPrompt = "FloatTitle", -- Prompt window
     NamuSelected = "Statement", -- Selected item in selection mode
+    NamuEmptyIndicator = "Comment", -- Empty selection indicator
     NamuFooter = "Comment", -- Footer text
     NamuCurrentItem = "CursorLine", -- Highlight the current item
+    -- NamuCurrentItemIcon = "NamuCurrentItem", -- Icon highlight, defaults to current item, overridden when custom colors are used
     -- Namu Symbols
     NamuPrefixSymbol = "@Comment",
     NamuSymbolFunction = "@function",
@@ -80,7 +112,7 @@ function M.setup()
     NamuSymbolEnum = "@lsp.type.enum",
     NamuSymbolModule = "@lsp.type.module",
     -- Namu Tree Guides
-    NamuTreeGuides = "Comment",
+    NmuTreeGuides = "Comment",
     NamuFileInfo = "Comment",
     NamuPreview = "Visual",
     -- Parent/nested structure highlights
@@ -89,19 +121,10 @@ function M.setup()
     NamuStyle = "Type", -- Type highlighting works well for style elements
   })
 
-  -- FIX: for some reason, always when start neovim, this gets cleared - so this is a workaround
   vim.schedule(function()
-    vim.api.nvim_set_hl(0, "NamuCursor", { blend = 100, nocombine = true, default = true })
+    M.create_combined_highlight("Special", "NamuCurrentItem", "NamuCurrentItemIcon", { bold = true })
+    M.create_combined_highlight("Error", "NamuCurrentItem", "NamuCurrentItemIconSelection", { bold = true })
   end)
-  -- Diagnostic highlights - create background versions
-  -- for _, name in ipairs({
-  --   "DiagnosticVirtualTextError",
-  --   "DiagnosticVirtualTextWarn",
-  --   "DiagnosticVirtualTextInfo",
-  --   "DiagnosticVirtualTextHint",
-  -- }) do
-  --   M.get_bg_highlight(name)
-  -- end
 end
 
 return M

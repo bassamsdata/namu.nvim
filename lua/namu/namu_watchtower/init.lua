@@ -29,7 +29,6 @@ M.config = vim.tbl_deep_extend("force", M.config, {
         if not impl then
           return
         end
-        -- FIX: Implemetn this please
         return impl.yank(M.config, items_or_item, state)
       end,
     },
@@ -55,7 +54,7 @@ M.config = vim.tbl_deep_extend("force", M.config, {
       end,
     },
     horizontal_split = {
-      keys = { "<C-s>", "<C-h>" },
+      keys = { "<C-h>" },
       desc = "Open in horizontal split",
       handler = function(items_or_item, state)
         local impl = M.get_impl()

@@ -238,7 +238,7 @@ function M.add_tree_state_to_items(items)
 
     -- Find items that should be treated as top-level (have parent signatures that don't exist)
     local orphaned_items = {}
-    for i, item in ipairs(items) do
+    for _, item in ipairs(items) do
       if item.value and item.value.parent_signature and not signature_to_index[item.value.parent_signature] then
         table.insert(orphaned_items, item)
       end
@@ -261,14 +261,11 @@ function M.add_tree_state_to_items(items)
   end
 
   -- Process function to build tree state for each item
-  local processed = {}
   local function process_children(parent_signature, parent_tree_state)
     local children = children_by_parent[parent_signature]
     if not children or #children == 0 then
       return
     end
-
-    -- logger.log("Processing " .. #children .. " children for parent " .. parent_signature)
 
     for i, child in ipairs(children) do
       local is_last = (i == #children)
@@ -281,8 +278,6 @@ function M.add_tree_state_to_items(items)
         end
       end
       table.insert(child_tree_state, is_last)
-
-      -- logger.log("Child " .. (child.value.signature or "unknown") .. " tree_state: " .. vim.inspect(child_tree_state))
 
       -- Set the tree state on the item
       child.tree_state = child_tree_state

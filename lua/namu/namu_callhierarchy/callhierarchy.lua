@@ -713,10 +713,10 @@ function M.show_call_picker(selectaItems, notify_opts)
     -- Extract the clean name and file info
     local name_and_info = item.text
     -- Visual indicator for parent items that were included but didn't match search
-    local style = ""
-    if item.is_parent_match then
-      style = "dim"
-    end
+    -- local style = ""
+    -- if item.is_parent_match then
+    --   style = "dim"
+    -- end
 
     return prefix_padding .. guides .. indicator .. icon .. " " .. name_and_info
   end

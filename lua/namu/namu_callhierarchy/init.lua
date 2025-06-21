@@ -1,10 +1,9 @@
---[[ Namu Call Hierarchy 
+--[[ Namu Call Hierarchy
 A call hierarchy browser that shows incoming and outgoing function calls.
 Integrates with selecta for fuzzy finding and navigation.
 ]]
 
 local M = {}
-local log = require("namu.utils.logger").log
 
 -- Inherit defaults from symbols config
 M.config = require("namu.namu_symbols.config").values

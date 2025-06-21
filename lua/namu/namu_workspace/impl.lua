@@ -13,6 +13,10 @@ local function load_deps()
   impl.highlights = require("namu.core.highlights")
   impl.utils = require("namu.core.utils")
 end
+local symbol_utils = require("namu.core.symbol_utils")
+local ui = require("namu.namu_symbols.ui")
+local ext = require("namu.namu_symbols.external_plugins")
+local utils = require("namu.namu_symbols.utils")
 
 -- Create state for storing data between functions
 local state = {
@@ -31,7 +35,7 @@ local state = {
 ---@param module_state table
 function impl.open_in_vertical_split(config, items_or_item, module_state)
   local item = vim.islist(items_or_item) and items_or_item[1] or items_or_item
-  selecta.open_in_split(item, "vertical", state)
+  impl.selecta.open_in_split(item, "vertical", state)
   return false
 end
 
@@ -41,7 +45,7 @@ end
 ---@param module_state table
 function impl.open_in_horizontal_split(config, items_or_item, module_state)
   local item = vim.islist(items_or_item) and items_or_item[1] or items_or_item
-  selecta.open_in_split(item, "horizontal", state)
+  impl.selecta.open_in_split(item, "horizontal", state)
   return false
 end
 
@@ -316,6 +320,14 @@ function impl.show_with_query(config, query, opts)
   state.original_buf = api.nvim_get_current_buf()
   state.original_pos = api.nvim_win_get_cursor(state.original_win)
 
+  local handlers = nil
+  handlers = symbol_utils.create_keymaps_handlers(config, state, ui, impl.selecta, ext, utils)
+  -- Update keymap handlers
+  config.custom_keymaps.vertical_split.handler = handlers.vertical_split
+  config.custom_keymaps.horizontal_split.handler = handlers.horizontal_split
+  config.custom_keymaps.quickfix.handler = handlers.quickfix
+  config.custom_keymaps.sidebar.handler = handlers.sidebar
+
   -- Save window state for potential restoration
   if not state.preview_state then
     state.preview_state = impl.preview_utils.create_preview_state("workspace_preview")
@@ -391,16 +403,11 @@ function impl.show_with_query(config, query, opts)
           local cache_eventignore = vim.o.eventignore
           vim.o.eventignore = "BufEnter"
           pcall(function()
-            -- Set mark for jumplist
             api.nvim_win_call(state.original_win, function()
               vim.cmd("normal! m'")
             end)
-
-            -- Jump to file position using the shared edit_file function
             local value = item.value
             local buf_id = impl.preview_utils.edit_file(value.file_path, state.original_win)
-
-            -- Set cursor position
             if buf_id then
               api.nvim_win_set_cursor(state.original_win, {
                 value.lnum + 1,
@@ -413,12 +420,10 @@ function impl.show_with_query(config, query, opts)
               end)
             end
           end)
-
           vim.o.eventignore = cache_eventignore
         end,
 
         on_cancel = function()
-          -- Clear highlights
           api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
           if
             state.preview_state
@@ -428,11 +433,9 @@ function impl.show_with_query(config, query, opts)
             api.nvim_buf_clear_namespace(state.preview_state.scratch_buf, state.preview_ns, 0, -1)
           end
 
-          -- Restore original window state
           if state.preview_state then
             impl.preview_utils.restore_window_state(state.original_win, state.preview_state)
           else
-            -- Fallback restoration
             if
               state.original_win
               and state.original_pos
@@ -451,7 +454,6 @@ function impl.show_with_query(config, query, opts)
   end, { query = query or "" })
 end
 
--- Default show function (empty query)
 function impl.show(config, opts)
   return impl.show_with_query(config, "", opts)
 end

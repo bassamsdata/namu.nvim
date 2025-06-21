@@ -271,7 +271,7 @@ end
 local function process_buffer(bufnr)
   local promise = Promise.new()
   if
-    not vim.fn.getbufvar(bufnr, "&buflisted") == 1
+    vim.fn.getbufvar(bufnr, "&buflisted") ~= 1
     or vim.bo[bufnr].buftype ~= ""
     or not api.nvim_buf_is_valid(bufnr)
     or not api.nvim_buf_is_loaded(bufnr)
