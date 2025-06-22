@@ -319,7 +319,7 @@ function impl.show(config, opts)
       end, selectaItems)
     end
 
-    symbol_utils.show_picker(selectaItems, state, config, ui, selecta, "Ctags", notify_opts, true, "buffer")
+    symbol_utils.show_picker(selectaItems, state, config, ui, selecta, " Namu Ctags ", notify_opts, true, "buffer")
   end)
 end
 

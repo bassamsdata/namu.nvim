@@ -17,6 +17,7 @@ local uv = vim.uv or vim.loop
 
 ---@type NamuCoreConfig
 M.config = {
+  title = "  Namu Colorscheme ",
   persist = true,
   write_shada = false,
   excluded_schemes = {},
