@@ -351,17 +351,8 @@ end
 local function filter_by_buffer(items, filter, opts, metadata)
   local buffer_filtered = {}
 
-  if opts.debug then
-    logger.log("Buffer filtering for pattern: " .. filter.buffer_pattern)
-  end
-
   -- Step 1: Find all matching buffer headers
   local matching_buffers, direct_match_count = find_matching_buffers(items, filter, opts, buffer_filtered)
-
-  if opts.debug then
-    logger.log("Matching buffers found: " .. vim.inspect(matching_buffers))
-    logger.log("Buffer filtered items after first pass: " .. #buffer_filtered)
-  end
 
   -- Step 2: Add all symbols from matching buffers
   add_buffer_symbols(items, matching_buffers, opts, buffer_filtered)
@@ -497,29 +488,15 @@ local function filter_by_symbol(items, filter, opts, metadata)
   -- If not preserving hierarchy, use a simple optimized filter
   if not opts.preserve_hierarchy then
     local filtered, count = filter_symbols_simple(items, kinds_lookup)
-
     -- Update metadata
     metadata.filter_type = filter.filter_type
     metadata.description = filter.description
     metadata.direct_match_count = count
-
     return filtered, filter.remaining, metadata
   end
 
   -- For preserving hierarchy, use the hierarchical filter
   local result_items, direct_match_count, parent_count = filter_symbols_hierarchy(items, kinds_lookup, opts)
-
-  -- Conditionally log only when debugging is enabled
-  if opts.debug then
-    logger.log(
-      string.format(
-        "Filter results: %d items (%d direct + %d parents)",
-        #result_items,
-        direct_match_count,
-        parent_count
-      )
-    )
-  end
 
   -- Update metadata
   metadata.filter_type = filter.filter_type
@@ -618,7 +595,7 @@ function M.show_picker(
         ui.apply_highlights(buf, filtered_items, opts)
       end,
       on_buffer_clear = function()
-        ui.clear_preview_highlight(state.original_win, state.preview_ns)
+        ui.clear_preview_highlight(state.original_win, state.preview_ns, state)
         if state.original_win and state.original_pos and api.nvim_win_is_valid(state.original_win) then
           api.nvim_win_set_cursor(state.original_win, state.original_pos)
         end
@@ -665,7 +642,7 @@ function M.show_picker(
     end,
     on_close = function()
       -- Always clean up preview highlights when picker closes
-      ui.clear_preview_highlight(state.original_win, state.preview_ns)
+      ui.clear_preview_highlight(state.original_win, state.preview_ns, state)
     end,
     -- BUG: cursor position outside
     -- Error /namu.nvim/lua/namu/core/symbol_utils.lua:889: Cursor position outside buffer
@@ -758,60 +735,29 @@ function M.create_keymaps_handlers(opts, state, ui, selecta, ext, utils)
       return true
     end
   end
+
   handlers.quickfix = function(items_or_item, picker_state)
     local items_to_send
-
     if type(items_or_item) == "table" and #items_or_item > 0 then
       items_to_send = items_or_item
     else
       items_to_send = picker_state.filtered_items
     end
-
     local success = selecta.add_to_quickfix(items_to_send, state)
     if success and opts.actions.close_on_quickfix then
       return true
     end
     return false
   end
+
   handlers.sidebar = function(items_or_item, picker_state)
-    -- Debug: Log the parameters
-    logger.log("=== SIDEBAR DEBUG ===")
-    logger.log("items_or_item type: " .. type(items_or_item))
-    if type(items_or_item) == "table" and items_or_item.text then
-      logger.log("items_or_item is single item: " .. items_or_item.text)
-    elseif type(items_or_item) == "table" and #items_or_item > 0 then
-      logger.log("items_or_item is array with " .. #items_or_item .. " items")
-    end
-
-    logger.log("picker_state type: " .. type(picker_state))
-    if picker_state then
-      logger.log("picker_state.selected_count: " .. tostring(picker_state.selected_count))
-      logger.log("picker_state.filtered_items count: " .. (#picker_state.filtered_items or 0))
-    end
-
     local items_to_show
-
-    -- Check if we received selected items as first parameter
     if type(items_or_item) == "table" and #items_or_item > 0 and items_or_item[1] and items_or_item[1].text then
-      -- We received an array of selected items
       items_to_show = items_or_item
-      logger.log("Using selected items passed as parameter")
     else
-      -- We received a single item, use all filtered items from picker state
       items_to_show = picker_state.filtered_items
-      logger.log("Using all filtered items from picker state")
     end
-
-    logger.log("items_to_show type: " .. type(items_to_show))
-    if items_to_show then
-      logger.log("items_to_show count: " .. #items_to_show)
-    end
-    logger.log("=== END SIDEBAR DEBUG ===")
-
     local original_picker_opts = picker_state.original_opts or {}
-    if original_picker_opts then
-      logger.log("Original picker options found: " .. vim.inspect(picker_state))
-    end
     -- Create sidebar options by copying ALL original options
     local sidebar_opts = vim.tbl_deep_extend("force", original_picker_opts, {
       -- Only override sidebar-specific settings
@@ -819,10 +765,8 @@ function M.create_keymaps_handlers(opts, state, ui, selecta, ext, utils)
       position = picker_config.sidebar and picker_config.sidebar.position or "right",
       width = picker_config.sidebar and picker_config.sidebar.width or 40,
     })
-
     selecta.create_sidebar(items_to_show, sidebar_opts, state)
-
-    return true -- Close original picker
+    return true
   end
 
   handlers.bookmark = function(items_or_item, picker_state)

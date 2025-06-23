@@ -207,7 +207,6 @@ function M.add_tree_state_to_items(items)
   local items_with_parent = 0
   local root_item_count = 0
 
-  -- Build the maps and collect stats
   for i, item in ipairs(items) do
     if item.value and item.value.signature then
       items_with_signature = items_with_signature + 1
