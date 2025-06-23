@@ -49,31 +49,9 @@ local function initialize_state(config)
     config.custom_keymaps.codecompanion.handler = handlers.codecompanion
     config.custom_keymaps.quickfix.handler = handlers.quickfix
     config.custom_keymaps.sidebar.handler = handlers.sidebar
+    config.custom_keymaps.vertical_split.handler = handlers.vertical_split
+    config.custom_keymaps.horizontal_split.handler = handlers.horizontal_split
   end
-end
-
----Open in vertical split
----@param config table
----@param items_or_item table|table[]
----@param module_state table
-function M.open_in_vertical_split(config, items_or_item, module_state)
-  local item = vim.islist(items_or_item) and items_or_item[1] or items_or_item
-  selecta.open_in_split(item, "vertical", state)
-  api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
-  api.nvim_buf_clear_namespace(item.bufnr, state.preview_ns, 0, -1)
-  return true
-end
-
----Open diagnostic in horizontal split
----@param config table
----@param items_or_item table|table[]
----@param module_state table
-function M.open_in_horizontal_split(config, items_or_item, module_state)
-  local item = vim.islist(items_or_item) and items_or_item[1] or items_or_item
-  selecta.open_in_split(item, "horizontal", state)
-  api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
-  api.nvim_buf_clear_namespace(item.bufnr, state.preview_ns, 0, -1)
-  return true
 end
 
 --- Convert LSP symbols to selecta items, adding source information
