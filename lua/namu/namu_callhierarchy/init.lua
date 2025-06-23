@@ -5,26 +5,17 @@ Integrates with selecta for fuzzy finding and navigation.
 
 local M = {}
 
+local config_manager = require("namu.core.config_manager")
+
 -- Inherit defaults from symbols config
 M.config = require("namu.namu_symbols.config").values
-M.config = vim.tbl_deep_extend("force", M.config, {
-  preserve_hierarchy = true,
-  current_highlight = {
-    enabled = true,
-    hl_group = "NamuCurrentItem",
-    prefix_icon = " ",
-  },
-  sort_by_nesting_depth = true,
-  call_hierarchy = {
-    max_depth = 2, -- Default max depth
-    max_depth_limit = 4, -- Hard limit to prevent performance issues
-    show_cycles = false, -- Whether to show recursive calls
-  },
-})
 
 -- Flag to track if implementation is loaded
 local impl_loaded = false
 local impl = nil
+
+-- Flag to track if config has been resolved from config manager
+local config_resolved = false
 
 -- Function to load the full implementation
 local function load_impl()
@@ -37,9 +28,27 @@ local function load_impl()
   impl_loaded = true
 end
 
+-- Function to resolve config from config manager if not already done
+local function resolve_config()
+  if not config_resolved then
+    -- Get resolved config from config manager
+    local resolved_config = config_manager.get_config("callhierarchy")
+    -- Merge with existing module-specific config
+    M.config = vim.tbl_deep_extend("force", M.config, resolved_config)
+    config_resolved = true
+  end
+end
+
 -- Setup just merges configs
 function M.setup(opts)
-  M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+  if opts then
+    -- BACKWARD COMPATIBILITY: Direct setup with options (old style)
+    M.config = vim.tbl_deep_extend("force", M.config, opts)
+    config_resolved = true -- Mark as resolved to prevent double-application
+  else
+    -- NEW STYLE: Config comes from config manager
+    resolve_config()
+  end
   if impl_loaded and impl then
     impl.update_config(M.config)
   end
@@ -52,6 +61,7 @@ end
 
 -- Define API functions that lazy-load the implementation
 function M.show(direction)
+  resolve_config()
   load_impl()
   if not impl then
     return
@@ -60,6 +70,7 @@ function M.show(direction)
 end
 
 function M.show_incoming_calls()
+  resolve_config()
   load_impl()
   if not impl then
     return
@@ -68,6 +79,7 @@ function M.show_incoming_calls()
 end
 
 function M.show_outgoing_calls()
+  resolve_config()
   load_impl()
   if not impl then
     return
@@ -76,6 +88,7 @@ function M.show_outgoing_calls()
 end
 
 function M.show_both_calls()
+  resolve_config()
   load_impl()
   if not impl then
     return

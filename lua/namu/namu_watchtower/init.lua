@@ -7,68 +7,14 @@ local M = {}
 
 -- Import only the configuration dependency
 M.config = require("namu.namu_symbols.config").values
-M.config = vim.tbl_deep_extend("force", M.config, {
-  enhance_lua_test_symbols = true,
-  lua_test_truncate_length = 50,
-  lua_test_preserve_hierarchy = true,
-  display = {
-    format = "tree_guides",
-  },
-  preserve_hierarchy = true,
-  current_highlight = {
-    enabled = true,
-    hl_group = "NamuCurrentItem",
-    prefix_icon = " ",
-  },
-  custom_keymaps = {
-    yank = {
-      keys = { "<C-y>" },
-      desc = "Yank diagnostic with context",
-      handler = function(items_or_item, state)
-        local impl = M.get_impl()
-        if not impl then
-          return
-        end
-        return impl.yank(M.config, items_or_item, state)
-      end,
-    },
-    codecompanion = {
-      keys = { "<C-o>" },
-      desc = "Add to CodeCompanion",
-      handler = function(items_or_item, state)
-        local impl = M.get_impl()
-        if not impl then
-          return
-        end
-        return impl.add_to_codecompanion(M.config, items_or_item, state)
-      end,
-    },
-    vertical_split = {
-      keys = { "<C-v>" },
-      desc = "Open in vertical split",
-      handler = function(items_or_item, state)
-        local impl = M.get_impl()
-        if impl then
-          return impl.open_in_vertical_split(M.config, items_or_item, state)
-        end
-      end,
-    },
-    horizontal_split = {
-      keys = { "<C-h>" },
-      desc = "Open in horizontal split",
-      handler = function(items_or_item, state)
-        local impl = M.get_impl()
-        if impl then
-          return impl.open_in_horizontal_split(M.config, items_or_item, state)
-        end
-      end,
-    },
-  },
-})
+local config_manager = require("namu.core.config_manager")
 
 -- Flag to track if implementation is loaded
 local impl_loaded = false
 local impl = nil
+
+-- Flag to track if config has been resolved from config manager
+local config_resolved = false
 
 -- Function to load the full implementation
 local function load_impl()
@@ -85,13 +31,33 @@ function M.get_impl()
   return impl
 end
 
+-- Function to resolve config from config manager if not already done
+local function resolve_config()
+  if not config_resolved then
+    -- Get resolved config from config manager
+    local resolved_config = config_manager.get_config("watchtower")
+    -- Merge with existing module-specific config
+    M.config = vim.tbl_deep_extend("force", M.config, resolved_config)
+    config_resolved = true
+  end
+end
+
 -- Setup just merges configs
 function M.setup(opts)
-  M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+  if opts then
+    -- BACKWARD COMPATIBILITY: Direct setup with options (old style)
+    M.config = vim.tbl_deep_extend("force", M.config, opts)
+    config_resolved = true -- Mark as resolved to prevent double-application
+  else
+    -- NEW STYLE: Config comes from config manager
+    resolve_config()
+  end
 end
 
 -- Define API function that lazy-loads the implementation
 function M.show()
+  -- Ensure config is resolved before showing
+  resolve_config()
   load_impl()
   if not impl then
     return

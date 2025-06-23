@@ -5,94 +5,16 @@ Integrates with selecta for fuzzy finding and magnet for symbol handling.
 
 local M = {}
 
+local config_manager = require("namu.core.config_manager")
+
 M.config = require("namu.namu_symbols.config").values
-M.config = vim.tbl_deep_extend("force", M.config, {
-  row_position = "top10",
-  highlights = {
-    Error = "DiagnosticVirtualTextError",
-    Warn = "DiagnosticVirtualTextWarn",
-    Info = "DiagnosticVirtualTextInfo",
-    Hint = "DiagnosticVirtualTextHint",
-  },
-  icons = {
-    Error = "",
-    Warn = "󰀦",
-    Info = "󰋼",
-    Hint = "󰌶",
-  },
-  current_highlight = {
-    enabled = true,
-    hl_group = "NamuCurrentItem",
-    prefix_icon = " ",
-  },
-  window = {
-    title_prefix = "󰃣 ",
-    min_width = 79,
-    max_width = 100,
-    max_height = 15,
-    min_height = 1,
-    padding = 2,
-  },
-  custom_keymaps = {
-    yank = {
-      keys = { "<C-y>" },
-      desc = "Yank diagnostic with context",
-      handler = function(items_or_item, state)
-        local impl = M.get_impl()
-        if not impl then
-          return
-        end
-        return impl.yank_diagnostic_with_context(M.config, items_or_item, state)
-      end,
-    },
-    codecompanion = {
-      keys = { "<C-o>" },
-      desc = "Add to CodeCompanion",
-      handler = function(items_or_item, state)
-        local impl = M.get_impl()
-        if not impl then
-          return
-        end
-        return impl.add_to_codecompanion(M.config, items_or_item, state)
-      end,
-    },
-    vertical_split = {
-      keys = { "<C-v>" },
-      desc = "Open in vertical split",
-      handler = function(items_or_item, state)
-        local impl = M.get_impl()
-        return impl.open_in_vertical_split(M.config, items_or_item)
-      end,
-    },
-    horizontal_split = {
-      keys = { "<c-h>" },
-      desc = "Open in horizontal split",
-      handler = function(items_or_item, state)
-        local impl = M.get_impl()
-        return impl.open_in_horizontal_split(M.config, items_or_item, state)
-      end,
-    },
-    code_action = {
-      keys = { "<C-CR>", "<D-CR>" },
-      handler = function(items_or_item, state)
-        local impl = M.get_impl()
-        return impl.invoke_code_action(M.config, items_or_item, state)
-      end,
-    },
-    codecompanion_inline = {
-      keys = {}, -- FIX: needs some integration from the codecompanion to be robust
-      desc = "Fix diagnostic with AI",
-      handler = function(items_or_item, state)
-        local impl = M.get_impl()
-        return impl.send_to_codecompanion_inline(M.config, items_or_item, state)
-      end,
-    },
-  },
-})
 
 -- Flag to track if implementation is loaded
 local impl_loaded = false
 local impl = nil
+
+-- Flag to track if config has been resolved from config manager
+local config_resolved = false
 
 -- Function to load the full implementation
 local function load_impl()
@@ -104,9 +26,27 @@ local function load_impl()
   impl_loaded = true
 end
 
+-- Function to resolve config from config manager if not already done
+local function resolve_config()
+  if not config_resolved then
+    -- Get resolved config from config manager
+    local resolved_config = config_manager.get_config("diagnostics")
+    -- Merge with existing module-specific config
+    M.config = vim.tbl_deep_extend("force", M.config, resolved_config)
+    config_resolved = true
+  end
+end
+
 -- Setup just merges configs
 function M.setup(opts)
-  M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+  if opts then
+    -- BACKWARD COMPATIBILITY: Direct setup with options (old style)
+    M.config = vim.tbl_deep_extend("force", M.config, opts)
+    config_resolved = true -- Mark as resolved to prevent double-application
+  else
+    -- NEW STYLE: Config comes from config manager
+    resolve_config()
+  end
 end
 
 function M.get_impl()
@@ -116,6 +56,7 @@ end
 
 -- Define API functions that lazy-load the implementation
 function M.show(scope)
+  resolve_config()
   load_impl()
   if not impl then
     return
@@ -124,6 +65,7 @@ function M.show(scope)
 end
 
 function M.show_current_diagnostics()
+  resolve_config()
   load_impl()
   if not impl then
     return
@@ -132,6 +74,7 @@ function M.show_current_diagnostics()
 end
 
 function M.show_buffer_diagnostics()
+  resolve_config()
   load_impl()
   if not impl then
     return
@@ -140,6 +83,7 @@ function M.show_buffer_diagnostics()
 end
 
 function M.show_workspace_diagnostics()
+  resolve_config()
   load_impl()
   if not impl then
     return

@@ -34,15 +34,13 @@ vim.keymap.set('n', 'gs', require('namu').jump, {
 local M = {}
 
 local config = require("namu.namu_symbols.config")
+local config_manager = require("namu.core.config_manager")
 
 ---@NamuSymbolsConfig
 M.config = config.values
-M.config = vim.tbl_deep_extend("force", M.config, {
-  enhance_lua_test_symbols = true,
-  lua_test_truncate_length = 50,
-  lua_test_preserve_hierarchy = true,
-  source_priority = "lsp", -- Options: "lsp", "treesitter"
-})
+
+-- Flag to track if config has been resolved from config manager
+local config_resolved = false
 
 -- Flag to track if implementation is loaded
 local impl_loaded = false
@@ -62,12 +60,32 @@ function M.get_impl()
   return impl
 end
 
+-- Function to resolve config from config manager if not already done
+local function resolve_config()
+  if not config_resolved then
+    -- Get resolved config from config manager
+    local resolved_config = config_manager.get_config("namu_symbols")
+    -- Merge with existing module-specific config
+    M.config = vim.tbl_deep_extend("force", M.config, resolved_config)
+    config_resolved = true
+  end
+end
+
 function M.setup(opts)
-  M.config = vim.tbl_deep_extend("force", M.config, opts or {})
+  if opts then
+    -- BACKWARD COMPATIBILITY: Direct setup with options (old style)
+    M.config = vim.tbl_deep_extend("force", M.config, opts)
+    config_resolved = true -- Mark as resolved to prevent double-application
+  else
+    -- NEW STYLE: Config comes from config manager
+    resolve_config()
+  end
 end
 
 -- Define API function that lazy-loads the implementation
 function M.show(opts)
+  -- Ensure config is resolved before showing
+  resolve_config()
   load_impl()
   if not impl then
     return
@@ -76,6 +94,8 @@ function M.show(opts)
 end
 
 function M.show_treesitter(opts)
+  -- Ensure config is resolved before showing
+  resolve_config()
   load_impl()
   if not impl then
     return
