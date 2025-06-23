@@ -347,6 +347,7 @@ T["LuaTests"]["count_first_brackets counts correctly"] = function()
   local state = create_mock_state()
   local test_info_cache = {}
   local first_bracket_counts = {}
+  local bufnr = vim.api.nvim_get_current_buf()
   mock_buffer_lines[1] = 'T["Category"]["Test 1"] = function()' -- Line 1 (index 0 in API)
   mock_buffer_lines[2] = 'T["Category"]["Test 2"] = function()' -- Line 2 (index 1 in API)
   mock_buffer_lines[3] = 'T["Other"]["Test 3"] = function()' -- Line 3 (index 2 in API)
@@ -358,7 +359,7 @@ T["LuaTests"]["count_first_brackets counts correctly"] = function()
   }
 
   for _, symbol in ipairs(symbols) do
-    test_patterns.count_first_brackets(symbol, state, config, test_info_cache, first_bracket_counts)
+    test_patterns.count_first_brackets(symbol, state, config, test_info_cache, first_bracket_counts, bufnr)
   end
 
   h.eq(first_bracket_counts['T["Category"]'], 2)
