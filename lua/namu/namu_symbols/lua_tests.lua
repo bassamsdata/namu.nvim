@@ -76,11 +76,11 @@ function M.process_lua_test_symbol(
   local line = vim.api.nvim_buf_get_lines(bufnr, range.start.line, range.start.line + 1, false)[1]
   local test_info = test_info_cache[range.start.line] or M.extract_lua_test_info(line)
   local parent_signature = nil
+
   if test_info then
     symbol.is_test_symbol = true
     if config.lua_test_preserve_hierarchy then
       local should_create_hierarchy = (first_bracket_counts[test_info.parent_full_name] or 0) > 1
-      logger.log("Checking hierarchy for " .. test_info.full_name .. ": " .. tostring(should_create_hierarchy))
 
       if should_create_hierarchy then
         if test_info.last_bracket_pos then
@@ -163,16 +163,17 @@ end
 
 --- Recursively counts first bracket occurrences in potential test symbols.
 --- (Function body remains the same)
-function M.count_first_brackets(symbol, state, config, test_info_cache, first_bracket_counts)
+function M.count_first_brackets(symbol, state, config, test_info_cache, first_bracket_counts, bufnr)
   if not symbol or not symbol.name then
     return
   end
+
   if
     (symbol.name == "" or symbol.name == " " or symbol.name:match("^function"))
     and (symbol.range or (symbol.location and symbol.location.range))
   then
     local range = symbol.range or (symbol.location and symbol.location.range)
-    local line = vim.api.nvim_buf_get_lines(state.original_buf, range.start.line, range.start.line + 1, false)[1]
+    local line = vim.api.nvim_buf_get_lines(bufnr, range.start.line, range.start.line + 1, false)[1]
     if line then
       local test_info = M.extract_lua_test_info(line)
       if test_info then
@@ -184,7 +185,7 @@ function M.count_first_brackets(symbol, state, config, test_info_cache, first_br
 
   if symbol.children then
     for _, child in ipairs(symbol.children) do
-      M.count_first_brackets(child, state, config, test_info_cache, first_bracket_counts)
+      M.count_first_brackets(child, state, config, test_info_cache, first_bracket_counts, bufnr)
     end
   end
 end

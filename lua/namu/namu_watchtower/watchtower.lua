@@ -75,12 +75,7 @@ local function symbols_to_selecta_items(raw_symbols, source, bufnr, config_value
   if is_test_file and config_values.lua_test_preserve_hierarchy and buffer_filetype == "lua" then
     logger.log("Performing first pass to count Lua test brackets for hierarchy.")
     for _, symbol in ipairs(raw_symbols) do
-      -- Call the counting function from the test_patterns module
-      test_patterns.count_first_brackets(symbol, state, config_values, test_info_cache, first_bracket_counts)
-    end
-    -- Log the counts for debugging
-    for bracket, count in pairs(first_bracket_counts) do
-      logger.log("First bracket count - " .. bracket .. ": " .. count)
+      test_patterns.count_first_brackets(symbol, state, config_values, test_info_cache, first_bracket_counts, bufnr)
     end
   end
   local function generate_signature(symbol, depth)
@@ -137,7 +132,8 @@ local function symbols_to_selecta_items(raw_symbols, source, bufnr, config_value
       return
     end
 
-    local parent_signature = depth > 0 and parent_stack[depth] or "buffer:" .. bufnr
+    -- Preserve parent_signature if set by lua test processing, otherwise use default logic
+    local parent_signature = result.parent_signature or (depth > 0 and parent_stack[depth] or "buffer:" .. bufnr)
 
     local clean_name = core_utils.clean_symbol_name(result.name, state.original_ft, is_test_file)
     -- local clean_name = result.name:match("^([^%s%(]+)") or result.name

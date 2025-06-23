@@ -74,7 +74,14 @@ local function symbols_to_selecta_items(raw_symbols, config, source)
     logger.log("Performing first pass to count Lua test brackets for hierarchy.")
     for _, symbol in ipairs(raw_symbols) do
       -- Call the counting function from the test_patterns module
-      test_patterns.count_first_brackets(symbol, state, config, test_info_cache, first_bracket_counts)
+      test_patterns.count_first_brackets(
+        symbol,
+        state,
+        config,
+        test_info_cache,
+        first_bracket_counts,
+        state.original_buf
+      )
     end
     -- Log the counts for debugging
     for bracket, count in pairs(first_bracket_counts) do
