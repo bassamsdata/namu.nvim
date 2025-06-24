@@ -1,13 +1,12 @@
 # Namu.nvim
 
-🌿 Jump to symbols in your code with live preview, built-in fuzzy finding, and other modules.
+🌿 Jump to symbols in your code with live preview, built-in fuzzy finding, and more.
 Inspired by Zed, it preserves symbol order while guiding you through your codebase.
 Supports LSP, Treesitter, ctags, and works across buffers and workspaces.
 
-“Namu” means “tree🌳” in Korean—just like how it helps you navigate the structure of your code.
 
 > [!WARNING]
-> 🚧 **Beta Status**: This plugin is currently in beta. While it's functional, you may encounter breaking changes as we improve and refine the architecture. Your feedback and contributions are welcome!
+> 🚧 **Beta**: This plugin is in beta. Breaking changes may occur.
 
 
 
@@ -22,7 +21,7 @@ https://github.com/user-attachments/assets/a97ff3b1-8b25-4da1-b276-f623e37d0368
 | 🏷️ symbols        | LSP symbols for current buffer                      |
 | 🌐 workspace      | LSP workspace symbols, interactive, live preview    |
 | 📂 watchtower    | Symbols from all open buffers (LSP or Treesitter)   |
-| 🩺 diagnostics    | Diagnostics for buffer or workspace, live filter    |
+| 🩺 diagnostics    | Diagnostics for buffer or full workspace, live filter    |
 | 🔗 call_hierarchy | Call hierarchy (in/out/both) for symbol             |
 | 🏷️ ctags          | ctags-based symbols (buffer or watchtower)         |
 | 🪟 ui_select      | Wrapper for `vim.ui.select` with enhanced UI        |
@@ -78,27 +77,22 @@ https://github.com/user-attachments/assets/a97ff3b1-8b25-4da1-b276-f623e37d0368
 Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 ```lua
 {
-  "bassamsdata/namu.nvim",
-  config = function()
-    require("namu").setup({
-      -- Enable the modules you want
-      namu_symbols = {
-        enable = true,
-        options = {}, -- here you can configure namu
-      },
-      -- Optional: Enable other modules if needed
-      ui_select = { enable = false }, -- vim.ui.select() wrapper
-    })
+    "bassamsdata/namu.nvim",
+    opts = {
+        global = { },
+        namu_symbols = { -- Specific Module options
+            options = {},
+        },
+    },
     -- === Suggested Keymaps: ===
-    vim.keymap.set("n", "<leader>ss",":Namu symbols<cr>" , {
-      desc = "Jump to LSP symbol",
-      silent = true,
+    vim.keymap.set("n", "<leader>ss", ":Namu symbols<cr>", {
+        desc = "Jump to LSP symbol",
+        silent = true,
     })
     vim.keymap.set("n", "<leader>sw", ":Namu workspace<cr>", {
-      desc = "LSP Symbols - Workspace",
-      silent = true,
+        desc = "LSP Symbols - Workspace",
+        silent = true,
     })
-  end,
 }
 ```
 
@@ -213,13 +207,13 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 | Command                | Arguments         | Description                                 |
 |------------------------|------------------|---------------------------------------------|
-| :Namu symbols    | function, class, method… | Show buffer symbols, filter by kind         |
-| :Namu workspace | | Search workspace symbols                    |
-| :Namu watchtower      |                  | Symbols from all open buffers, it fallbacks to treesitter               |
-| :Namu diagnostics  | workspace        | Diagnostics for buffer or workspace         |
-| :Namu call in/out/both | in/out/both      | Call hierarchy for symbol                   |
-| :Namu ctags [watchtower]   | watchtower           | ctags symbols (buffer or watchtower)       |
-| :Namu help [topic]     | symbols/analysis | Show help                                   |
+| `:Namu symbols`    | function, class, method… | Show buffer symbols, filter by kind         |
+| `:Namu workspace` | | Search workspace symbols                    |
+| `:Namu watchtower`      |                  | Symbols from all open buffers, it fallbacks to treesitter               |
+| `:Namu diagnostics`  | buffers, workspace        | Diagnostics for buffer or workspace (not only open buffers)         |
+| `:Namu call in/out/both` | in/out/both      | Call hierarchy for symbol                   |
+| `:Namu ctags [watchtower]`   | watchtower           | ctags symbols (buffer or watchtower)       |
+| `:Namu help [topic]`     | symbols/analysis | Show help                                   |
 
 ## Make It Yours
 
@@ -230,8 +224,7 @@ You can check the [configuration documentation](https://github.com/bassamsdata/n
 ```lua
 { -- Those are the default options
   "bassamsdata/namu.nvim",
-  config = function()
-    require("namu").setup({
+    opts = {
       -- Enable symbols navigator which is the default
       namu_symbols = {
         enable = true,
@@ -433,7 +426,7 @@ You can check the [configuration documentation](https://github.com/bassamsdata/n
         }
       }
       ui_select = { enable = false }, -- vim.ui.select() wrapper
-    })
+    }
   end,
 }
 ```
@@ -603,12 +596,16 @@ I made this plugin for fun at first and didn't know I could replicate what Zed h
 Pull requests are welcome! Just please be kind and respectful.
 Any suggestions to improve and integrate with other plugins are also welcome.
 
+# Naming:
+
+“Namu” means “tree🌳” in Korean, just like how it helps you navigate the structure of your code.
+
 ## Credits & Acknowledgements
 
 - [Zed](https://zed.dev) editor for the idea.
 - [Mini.pick](https://github.com/echasnovski/mini.nvim) @echasnovski for the idea of `getchar()`, without which this plugin wouldn't exist.
 - Magnet module (couldn’t find it anymore on GitHub, sorry!), which intrigued me a lot.
 - @folke for handling multiple versions of Neovim LSP requests and treesitter "locals" in [Snacks.nvim](https://github.com/folke/snacks.nvim).
-- tests and ci structure, thanks to @Oli [CodeCompanion](https://github.com/olimorris/codecompanion.nvim)
+- tests and ci structure and vimdocs, thanks to @Oli [CodeCompanion](https://github.com/olimorris/codecompanion.nvim)
 - A simple mechanism to persist the colorscheme, thanks to this [Reddit comment](https://www.reddit.com/r/neovim/comments/1edwhk8/comment/lfb1m2f/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button).
 - [Aerial.nvim](https://github.com/stevearc/aerial.nvim) and @Stevearc for borroing some treesitter queries.
