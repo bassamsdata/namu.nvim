@@ -137,8 +137,8 @@ function M.update_selection_highlights(state, opts)
     return
   end
   -- Credit to @folke snacks.nvim for those icons and the style
-  local empty_circle = "○ "
-  local filled_circle = "● "
+  local empty_circle = opts.multiselect.unselected_icon
+  local filled_circle = opts.multiselect.selected_icon
   local has_selections = false
   if opts.multiselect and opts.multiselect.enabled and state.selected then
     has_selections = next(state.selected) ~= nil

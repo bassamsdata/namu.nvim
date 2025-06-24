@@ -606,7 +606,8 @@ function M.show_picker(
     },
     multiselect = {
       enabled = opts.multiselect.enabled,
-      indicator = opts.multiselect.indicator,
+      selected_icon = opts.multiselect.selected_icon,
+      unselected_icon = opts.multiselect.unselected_icon,
       on_select = function(selected_items)
         if opts.preview.highlight_mode == "select" then
           ui.clear_preview_highlight(state.original_win, state.preview_ns)

@@ -10,7 +10,8 @@ M.global_defaults = {
   },
   multiselect = {
     enabled = true,
-    indicator = "✓",
+    selected_icon = "● ",
+    unselected_icon = "○ ",
     keymaps = {
       toggle = "<Tab>",
       untoggle = "<S-Tab>",
@@ -121,15 +122,10 @@ M.module_defaults = {
       max_width = 75,
     },
   },
-  colorscheme = {
-    -- Add colorscheme-specific defaults here if needed
-  },
-  ui_select = {
-    -- Add ui_select-specific defaults here if needed
-  },
+  -- colorscheme = {},
+  -- ui_select = {},
 }
 
--- User configuration storage
 M.user_config = {}
 
 function M.get_config(module_name)
