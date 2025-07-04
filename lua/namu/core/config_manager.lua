@@ -123,7 +123,27 @@ M.module_defaults = {
     },
   },
   -- colorscheme = {},
-  -- ui_select = {},
+  ui_select = {
+    window = {
+      title_prefix = "󰆤 ",
+      min_height = 1,
+      auto_size = true,
+      min_width = 20,
+      max_width = 120,
+      max_height = 30,
+      padding = 2,
+      title_pos = "left",
+      footer_pos = "right",
+      relative = "editor",
+      width_ratio = 0.6,
+      height_ratio = 0.6,
+    },
+    display = {
+      mode = "raw",
+      padding = 0,
+      show_numbers = true,
+    },
+  },
 }
 
 M.user_config = {}
@@ -165,7 +185,7 @@ function M.is_module_enabled(module_name)
   if M.user_config[module_name] and M.user_config[module_name].enable ~= nil then
     return M.user_config[module_name].enable
   end
-  return true -- Default to enabled if not specified
+  return true
 end
 
 -- Helper function for debugging config resolution
