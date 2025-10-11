@@ -511,7 +511,9 @@ function M.pick(items, opts)
       return query == "" or string.find(string.lower(item.text), string.lower(query))
     end,
     fuzzy = false,
-    offset = 0,
+    offset = function()
+      return 0
+    end,
     movement = vim.tbl_deep_extend("force", config.movement, {}),
     auto_select = config.auto_select,
     window = config.window,
