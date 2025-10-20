@@ -43,7 +43,7 @@ local function initialize_state(config)
     config.custom_keymaps.avante.handler = handlers.avante
     config.custom_keymaps.quickfix.handler = handlers.quickfix
     config.custom_keymaps.sidebar.handler = handlers.sidebar
-    config.custom_keymaps.bookmark.handler = handlers.bookmark
+    -- config.custom_keymaps.bookmark.handler = handlers.bookmark
   end
 end
 
