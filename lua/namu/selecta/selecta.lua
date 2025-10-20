@@ -573,11 +573,16 @@ function M.pick(items, opts)
   -- Handle initial cursor position
   if opts.initial_index and opts.initial_index <= #items then
     local target_pos = math.min(opts.initial_index, #state.filtered_items)
-    if target_pos > 0 then
-      vim.api.nvim_win_set_cursor(state.win, { target_pos, 0 })
-      common.update_current_highlight(state, opts, target_pos - 1)
-      if opts.on_move then
-        opts.on_move(state.filtered_items[target_pos])
+    -- Validate that we have items and the window is valid before setting cursor
+    if target_pos > 0 and #state.filtered_items > 0 and vim.api.nvim_win_is_valid(state.win) then
+      -- Get buffer line count to ensure cursor position is valid
+      local line_count = vim.api.nvim_buf_line_count(state.buf)
+      if target_pos <= line_count then
+        pcall(vim.api.nvim_win_set_cursor, state.win, { target_pos, 0 })
+        common.update_current_highlight(state, opts, target_pos - 1)
+        if opts.on_move then
+          opts.on_move(state.filtered_items[target_pos])
+        end
       end
     end
   end

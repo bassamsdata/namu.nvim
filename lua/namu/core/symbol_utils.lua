@@ -519,7 +519,7 @@ end
 ---@param initial_prompt_info? {text: string, hl_group: string} Optional info for the prompt
 function M.show_picker(
   selectaItems,
-  state,
+  module_state,
   opts,
   ui,
   selecta,
@@ -539,7 +539,7 @@ function M.show_picker(
   if is_ctags then
     current_symbol = M.find_nearest_symbol(selectaItems)
   else
-    current_symbol = M.find_containing_symbol(selectaItems, state)
+    current_symbol = M.find_containing_symbol(selectaItems, module_state)
   end
 
   local picker_opts = {
@@ -595,13 +595,14 @@ function M.show_picker(
         ui.apply_highlights(buf, filtered_items, opts)
       end,
       on_buffer_clear = function()
-        ui.clear_preview_highlight(state.original_win, state.preview_ns, state)
-        if state.original_win and state.original_pos and api.nvim_win_is_valid(state.original_win) then
-          api.nvim_win_set_cursor(state.original_win, state.original_pos)
+        ui.clear_preview_highlight(module_state.original_win, module_state.preview_ns, module_state)
+        if
+          module_state.original_win
+          and module_state.original_pos
+          and api.nvim_win_is_valid(module_state.original_win)
+        then
+          api.nvim_win_set_cursor(module_state.original_win, module_state.original_pos)
         end
-        state.original_buf = nil
-        state.original_pos = nil
-        state.original_win = nil
       end,
     },
     multiselect = {
@@ -610,49 +611,71 @@ function M.show_picker(
       unselected_icon = opts.multiselect.unselected_icon,
       on_select = function(selected_items)
         if opts.preview.highlight_mode == "select" then
-          ui.clear_preview_highlight(state.original_win, state.preview_ns)
+          ui.clear_preview_highlight(module_state.original_win, module_state.preview_ns)
           if type(selected_items) == "table" and selected_items[1] then
-            ui.preview_symbol(selected_items[1].value, state.original_win, state.preview_ns, state, opts.highlight)
+            ui.preview_symbol(
+              selected_items[1].value,
+              module_state.original_win,
+              module_state.preview_ns,
+              module_state,
+              opts.highlight
+            )
           end
         end
         if type(selected_items) == "table" and selected_items[1] then
-          M.jump_to_symbol(selected_items[1].value, state)
+          M.jump_to_symbol(selected_items[1].value, module_state)
         end
       end,
     },
     initial_index = opts.focus_current_symbol
         and current_symbol
-        and ui.find_symbol_index(selectaItems, current_symbol, is_ctags, context, state)
+        and ui.find_symbol_index(selectaItems, current_symbol, is_ctags, context, module_state)
       or nil,
     initial_prompt_info = initial_prompt_info,
     on_select = function(item)
-      M.jump_to_symbol(item.value, state)
+      M.jump_to_symbol(item.value, module_state)
     end,
     -- FIX: we need to move the oroiginal buffer first for watchtower symbols
     -- check preview_symbol first if we're doing that there first, but don't think so
     on_cancel = function()
       local buf = api.nvim_get_current_buf()
-      if buf ~= state.original_buf then
-        api.nvim_win_call(state.original_win, function()
-          api.nvim_win_set_buf(state.original_win, state.original_buf)
-        end)
+      if buf ~= module_state.original_buf then
+        if
+          type(module_state.original_win) == "number"
+          and api.nvim_win_is_valid(module_state.original_win)
+          and module_state.original_buf
+          and api.nvim_buf_is_valid(module_state.original_buf)
+        then
+          pcall(function()
+            api.nvim_win_call(module_state.original_win, function()
+              pcall(api.nvim_win_set_buf, module_state.original_win, module_state.original_buf)
+            end)
+          end)
+        end
       end
-      if state.original_win and state.original_pos and api.nvim_win_is_valid(state.original_win) then
-        core.restore_focus_and_cursor(state.original_win, state.original_pos)
+      if
+        type(module_state.original_win) == "number"
+        and module_state.original_pos
+        and api.nvim_win_is_valid(module_state.original_win)
+      then
+        pcall(core.restore_focus_and_cursor, module_state.original_win, module_state.original_pos)
       end
     end,
     on_close = function()
       -- Always clean up preview highlights when picker closes
-      ui.clear_preview_highlight(state.original_win, state.preview_ns, state)
+      ui.clear_preview_highlight(module_state.original_win, module_state.preview_ns, module_state)
     end,
-    -- BUG: cursor position outside
-    -- Error /namu.nvim/lua/namu/core/symbol_utils.lua:889: Cursor position outside buffer
-    -- it looks like if we're moving very fast, and pressed esc to _on_cancel then I have the error:
-    -- not sure if we wrapped on_cancel fucntion with vim.schedule will affect performance
     on_move = function(item)
       if opts.preview.highlight_on_move and opts.preview.highlight_mode == "always" then
         if item then
-          ui.preview_symbol(item, state.original_win, state.preview_ns, state, opts.highlight)
+          ui.preview_symbol(
+            item,
+            module_state.original_win,
+            module_state.preview_ns,
+            module_state,
+            opts.highlight,
+            opts.debug
+          )
         end
       end
     end,
