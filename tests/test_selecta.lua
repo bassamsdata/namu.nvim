@@ -429,22 +429,22 @@ T["Window.positioning"]["get_window_position calculates correct positions"] = fu
   }
 
   -- Test center position
-  local row, col = get_window_position(40, "center", {})
+  local row, col = get_window_position(40, "center")
   h.eq(row, 48) -- (100 - 1 - 2) * 0.5 = 48.5, floor to 48
   h.eq(col, 80) -- (200 - 40) / 2
 
   -- Test top percentage
-  row, col = get_window_position(40, "top20", {})
+  row, col = get_window_position(40, "top20")
   h.eq(row, 19)
   h.eq(col, 80)
 
   -- Test top percentage with right alignment
-  row, col = get_window_position(40, "top25_right", {})
+  row, col = get_window_position(40, "top25_right")
   h.eq(row, 24) -- 100 * 0.25
   h.eq(col, 156) -- 200 - 40 - 4
 
   -- Test bottom position
-  row, col = get_window_position(40, "bottom", {})
+  row, col = get_window_position(40, "bottom")
   h.eq(row, 73) -- (100 * 0.8) - 4
   h.eq(col, 80) -- (200 - 40) / 2
 
@@ -476,7 +476,7 @@ T["Window.positioning"]["handles fixed right position correctly"] = function()
 
   -- Test fixed right position
   ---@diagnostic disable-next-line: param-type-mismatch
-  local row, col = get_window_position(40, "top20_right", {})
+  local row, col = get_window_position(40, "top20_right")
   h.eq(row, 19)
   h.eq(col, 156)
 

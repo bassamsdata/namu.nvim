@@ -115,7 +115,7 @@
 ---@field movement? SelectaMovementConfig
 ---@field custom_keymaps? table<string, SelectaCustomAction> Custom actions
 ---@field pre_filter? fun(items: SelectaItem[], query: string): SelectaItem[], string, table? Function to pre-filter items before matcher
----@field async_source? fun(query: string): function A function that returns a function for async fetching
+---@field async_source? fun(query: string, opts: SelectaOptions): function(callback: function(items: SelectaItem[]))
 ---@field loading_indicator? { text: string, icon: string } Custom loading indicator
 ---@field prefix_highlighter? fun(buf: number, line_nr: number, item: SelectaItem, icon_end: number, ns_id: number)
 ---@field parent_key? fun(item: SelectaItem): string

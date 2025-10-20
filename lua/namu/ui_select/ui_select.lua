@@ -172,6 +172,7 @@ function M.select(items, opts, on_choice)
     display = M.config.display,
     movement = vim.tbl_deep_extend("force", M.config.movement, {}),
     current_highlight = M.config.current_highlight,
+    row_position = M.config.row_position or "top10",
     formatter = create_custom_formatter(M.config),
     -- Custom offset function to account for numbering
     offset = function(item)

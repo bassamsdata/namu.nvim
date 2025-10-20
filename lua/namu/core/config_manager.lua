@@ -1,3 +1,4 @@
+local dummy_line = true
 local M = {}
 
 -- Global defaults that apply to all modules
@@ -37,7 +38,7 @@ M.global_defaults = {
   window = {
     auto_size = true,
     min_height = 1,
-    min_width = 20,
+    min_width = 35,
     max_width = 120,
     max_height = 41,
     padding = 2,
@@ -128,7 +129,7 @@ M.module_defaults = {
       title_prefix = "󰆤 ",
       min_height = 1,
       auto_size = true,
-      min_width = 20,
+      min_width = 35,
       max_width = 120,
       max_height = 30,
       padding = 2,

@@ -14,7 +14,7 @@ local prompt_info_ns = common.prompt_info_ns
 
 -- cache for original window dimensions
 local original_dimensions_cache = {}
----fucntion to get container dimensions
+---function to get container dimensions
 ---@param opts SelectaOptions
 ---@param picker_id string
 ---@return table
@@ -347,7 +347,7 @@ function M.calculate_window_size(items, opts, formatter, state_col, picker_id)
         content_width = width
       end
     end
-    content_width = content_width + padding
+    content_width = content_width + padding + 1 -- this extra is for when selecting and current item indicator
     content_width = math.min(math.max(content_width, min_width), max_width, max_available_width)
   else
     -- Use ratio-based width
@@ -372,8 +372,6 @@ function M.resize_window(state, opts)
     return
   end
   local container = M.get_original_dimensions(state.picker_id) or M.get_container_dimensions(opts, state.picker_id)
-  -- BUG: we need to limit the new_width to the available space on the screen so
-  -- it doesn't push the col to go left
   local new_width, new_height =
     M.calculate_window_size(state.filtered_items, opts, opts.formatter, state.col, state.picker_id)
   local current_config = vim.api.nvim_win_get_config(state.win)
@@ -902,6 +900,9 @@ end
 -- Enhanced get_window_position function that respects relative setting
 function M.get_window_position(width, row_position, opts, picker_id)
   opts = opts or { window = {} }
+  if opts.window.row and opts.window.col then
+    return opts.window.row, opts.window.col
+  end
   local container = picker_id and M.get_original_dimensions(picker_id) or M.get_container_dimensions(opts, picker_id)
   local available_width = container.width
   local available_height = container.height

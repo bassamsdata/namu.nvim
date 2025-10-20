@@ -36,6 +36,7 @@ M.defaults = {
       "Property",
       "Variable",
       "Interface", -- rust cosider traits as Interface
+      "Struct",
     },
     lua = { "Function", "Method", "Table", "Module" },
     python = { "Function", "Class", "Method" },
@@ -177,7 +178,7 @@ M.defaults = {
   window = {
     auto_size = true,
     min_height = 1,
-    min_width = 20,
+    min_width = 35,
     max_width = 120,
     max_height = 41,
     padding = 2,
@@ -308,15 +309,15 @@ M.defaults = {
       description = "Add to quickfix",
     },
     sidebar = {
-      keys = {}, -- FIX: we need it later, but for now nothing
+      -- keys = { "<c-s>" },
       handler = nil,
       description = "Add to sidebar",
     },
-    bookmark = {
-      keys = {},
-      handler = nil,
-      description = "Add to bookmarks",
-    },
+    -- bookmark = {
+    --   keys = { "<c-b>" },
+    --   handler = nil,
+    --   description = "Add to bookmarks",
+    -- },
   },
   bookmarks = {
     enabled = true,
