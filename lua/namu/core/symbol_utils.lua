@@ -543,7 +543,7 @@ function M.show_picker(
   end
 
   local picker_opts = {
-    title = opts.title or title or "Namu Symbols",
+    title = opts.title or title or " Symbols ",
     fuzzy = false,
     preserve_order = true,
     window = opts.window,
