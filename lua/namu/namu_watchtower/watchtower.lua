@@ -367,7 +367,7 @@ function M.show(config)
           config,
           ui,
           selecta,
-          " Namu Watchtower ",
+          " Watchtower ",
           { title = "Namu" },
           false,
           "open",
