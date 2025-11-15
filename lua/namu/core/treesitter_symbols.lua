@@ -188,12 +188,12 @@ local function get_symbols_custom(bufnr, filetype)
   if not lang then
     return {}
   end
-  local parser = vim.treesitter.get_parser(bufnr, lang)
-  if not parser then
+  local ok, parser = pcall(vim.treesitter.get_parser, bufnr, lang)
+  if not ok or not parser then
     return {}
   end
-  local ok, query = pcall(vim.treesitter.query.parse, lang, query_string)
-  if not ok then
+  local query_ok, query = pcall(vim.treesitter.query.parse, lang, query_string)
+  if not query_ok then
     return {}
   end
   parser:parse(true)
@@ -281,8 +281,8 @@ local function get_symbols_standard(bufnr)
   if not ok or not query then
     return {}, {}
   end
-  local parser = vim.treesitter.get_parser(bufnr, lang)
-  if not parser then
+  local ok2, parser = pcall(vim.treesitter.get_parser, bufnr, lang)
+  if not ok2 or not parser then
     return {}, {}
   end
   parser:parse(true)

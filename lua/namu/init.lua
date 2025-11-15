@@ -1,5 +1,13 @@
 local M = {}
-local config_manager = require("namu.core.config_manager")
+
+-- Helper function to check if a module should be enabled
+local function is_module_enabled(module_name)
+  local config_manager = require("namu.core.config_manager")
+  if config_manager.user_config[module_name] and config_manager.user_config[module_name].enable ~= nil then
+    return config_manager.user_config[module_name].enable
+  end
+  return true
+end
 
 -- Default configuration
 M.config = {
@@ -20,47 +28,51 @@ M.setup = function(opts)
   M.config = vim.tbl_deep_extend("force", M.config, opts)
 
   -- Setup the config manager with user configuration
+  local config_manager = require("namu.core.config_manager")
   config_manager.setup(M.config)
 
-  require("namu.core.highlights").setup()
+  -- Defer highlights setup to avoid blocking main initialization
+  vim.schedule(function()
+    require("namu.core.highlights").setup()
+  end)
 
-  if config_manager.is_module_enabled("namu_symbols") then
+  if is_module_enabled("namu_symbols") then
     local symbol_config = config_manager.get_config("namu_symbols")
     require("namu.selecta").setup(symbol_config)
     require("namu.namu_symbols").setup() -- No options, will use config manager
   end
 
-  if config_manager.is_module_enabled("namu_ctags") then
+  if is_module_enabled("namu_ctags") then
     local ctags_config = config_manager.get_config("namu_ctags")
     require("namu.namu_ctags").setup(ctags_config)
   end
 
-  if config_manager.is_module_enabled("callhierarchy") then
+  if is_module_enabled("callhierarchy") then
     local callhierarchy_config = config_manager.get_config("callhierarchy")
     require("namu.namu_callhierarchy").setup(callhierarchy_config)
   end
 
-  if config_manager.is_module_enabled("workspace") then
+  if is_module_enabled("workspace") then
     local workspace_config = config_manager.get_config("workspace")
     require("namu.namu_workspace").setup(workspace_config)
   end
 
-  if config_manager.is_module_enabled("watchtower") then
+  if is_module_enabled("watchtower") then
     local watchtower_config = config_manager.get_config("watchtower")
     require("namu.namu_watchtower").setup(watchtower_config)
   end
 
-  if config_manager.is_module_enabled("diagnostics") then
+  if is_module_enabled("diagnostics") then
     local diagnostics_config = config_manager.get_config("diagnostics")
     require("namu.namu_diagnostics").setup(diagnostics_config)
   end
 
-  if config_manager.is_module_enabled("colorscheme") then
+  if is_module_enabled("colorscheme") then
     local colorscheme_config = config_manager.get_config("colorscheme")
     require("namu.colorscheme").setup(colorscheme_config)
   end
 
-  if config_manager.is_module_enabled("ui_select") then
+  if is_module_enabled("ui_select") then
     local ui_select_config = config_manager.get_config("ui_select")
     require("namu.ui_select").setup(ui_select_config)
   end

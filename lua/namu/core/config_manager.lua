@@ -1,4 +1,3 @@
-local dummy_line = true
 local M = {}
 
 -- Global defaults that apply to all modules
@@ -42,7 +41,7 @@ M.global_defaults = {
     max_width = 120,
     max_height = 41,
     padding = 2,
-    border = "rounded",
+    border = (vim.fn.exists("+winborder") == 1 and vim.o.winborder ~= "") and vim.o.winborder or "rounded",
     title_pos = "center",
     show_footer = true,
     footer_pos = "right",
@@ -179,14 +178,6 @@ function M.get_config(module_name)
   end
 
   return config
-end
-
--- Helper function to check if a module should be enabled
-function M.is_module_enabled(module_name)
-  if M.user_config[module_name] and M.user_config[module_name].enable ~= nil then
-    return M.user_config[module_name].enable
-  end
-  return true
 end
 
 -- Helper function for debugging config resolution
