@@ -138,9 +138,6 @@ local function symbols_to_selecta_items(raw_symbols, source, bufnr, config_value
     local clean_name = core_utils.clean_symbol_name(result.name, state.original_ft, is_test_file)
     -- local clean_name = result.name:match("^([^%s%(]+)") or result.name
     -- clean_name = buffer_filetype == "markdown" and result.name or clean_name
-    local style = tonumber(config_values.display.style) or 2
-    local prefix = ui.get_prefix(depth, style)
-    local display_text = prefix .. clean_name
 
     -- For TreeSitter, we need to map the kind string to a number
     local kind
@@ -168,7 +165,7 @@ local function symbols_to_selecta_items(raw_symbols, source, bufnr, config_value
       kind = kind_name,
       depth = depth,
       source = source,
-      text = display_text,
+      text = clean_name,
     }
     table.insert(items, item)
     parent_stack[depth + 1] = signature

@@ -578,14 +578,25 @@ function M.apply_highlights(buf, line_nr, item, opts, query, line_length, state)
   -- end
   -- Get the formatted display string
   if opts.display.mode == "raw" then
-    local offset = opts.offset and opts.offset(item) or 0
-    offset = offset + padding_width -- Add the padding width to the offset
     if query ~= "" then
-      local match = matcher.get_match_positions(item.text, query)
+      -- The formatter returns: prefix .. (item.value.text or item.text)
+      local text_in_display = item.value and item.value.text or item.text
+
+      -- Match against the text
+      local match = matcher.get_match_positions(text_in_display, query)
       if match then
+        -- Calculate prefix length in BYTES by finding where text starts in display
+        local text_start = display_str:find(vim.pesc(text_in_display), 1, true)
+        if not text_start then
+          -- Fallback: calculate byte offset
+          text_start = #display_str - #text_in_display + 1
+        end
+        local prefix_byte_len = text_start - 1
+
         for _, pos in ipairs(match.positions) do
-          local start_col = offset + pos[1] - 1
-          local end_col = offset + pos[2]
+          -- pos[1] and pos[2] are 1-based byte positions in text_in_display
+          local start_col = prefix_byte_len + pos[1] - 1
+          local end_col = prefix_byte_len + pos[2]
 
           -- Ensure we don't exceed line length
           end_col = math.min(end_col, line_length)
@@ -671,7 +682,8 @@ function M.render_visible_items(state, opts)
   -- Format ALL lines (not just visible ones) to maintain consistent buffer state
   local lines = {}
   for i, item in ipairs(state.filtered_items) do
-    lines[i] = opts.formatter(item)
+    local formatted = opts.formatter(item)
+    lines[i] = formatted:gsub("\n", "\\n")
   end
 
   -- Update the buffer with all formatted lines
@@ -691,7 +703,7 @@ function M.render_visible_items(state, opts)
     local item = state.filtered_items[i + 1] -- 1-indexed for items
     if item then
       local line = lines[i + 1]
-      local line_length = vim.api.nvim_strwidth(line)
+      local line_length = #line -- Use byte length, not display width
       M.apply_highlights(state.buf, line_nr, item, opts, query, line_length, state)
     end
   end
