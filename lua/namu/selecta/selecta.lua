@@ -871,6 +871,16 @@ function M.create_sidebar(items, opts, module_state)
     vim.api.nvim_set_option_value(option, value, { buf = sidebar_state.buf })
   end
 
+  -- Disable all completion mechanisms for sidebar
+  vim.b[sidebar_state.buf].completion = false
+  vim.api.nvim_set_option_value("completefunc", "", { buf = sidebar_state.buf })
+  vim.api.nvim_set_option_value("omnifunc", "", { buf = sidebar_state.buf })
+
+  -- Disable built-in autocomplete option if available (Neovim 0.11+)
+  if vim.fn.exists("+complete") == 1 then
+    vim.api.nvim_set_option_value("complete", "", { buf = sidebar_state.buf })
+  end
+
   input_handler.setup_sidebar_keymaps(sidebar_state, opts)
   ui.render_visible_items(sidebar_state, opts)
   vim.api.nvim_set_option_value("modifiable", false, { buf = sidebar_state.buf })

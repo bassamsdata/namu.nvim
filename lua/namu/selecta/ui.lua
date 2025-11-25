@@ -12,6 +12,17 @@ local selection_ns = common.selection_ns
 local filter_info_ns = common.filter_info_ns
 local prompt_info_ns = common.prompt_info_ns
 
+---Clamp start and end columns to be within the line length bounds.
+---@param start_col integer
+---@param end_col integer
+---@param line_length integer
+---@return integer, integer
+local function clamp_extmark_range(start_col, end_col, line_length)
+  start_col = math.max(0, math.min(start_col, line_length))
+  end_col = math.max(start_col, math.min(end_col, line_length))
+  return start_col, end_col
+end
+
 -- cache for original window dimensions
 local original_dimensions_cache = {}
 ---function to get container dimensions
@@ -181,6 +192,15 @@ function M.create_prompt_window(state, opts)
   -- Set buffer options for editing
   vim.api.nvim_set_option_value("filetype", "namu_prompt", { buf = state.prompt_buf })
   vim.b[state.prompt_buf].completion = false
+
+  -- Disable all completion mechanisms
+  vim.api.nvim_set_option_value("completefunc", "", { buf = state.prompt_buf })
+  vim.api.nvim_set_option_value("omnifunc", "", { buf = state.prompt_buf })
+
+  -- Disable built-in autocomplete option if available (Neovim 0.11+)
+  if vim.fn.exists("+complete") == 1 then
+    vim.api.nvim_set_option_value("complete", "", { buf = state.prompt_buf })
+  end
 
   -- Get container dimensions to determine if we need a win parameter
   local container = M.get_original_dimensions(state.picker_id) or M.get_container_dimensions(opts, state.picker_id)
@@ -598,8 +618,7 @@ function M.apply_highlights(buf, line_nr, item, opts, query, line_length, state)
           local start_col = prefix_byte_len + pos[1] - 1
           local end_col = prefix_byte_len + pos[2]
 
-          -- Ensure we don't exceed line length
-          end_col = math.min(end_col, line_length)
+          start_col, end_col = clamp_extmark_range(start_col, end_col, line_length)
 
           if end_col > start_col then
             vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, start_col, {
@@ -625,13 +644,16 @@ function M.apply_highlights(buf, line_nr, item, opts, query, line_length, state)
       opts.prefix_highlighter(buf, line_nr, item, icon_end, ns_id)
     else
       -- TODO: this is plays with icons highlights
-      -- Highlight prefix/icon
-      vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, padding_width, {
-        end_col = icon_end,
-        hl_group = common.get_prefix_info(item, opts.display.prefix_width).hl_group,
-        priority = 100,
-        hl_mode = "combine",
-      })
+      -- Highlight prefix/icon safely
+      local prefix_start, prefix_end = clamp_extmark_range(padding_width, icon_end, line_length)
+      if prefix_end > prefix_start then
+        vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, prefix_start, {
+          end_col = prefix_end,
+          hl_group = common.get_prefix_info(item, opts.display.prefix_width).hl_group,
+          priority = 100,
+          hl_mode = "combine",
+        })
+      end
     end
 
     -- Calculate base offset for query highlights (icon + space)
@@ -651,13 +673,16 @@ function M.apply_highlights(buf, line_nr, item, opts, query, line_length, state)
           if match_in_display then
             local start_col = icon_end + match_in_display - 1
             local end_col = start_col + #match_text
-            -- local highlight_text = display_str:sub(start_col + 1, end_col)
-            vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, start_col, {
-              end_col = end_col,
-              hl_group = "NamuMatch",
-              priority = 200,
-              hl_mode = "combine",
-            })
+            start_col, end_col = clamp_extmark_range(start_col, end_col, line_length)
+            if end_col > start_col then
+              -- local highlight_text = display_str:sub(start_col + 1, end_col)
+              vim.api.nvim_buf_set_extmark(buf, ns_id, line_nr, start_col, {
+                end_col = end_col,
+                hl_group = "NamuMatch",
+                priority = 200,
+                hl_mode = "combine",
+              })
+            end
           end
         end
       end

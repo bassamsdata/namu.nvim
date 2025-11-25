@@ -485,4 +485,62 @@ T["Window.positioning"]["handles fixed right position correctly"] = function()
   selecta_config.values = _original_values
 end
 
+-- Buffer Options TEST ---------------------------------------------------
+T["Selecta.buffer_options"] = new_set()
+
+-- test 22
+T["Selecta.buffer_options"]["disables completion in prompt buffer"] = function()
+  local items = { { text = "test" } }
+  local state_captured = nil
+
+  -- Create a picker to get access to the prompt buffer
+  selecta.pick(items, {
+    on_select = function(item)
+      -- Capture state before closing
+    end,
+    hooks = {
+      on_window_create = function(win, buf, opts)
+        -- This runs after windows are created
+      end,
+    },
+  })
+
+  -- Wait for the picker to be created
+  vim.wait(100)
+
+  -- Find the prompt buffer by filetype
+  local prompt_buf = nil
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(bufnr) then
+      local ft = vim.api.nvim_get_option_value("filetype", { buf = bufnr })
+      if ft == "namu_prompt" then
+        prompt_buf = bufnr
+        break
+      end
+    end
+  end
+
+  if prompt_buf then
+    -- Check that completion is disabled
+    h.eq(vim.b[prompt_buf].completion, false)
+
+    -- Check that completefunc is empty
+    local completefunc = vim.api.nvim_get_option_value("completefunc", { buf = prompt_buf })
+    h.eq(completefunc, "")
+
+    -- Check that omnifunc is empty
+    local omnifunc = vim.api.nvim_get_option_value("omnifunc", { buf = prompt_buf })
+    h.eq(omnifunc, "")
+
+    -- Check that complete option is empty if it exists
+    if vim.fn.exists("+complete") == 1 then
+      local complete = vim.api.nvim_get_option_value("complete", { buf = prompt_buf })
+      h.eq(complete, "")
+    end
+
+    -- Close the picker by pressing escape
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "n", false)
+  end
+end
+
 return T
