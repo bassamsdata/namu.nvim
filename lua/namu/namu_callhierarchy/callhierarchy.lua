@@ -208,6 +208,7 @@ local function calls_to_selecta_items(calls, direction, depth, parent_tree_state
         end_lnum = range["end"] and range["end"].line + 1 or range.start.line + 1,
         end_col = range["end"] and range["end"].character + 1 or range.start.character + 1,
         uri = uri,
+        data = item_data.data,
         file_path = file_path,
         call_item = call,
         call_type = call_type,
@@ -369,6 +370,7 @@ local function create_lsp_call_item(item)
         character = item.value.end_col - 1,
       },
     },
+    data = item.value.data,
   }
 end
 
@@ -554,6 +556,7 @@ local function process_call_hierarchy_item(item, direction, cache_key, notify_op
       uri = vim.uri_from_bufnr(0),
       is_current = true,
       signature = "root", -- Special signature for the root item
+      data = item.data,
     },
     icon = M.config.kindIcons[lsp.symbol_kind(item.kind)] or M.config.icon,
     kind = item.kind and lsp.symbol_kind(item.kind) or "Function",
