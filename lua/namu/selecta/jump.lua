@@ -147,6 +147,7 @@ function M.setup_keymap(state, opts)
     if not state.active then
       return
     end
+    state.jump_auto_pending = false
     if M.is_active(state) then
       M.deactivate(state)
     else

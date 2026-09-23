@@ -21,6 +21,15 @@ local T = MiniTest.new_set({
           end
           return items
         end
+        function _G.open_async(jump_opts)
+          _G.deliveries = {}
+          require("namu.selecta.selecta").pick({}, {
+            jump = jump_opts or { enabled = true, auto_activate = true },
+            async_source = function()
+              return function(callback) table.insert(_G.deliveries, callback) end
+            end,
+          })
+        end
       ]])
     end,
     post_once = child.stop,
@@ -96,6 +105,79 @@ T["restores expression mapping options without shadowing global mappings"] = fun
   )
   eq(child.lua_get('vim.fn.maparg("s", "n", false, true).callback == previous_s.callback'), true)
   eq(child.lua_get('vim.fn.maparg("s", "n", false, true).buffer'), 0)
+end
+
+T["async results auto-activate after rendering"] = function()
+  child.lua("open_async()")
+  eq(child.lua_get('require("namu.selecta.jump").is_active(state)'), false)
+  child.lua("deliveries[1](items_for(3))")
+  eq(child.lua_get('require("namu.selecta.jump").is_active(state)'), true)
+  eq(child.lua_get("#vim.api.nvim_buf_get_extmarks(state.buf, state.jump.ns, 0, -1, {})"), 3)
+  eq(child.fn.mode(), "n")
+end
+
+T["async activation evaluates the numeric threshold against real results"] = function()
+  child.lua("open_async({ enabled = true, auto_activate = 2 })")
+  child.lua("deliveries[1](items_for(3))")
+  eq(child.lua_get('require("namu.selecta.jump").is_active(state)'), false)
+  child.lua("deliveries[1](items_for(2))")
+  eq(child.lua_get('require("namu.selecta.jump").is_active(state)'), false)
+end
+
+T["async activation waits for nonempty results"] = function()
+  child.lua("open_async({ enabled = true, auto_activate = 3 })")
+  child.lua("deliveries[1]({})")
+  eq(child.lua_get('require("namu.selecta.jump").is_active(state)'), false)
+  child.lua("deliveries[1](items_for(3))")
+  eq(child.lua_get('require("namu.selecta.jump").is_active(state)'), true)
+end
+
+T["async activation respects disabled jump and min_items"] = function()
+  child.lua("open_async({ enabled = false, auto_activate = true })")
+  child.lua("deliveries[1](items_for(3))")
+  eq(child.lua_get('require("namu.selecta.jump").is_active(state)'), false)
+  child.type_keys("<Esc>")
+  child.lua("open_async({ enabled = true, auto_activate = true, min_items = 4 })")
+  child.lua("deliveries[1](items_for(3))")
+  eq(child.lua_get('require("namu.selecta.jump").is_active(state)'), false)
+end
+
+T["async errors do not auto-label the error placeholder"] = function()
+  child.lua("open_async()")
+  child.lua("deliveries[1](nil)")
+  eq(child.lua_get('require("namu.selecta.jump").is_active(state)'), false)
+  eq(child.lua_get("vim.bo[state.prompt_buf].modifiable"), true)
+end
+
+T["typing then clearing the query prevents delayed auto activation"] = function()
+  child.lua("open_async()")
+  child.type_keys("x", "<BS>")
+  eq(child.lua_get("state:get_query_string()"), "")
+  child.lua("deliveries[#deliveries](items_for(3))")
+  eq(child.lua_get('require("namu.selecta.jump").is_active(state)'), false)
+  eq(child.lua_get("vim.bo[state.prompt_buf].modifiable"), true)
+end
+
+T["async updates refresh active labels and toggling off stays off"] = function()
+  child.lua("open_async()")
+  child.lua("deliveries[1](items_for(3))")
+  child.lua("deliveries[1](items_for(5))")
+  local marks = child.lua_get("vim.api.nvim_buf_get_extmarks(state.buf, state.jump.ns, 0, -1, {})")
+  eq(#marks, 5)
+  for i, mark in ipairs(marks) do
+    eq(mark[2], i - 1)
+  end
+  child.type_keys(";")
+  child.lua("deliveries[1](items_for(4))")
+  eq(child.lua_get('require("namu.selecta.jump").is_active(state)'), false)
+end
+
+T["closing before async results arrive leaves the picker closed"] = function()
+  child.lua("open_async()")
+  child.type_keys("<Esc>")
+  child.lua("deliveries[1](items_for(3))")
+  eq(child.lua_get("state.active"), false)
+  eq(child.lua_get('require("namu.selecta.jump").is_active(state)'), false)
 end
 
 return T

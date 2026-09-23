@@ -6,6 +6,7 @@
 ---@field prompt_win number? Prompt window handle
 ---@field query string[] Current search query
 ---@field query_changed boolean Whether the query has changed since last render
+---@field jump_auto_pending? boolean Whether initial results may still auto-activate jump mode
 ---@field cursor_pos number Cursor position in query
 ---@field items SelectaItem[] All items
 ---@field filtered_items SelectaItem[] Filtered items
