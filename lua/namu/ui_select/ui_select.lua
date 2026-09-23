@@ -164,6 +164,13 @@ function M.select(items, opts, on_choice)
     })
   end
 
+  -- Resolve jump options for this call: honour module defaults, but suppress
+  -- auto_activate for kinds the user has opted out of (e.g. confirmations).
+  local jump_for_call = M.config.jump
+  if jump_for_call and jump_for_call.skip_kinds and opts.kind and jump_for_call.skip_kinds[opts.kind] then
+    jump_for_call = vim.tbl_extend("force", jump_for_call, { auto_activate = false })
+  end
+
   -- Configure Selecta options
   local default_selecta_opts = {
     title = opts.prompt or M.config.title,
@@ -174,6 +181,7 @@ function M.select(items, opts, on_choice)
     current_highlight = M.config.current_highlight,
     row_position = M.config.row_position or "top10",
     formatter = create_custom_formatter(M.config),
+    jump = jump_for_call,
     -- Custom offset function to account for numbering
     offset = function(item)
       local total_offset = 0

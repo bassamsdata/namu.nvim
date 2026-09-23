@@ -67,6 +67,16 @@ M.defaults = {
     text = "Loading results...",
     icon = "󰇚",
   },
+  jump = {
+    enabled = false, -- master opt-in
+    toggle_key = ";", -- key to enter/exit jump mode
+    auto_activate = false, -- enter jump mode immediately on pick(); true = always, number N = only when the picker opens with <= N items
+    keys = "asdfghjklqwertyuiopzxcvbnmASDFGHJKLQWERTYUIOPZXCVBNM",
+    hl_group = "NamuJumpLabel",
+    priority = 300,
+    min_items = 0, -- skip jump mode if fewer visible items than this
+    skip_kinds = {}, -- map of vim.ui.select kinds to skip auto_activate for
+  },
 }
 
 -- Active configuration (will be updated via setup)

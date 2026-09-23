@@ -269,6 +269,11 @@ end
 
 ---Clean up resources when closing the picker
 function StateManager:cleanup()
+  -- Tear down jump mode (if active) before the prompt buffer/window go away.
+  -- Lazy-required to avoid a load-time cycle.
+  if self.jump and self.jump.active then
+    require("namu.selecta.jump").deactivate(self)
+  end
   -- Clear all highlights in all namespaces
   if self.buf and vim.api.nvim_buf_is_valid(self.buf) then
     vim.api.nvim_buf_clear_namespace(self.buf, common.ns_id, 0, -1)

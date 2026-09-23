@@ -105,6 +105,142 @@ If only one item remains after filtering, automatically select it.
 auto_select = false,
 ```
 
+## Jump Labels
+Leap-style one-key jumping: place a label character on every visible row,
+press the label to jump to that row and select it in one keystroke.
+
+Off by default; enable globally to bind the toggle key (`;`) on every
+selecta-based picker:
+
+```lua
+require("namu").setup({
+  global = {
+    jump = { enabled = true },
+  },
+})
+```
+
+Press the toggle key (default `;`) in any picker to enter label mode; press
+again or `<Esc>` to exit. Label keystroke selects the labelled row, fires
+`on_select`, and closes the picker. While labels are showing the prompt
+buffer is locked so the filter can't change underfoot. Multiselect (`Tab`)
+is intentionally inert during jump mode — labels are always single-select;
+your prior `Tab` selections are preserved for when you toggle out.
+
+### Auto-activate (per-module)
+
+Some pickers benefit from entering jump mode immediately so single-key
+picks land in one stroke (code actions, buffer picker, spell suggestions):
+
+```lua
+require("namu").setup({
+  global    = { jump = { enabled = true } },
+  ui_select = {
+    enable  = true,
+    options = {
+      jump = {
+        auto_activate = true,
+        -- Suppress auto-activate for specific vim.ui.select kinds.
+        skip_kinds = { confirmation = true },
+      },
+    },
+  },
+})
+```
+
+`auto_activate` also accepts a number: auto-activate only when the picker
+opens with that many items or fewer. This is ideal for pickers whose lists
+are usually short — small list, labels pop up; big list, you filter first
+and toggle with `;` when ready:
+
+```lua
+require("namu").setup({
+  global = {
+    jump = {
+      enabled       = true,
+      auto_activate = 10, -- ≤ 10 items? drop straight into label mode
+    },
+  },
+})
+```
+
+`true` still means "always", `false` (default) "never", and `0` effectively
+disables auto-activation. The `min_items` floor still applies: activation
+needs `min_items ≤ items ≤ auto_activate` when both are set.
+
+### Per-call override
+
+`vim.tbl_deep_extend` means callers can override any field on a single call
+without knowing the rest of the config:
+
+```lua
+vim.ui.select(items, {
+  prompt = "Confirm:",
+  jump   = { auto_activate = false }, -- this one picker won't auto-jump
+}, on_choice)
+```
+
+### Full config surface
+
+```lua
+jump = {
+  enabled       = false, -- master opt-in; everything below is dead unless true
+  toggle_key    = ";",   -- key that enters/exits jump mode
+  auto_activate = false, -- enter jump on open: true always, number N = only when <= N items
+  keys          = "asdfghjklqwertyuiopzxcvbnmASDFGHJKLQWERTYUIOPZXCVBNM",
+  hl_group      = "NamuJumpLabel", -- highlight group used for the labels
+  priority      = 300,             -- extmark priority for the labels
+  min_items     = 0,               -- skip jump if fewer visible items than this
+  skip_kinds    = {},              -- table<vim.ui.select kind, true> to skip auto_activate
+},
+```
+### Recipe: differentiated setup
+
+A real-world setup rarely wants the same behaviour everywhere. Because
+`global` propagates to every picker and per-module settings win over it, you
+can mix toggle-only pickers with auto-jumping ones in a single `setup()`:
+
+```lua
+require("namu").setup({
+  -- Jump on everywhere; bind the toggle key on every picker.
+  global = {
+    jump = {
+      enabled    = true,
+      toggle_key = ";",
+      -- Home-row-first labels. NEVER include the toggle_key in `keys` — a
+      -- label keymap would shadow the binding that exits jump mode.
+      keys       = "asdfghjklqwertyuiopzxcvbnm",
+      min_items  = 3, -- 1–2 visible rows? just press <CR>, skip labelling.
+    },
+  },
+
+  -- Symbol pickers inherit the global config above: toggle-only. You
+  -- typically type to filter first, then press `;` once the target is on
+  -- screen — so auto_activate stays off here.
+
+  -- vim.ui.select (LSP code actions, etc.): drop straight into label mode so
+  -- a single keystroke picks.
+  ui_select = {
+    enable  = true,
+    options = {
+      jump = {
+        auto_activate = true,
+        min_items     = 2, -- a lone code action is still taken with <CR>.
+        -- Suppress auto_activate for specific vim.ui.select kinds — e.g. a
+        -- destructive picker where you'd rather read before a key lands.
+        skip_kinds    = { codeaction = true },
+      },
+    },
+  },
+})
+
+-- Make the labels pop (NamuJumpLabel links to "Special" by default).
+vim.api.nvim_set_hl(0, "NamuJumpLabel", { fg = "#ff966c", bold = true })
+```
+
+`skip_kinds` only gates `auto_activate`: a skipped kind still enters jump
+mode the moment you press the toggle key — it just won't do so on its own.
+
 ## Preserve Order
 Determines whether symbols maintain their original order after filtering.
 

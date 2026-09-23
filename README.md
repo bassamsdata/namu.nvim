@@ -30,6 +30,7 @@ https://github.com/user-attachments/assets/a97ff3b1-8b25-4da1-b276-f623e37d0368
 ## What Makes It Special
 
 - 🔍 **Live Preview**: See exactly where you'll land before you jump
+- 🏷 **Jump Labels**: One-key jump to any visible row via per-row labels (opt-in toggle, default `;`)
 - 🌳 **Order Preservation**: Maintains symbol order as they appear in your code, even after filtering
 - 🗂️ **Hierarchy Preservation**: Keeps the parent-child structure of your code symbols intact, so you always see context.
 - 📐 **Smart Auto-resize**: Window adapts to your content in real-time as you type and filter, no need for a big window with only a couple of items
@@ -79,7 +80,9 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 {
     "bassamsdata/namu.nvim",
     opts = {
-        global = { },
+        global = {
+            -- jump = { enabled = true }, -- opt-in: one-key jump labels, toggle with `;`
+        },
         namu_symbols = { -- Specific Module options
             options = {},
         },
@@ -217,7 +220,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ## Make It Yours
 
-You can check the [configuration documentation](https://github.com/bassamsdata/namu.nvim/tree/main/docs/Namu_config.md) for details on each option.
+You can check the [configuration documentation](https://github.com/bassamsdata/namu.nvim/tree/main/doc/Namu_config.md) for details on each option.
 <details>
   <summary>Here's the full setup with defaults:</summary>
 
@@ -225,6 +228,14 @@ You can check the [configuration documentation](https://github.com/bassamsdata/n
 { -- Those are the default options
   "bassamsdata/namu.nvim",
     opts = {
+    -- global options apply to every picker
+      global = {
+        jump = {
+          enabled = false, -- opt-in: one-key jump labels
+          toggle_key = ";", -- press in any picker to toggle label mode
+          auto_activate = false, -- enter jump mode on open: true = always, number N = only when <= N items
+        }
+      },
       -- Enable symbols navigator which is the default
       namu_symbols = {
         enable = true,

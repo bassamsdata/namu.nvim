@@ -59,6 +59,7 @@ https://github.com/user-attachments/assets/a97ff3b1-8b25-4da1-b276-f623e37d0368
 WHAT MAKES IT SPECIAL                   *namu-namu.nvim-what-makes-it-special*
 
 - 🔍 **Live Preview**: See exactly where you’ll land before you jump
+- 🏷 **Jump Labels**: One-key jump to any visible row via per-row labels (opt-in toggle, default `;`)
 - 🌳 **Order Preservation**: Maintains symbol order as they appear in your code, even after filtering
 - 🗂️ **Hierarchy Preservation**: Keeps the parent-child structure of your code symbols intact, so you always see context.
 - 📐 **Smart Auto-resize**: Window adapts to your content in real-time as you type and filter, no need for a big window with only a couple of items

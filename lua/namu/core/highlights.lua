@@ -98,6 +98,7 @@ function M.setup()
     NamuEmptyIndicator = "Comment", -- Empty selection indicator
     NamuFooter = "Comment", -- Footer text
     NamuCurrentItem = "CursorLine", -- Highlight the current item
+    NamuJumpLabel = "Special", -- Jump-mode label characters
     -- NamuCurrentItemIcon = "NamuCurrentItem", -- Icon highlight, defaults to current item, overridden when custom colors are used
     -- Namu Symbols
     NamuPrefixSymbol = "@Comment",

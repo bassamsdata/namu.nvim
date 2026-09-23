@@ -541,7 +541,7 @@ local function start_loading_workspace_files(workspace_files, lsp_utils, config,
         return table.concat(vim.fn.readfile(file.path), "\n")
       end)
       if ok then
-        client.notify("textDocument/didOpen", {
+        client:notify("textDocument/didOpen", {
           textDocument = {
             uri = vim.uri_from_fname(file.path),
             version = 0,

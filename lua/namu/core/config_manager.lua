@@ -143,6 +143,10 @@ M.module_defaults = {
       padding = 0,
       show_numbers = true,
     },
+    jump = {
+      enabled = false,
+      auto_activate = false,
+    },
   },
 }
 

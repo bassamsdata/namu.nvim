@@ -442,9 +442,19 @@ end
 function M.setup_multiselect_keymaps(state, opts, close_picker_fn, process_query_fn, map_key)
   local multiselect_keys = opts.multiselect.keymaps or config.multiselect.keymaps
 
+  -- While jump mode is active, multiselect is intentionally inert: the user
+  -- is picking a single target by label, not building a selection set.
+  -- Keymaps stay bound so they snap back as soon as jump mode exits.
+  local function jump_active()
+    return state.jump ~= nil and state.jump.active == true
+  end
+
   -- Toggle selection
   if multiselect_keys.toggle then
     map_key(multiselect_keys.toggle, function()
+      if jump_active() then
+        return
+      end
       handle_toggle(state, opts, 1)
     end)
   end
@@ -452,6 +462,9 @@ function M.setup_multiselect_keymaps(state, opts, close_picker_fn, process_query
   -- Untoggle selection
   if multiselect_keys.untoggle then
     map_key(multiselect_keys.untoggle, function()
+      if jump_active() then
+        return
+      end
       handle_untoggle(state, opts)
     end)
   end
@@ -459,6 +472,9 @@ function M.setup_multiselect_keymaps(state, opts, close_picker_fn, process_query
   -- Select all
   if multiselect_keys.select_all then
     map_key(multiselect_keys.select_all, function()
+      if jump_active() then
+        return
+      end
       bulk_selection(state, opts, true)
       process_query_fn(state, opts)
     end)
@@ -467,6 +483,9 @@ function M.setup_multiselect_keymaps(state, opts, close_picker_fn, process_query
   -- Clear all selections
   if multiselect_keys.clear_all then
     map_key(multiselect_keys.clear_all, function()
+      if jump_active() then
+        return
+      end
       bulk_selection(state, opts, false)
       process_query_fn(state, opts)
     end)
