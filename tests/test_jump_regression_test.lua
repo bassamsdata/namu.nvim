@@ -27,6 +27,27 @@ local T = MiniTest.new_set({
   },
 })
 
+T["auto labels follow the initial selection into a scrolled viewport"] = function()
+  child.lua([[
+    require("namu.selecta.selecta").pick(items_for(61), {
+      initial_index = 45,
+      window = { max_height = 5 },
+      jump = { enabled = true, auto_activate = true },
+      on_select = function(item) _G.chosen = item.value end,
+    })
+  ]])
+  child.cmd("redraw")
+  local view = child.lua_get("vim.fn.getwininfo(state.win)[1]")
+  local marks = child.lua_get("vim.api.nvim_buf_get_extmarks(state.buf, state.jump.ns, 0, -1, {})")
+  eq(view.topline > 1, true)
+  eq(#marks, view.botline - view.topline + 1)
+  for i, mark in ipairs(marks) do
+    eq(mark[2] + 1, view.topline + i - 1)
+  end
+  child.type_keys("a")
+  eq(child.lua_get("_G.chosen"), view.topline)
+end
+
 T["toggling off restores normal-mode navigation on every activation"] = function()
   child.lua([[
     require("namu.selecta.selecta").pick(items_for(12), {

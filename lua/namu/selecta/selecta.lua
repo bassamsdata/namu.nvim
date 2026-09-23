@@ -574,15 +574,6 @@ function M.pick(items, opts)
   M.process_query(state, opts)
   vim.cmd("redraw")
 
-  -- Optional auto-activation: jump.activate() runs stopinsert which cancels
-  -- the setup_prompt_buffer startinsert in the same synchronous chain, so we
-  -- exit pick() already in normal mode with labels rendered.
-  -- auto_activate may be a number: auto-activate only when the picker opens
-  -- with that many items or fewer (e.g. short code-action lists).
-  if require("namu.selecta.jump").should_auto_activate(opts, #state.filtered_items) then
-    require("namu.selecta.jump").activate(state, opts)
-  end
-
   -- Handle initial cursor position
   if opts.initial_index and opts.initial_index <= #items then
     local target_pos = math.min(opts.initial_index, #state.filtered_items)
@@ -603,6 +594,12 @@ function M.pick(items, opts)
   -- Focus the prompt window and start in insert mode
   if state.prompt_win and vim.api.nvim_win_is_valid(state.prompt_win) then
     vim.api.nvim_set_current_win(state.prompt_win)
+  end
+
+  -- Resolve the viewport after focusing the initial item, before placing labels.
+  vim.cmd("redraw")
+  if require("namu.selecta.jump").should_auto_activate(opts, #state.filtered_items) then
+    require("namu.selecta.jump").activate(state, opts)
   end
 end
 
