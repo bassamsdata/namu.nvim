@@ -8,6 +8,28 @@ function M.is_active(state)
     return state and state.jump and state.jump.active or false
 end
 
+---Decide whether pick() should enter jump mode synchronously at open.
+---`auto_activate` accepts `true` (always), `false` (never), or a number N
+---(only when the picker opens with N items or fewer). Always gated behind
+---`jump.enabled`, and `activate()` still applies its own `min_items` floor.
+---@param opts SelectaOptions
+---@param item_count number Number of items visible when the picker opens
+---@return boolean
+function M.should_auto_activate(opts, item_count)
+    local jump_opts = opts and opts.jump
+    if not (jump_opts and jump_opts.enabled) then
+        return false
+    end
+    local auto = jump_opts.auto_activate
+    if auto == true then
+        return true
+    end
+    if type(auto) == "number" then
+        return item_count <= auto
+    end
+    return false
+end
+
 function M.activate(state, opts)
     if M.is_active(state) or not state.active or state.is_loading then
         return

@@ -70,7 +70,7 @@ M.defaults = {
   jump = {
     enabled = false, -- master opt-in
     toggle_key = ";", -- key to enter/exit jump mode
-    auto_activate = false, -- enter jump mode immediately on pick()
+    auto_activate = false, -- enter jump mode immediately on pick(); true = always, number N = only when the picker opens with <= N items
     keys = "asdfghjklqwertyuiopzxcvbnmASDFGHJKLQWERTYUIOPZXCVBNM",
     hl_group = "NamuJumpLabel",
     priority = 300,

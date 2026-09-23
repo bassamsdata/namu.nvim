@@ -577,7 +577,9 @@ function M.pick(items, opts)
   -- Optional auto-activation: jump.activate() runs stopinsert which cancels
   -- the setup_prompt_buffer startinsert in the same synchronous chain, so we
   -- exit pick() already in normal mode with labels rendered.
-  if opts.jump and opts.jump.enabled and opts.jump.auto_activate then
+  -- auto_activate may be a number: auto-activate only when the picker opens
+  -- with that many items or fewer (e.g. short code-action lists).
+  if require("namu.selecta.jump").should_auto_activate(opts, #state.filtered_items) then
     require("namu.selecta.jump").activate(state, opts)
   end
 

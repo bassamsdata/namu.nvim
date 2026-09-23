@@ -231,9 +231,9 @@ You can check the [configuration documentation](https://github.com/bassamsdata/n
     -- global options apply to every picker
       global = {
         jump = {
-          enable = false, -- opt-in: one-key jump labels
+          enabled = false, -- opt-in: one-key jump labels
           toggle_key = ";", -- press in any picker to toggle label mode
-          auto_activate = false, -- enter jump mode immediately on open
+          auto_activate = false, -- enter jump mode on open: true = always, number N = only when <= N items
         }
       },
       -- Enable symbols navigator which is the default

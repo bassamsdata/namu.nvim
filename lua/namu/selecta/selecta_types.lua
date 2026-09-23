@@ -136,7 +136,7 @@
 ---@class SelectaJumpConfig
 ---@field enabled? boolean Master opt-in. When false (default), jump module is a no-op.
 ---@field toggle_key? string Key that toggles jump mode in the prompt buffer. Default ";"
----@field auto_activate? boolean Enter jump mode immediately when the picker opens. Default false.
+---@field auto_activate? boolean|number Enter jump mode immediately when the picker opens. `true` always activates; a number N activates only when the picker opens with N items or fewer; `false` (default) never.
 ---@field keys? string Ordered string of label characters. One label per visible row.
 ---@field hl_group? string Highlight group used for the label virt_text. Default "NamuJumpLabel".
 ---@field priority? number Extmark priority for the labels. Default 300.

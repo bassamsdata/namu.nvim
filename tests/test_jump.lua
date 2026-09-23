@@ -240,6 +240,38 @@ T["Jump.auto_activate"]["disabled jump skips auto_activate even when flag is set
   h.eq(jump.is_active(state), false)
 end
 
+T["Jump.auto_activate"]["numeric auto_activate activates when items <= threshold"] = function()
+  local state = open_picker(items_for(3), { jump = { enabled = true, auto_activate = 3 } })
+  h.eq(jump.is_active(state), true)
+end
+
+T["Jump.auto_activate"]["numeric auto_activate is inert when items exceed threshold"] = function()
+  local state = open_picker(items_for(3), { jump = { enabled = true, auto_activate = 2 } })
+  h.eq(jump.is_active(state), false)
+end
+
+T["Jump.auto_activate"]["numeric auto_activate = 0 never activates"] = function()
+  local state = open_picker(items_for(3), { jump = { enabled = true, auto_activate = 0 } })
+  h.eq(jump.is_active(state), false)
+end
+
+T["Jump.auto_activate"]["numeric auto_activate still respects min_items floor"] = function()
+  -- min_items gates activate() itself, so it wins over the numeric threshold:
+  -- 3 items with auto_activate=10 but min_items=5 must stay inactive.
+  local state = open_picker(items_for(3), { jump = { enabled = true, auto_activate = 10, min_items = 5 } })
+  h.eq(jump.is_active(state), false)
+end
+
+T["Jump.auto_activate"]["should_auto_activate predicate"] = function()
+  h.eq(jump.should_auto_activate({ jump = { enabled = true, auto_activate = true } }, 999), true)
+  h.eq(jump.should_auto_activate({ jump = { enabled = true, auto_activate = 5 } }, 5), true)
+  h.eq(jump.should_auto_activate({ jump = { enabled = true, auto_activate = 5 } }, 6), false)
+  h.eq(jump.should_auto_activate({ jump = { enabled = true, auto_activate = 0 } }, 3), false)
+  h.eq(jump.should_auto_activate({ jump = { enabled = true, auto_activate = false } }, 3), false)
+  h.eq(jump.should_auto_activate({ jump = { enabled = true } }, 3), false) -- nil = never
+  h.eq(jump.should_auto_activate({}, 3), false) -- no jump table at all
+end
+
 -- ----------------------------------------------------------------------
 T["Jump.multiselect"] = new_set({ hooks = picker_hooks })
 

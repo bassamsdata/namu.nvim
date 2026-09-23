@@ -148,6 +148,26 @@ require("namu").setup({
 })
 ```
 
+`auto_activate` also accepts a number: auto-activate only when the picker
+opens with that many items or fewer. This is ideal for pickers whose lists
+are usually short — small list, labels pop up; big list, you filter first
+and toggle with `;` when ready:
+
+```lua
+require("namu").setup({
+  global = {
+    jump = {
+      enabled       = true,
+      auto_activate = 10, -- ≤ 10 items? drop straight into label mode
+    },
+  },
+})
+```
+
+`true` still means "always", `false` (default) "never", and `0` effectively
+disables auto-activation. The `min_items` floor still applies: activation
+needs `min_items ≤ items ≤ auto_activate` when both are set.
+
 ### Per-call override
 
 `vim.tbl_deep_extend` means callers can override any field on a single call
@@ -166,7 +186,7 @@ vim.ui.select(items, {
 jump = {
   enabled       = false, -- master opt-in; everything below is dead unless true
   toggle_key    = ";",   -- key that enters/exits jump mode
-  auto_activate = false, -- enter jump immediately when the picker opens
+  auto_activate = false, -- enter jump on open: true always, number N = only when <= N items
   keys          = "asdfghjklqwertyuiopzxcvbnmASDFGHJKLQWERTYUIOPZXCVBNM",
   hl_group      = "NamuJumpLabel", -- highlight group used for the labels
   priority      = 300,             -- extmark priority for the labels
