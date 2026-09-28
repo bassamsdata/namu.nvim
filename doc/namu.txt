@@ -3,20 +3,23 @@
 ==============================================================================
 Table of Contents                                     *namu-table-of-contents*
 
-1. Navigate your code with context.    |namu-navigate-your-code-with-context.|
-  - Features                  |namu-navigate-your-code-with-context.-features|
-  - Requirements          |namu-navigate-your-code-with-context.-requirements|
-  - Installation          |namu-navigate-your-code-with-context.-installation|
-  - Getting started    |namu-navigate-your-code-with-context.-getting-started|
-  - Configuration        |namu-navigate-your-code-with-context.-configuration|
-  - Demos                        |namu-navigate-your-code-with-context.-demos|
-  - Contributing          |namu-navigate-your-code-with-context.-contributing|
-  - Credits                    |namu-navigate-your-code-with-context.-credits|
-  - License                    |namu-navigate-your-code-with-context.-license|
+1. Namu.nvim                                                  |namu-namu.nvim|
+  - Features                                         |namu-namu.nvim-features|
+  - Requirements                                 |namu-namu.nvim-requirements|
+  - Installation                                 |namu-namu.nvim-installation|
+  - Getting started                           |namu-namu.nvim-getting-started|
+  - Configuration                               |namu-namu.nvim-configuration|
+  - Demos                                               |namu-namu.nvim-demos|
+  - Contributing                                 |namu-namu.nvim-contributing|
+  - Credits                                           |namu-namu.nvim-credits|
+  - License                                           |namu-namu.nvim-license|
 2. Links                                                          |namu-links|
 
 ==============================================================================
-1. Navigate your code with context.    *namu-navigate-your-code-with-context.*
+1. Namu.nvim                                                  *namu-namu.nvim*
+
+
+
 
 **Namu.nvim** brings symbols, diagnostics, and call hierarchies into a fuzzy
 picker with live preview, inspired by Zed <https://zed.dev>.
@@ -28,7 +31,7 @@ configuration <doc/Namu_config.md>
 https://github.com/user-attachments/assets/a97ff3b1-8b25-4da1-b276-f623e37d0368
 
 
-FEATURES                      *namu-navigate-your-code-with-context.-features*
+FEATURES                                             *namu-namu.nvim-features*
 
 - **Symbols with context:** search the current buffer, open buffers, or your workspace. Tree guides show how symbols fit together.
 - **Jump labels:** press `;` in a picker, then a displayed label to jump directly to that item. Enabled by default, with configurable keys and optional automatic activation.
@@ -39,7 +42,7 @@ FEATURES                      *namu-navigate-your-code-with-context.-features*
 - **Optional pickers:** Tree-sitter and ctags symbols, a colorscheme picker, and a `vim.ui.select` replacement.
 
 
-REQUIREMENTS              *namu-navigate-your-code-with-context.-requirements*
+REQUIREMENTS                                     *namu-namu.nvim-requirements*
 
 Namu requires **Neovim 0.11+**. The built-in `vim.pack` installation below
 requires **Neovim 0.12+**.
@@ -51,7 +54,7 @@ Nerd Font is optional for icons, and Universal Ctags <https://ctags.io/> is
 needed for the ctags picker.
 
 
-INSTALLATION              *namu-navigate-your-code-with-context.-installation*
+INSTALLATION                                     *namu-namu.nvim-installation*
 
 
 BUILT-IN VIM.PACK ~
@@ -96,7 +99,7 @@ lazy.nvim’s loading documentation <https://lazy.folke.io/spec/lazy_loading>
 for other triggers.
 
 
-GETTING STARTED        *namu-navigate-your-code-with-context.-getting-started*
+GETTING STARTED                               *namu-namu.nvim-getting-started*
 
 Open a file with an attached language server, then run `:Namu symbols`. Type to
 filter, move through the results to preview the code, and press `<CR>` to jump.
@@ -176,7 +179,7 @@ Actions depend on the picker and its items. Integrations require the
 corresponding plugin.
 
 
-CONFIGURATION            *namu-navigate-your-code-with-context.-configuration*
+CONFIGURATION                                   *namu-namu.nvim-configuration*
 
 Use `global` for shared picker options and a module key for its overrides:
 
@@ -202,7 +205,7 @@ testing a local checkout with `vim.pack` or lazy.nvim.
 You can also read `:help namu` inside Neovim.
 
 
-DEMOS                            *namu-navigate-your-code-with-context.-demos*
+DEMOS                                                   *namu-namu.nvim-demos*
 
   -----------------------------------------------------------------------
   Feature                             Recording
@@ -226,7 +229,7 @@ Tree guides (default):
 Indentation (`display.format = "indent"`):
 
 
-CONTRIBUTING              *namu-navigate-your-code-with-context.-contributing*
+CONTRIBUTING                                     *namu-namu.nvim-contributing*
 
 Bug reports, suggestions, and pull requests are welcome. Include your Neovim
 version, configuration, and a small reproduction when reporting a problem. Run
@@ -238,7 +241,7 @@ For website edits, recordings, and domain setup, see the website guide
 “Namu” means “tree” in Korean, reflecting the structure of your code.
 
 
-CREDITS                        *namu-navigate-your-code-with-context.-credits*
+CREDITS                                               *namu-namu.nvim-credits*
 
 - Zed <https://zed.dev> for the inspiration.
 - @themastersheep <https://github.com/themastersheep> for jump labels <https://github.com/bassamsdata/namu.nvim/pull/65>. Thank you!
@@ -250,7 +253,7 @@ CREDITS                        *namu-navigate-your-code-with-context.-credits*
 - @stevearc <https://github.com/stevearc> and Aerial.nvim <https://github.com/stevearc/aerial.nvim> for Tree-sitter queries.
 
 
-LICENSE                        *namu-navigate-your-code-with-context.-license*
+LICENSE                                               *namu-namu.nvim-license*
 
 MIT <LICENSE>
 

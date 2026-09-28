@@ -1,4 +1,12 @@
-# Navigate your code with context.
+<!-- panvimdoc-include-comment
+# Namu.nvim
+-->
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="site/assets/logo-dark.svg">
+    <img src="site/assets/logo-light.svg" alt="Namu.nvim" width="240" height="55">
+  </picture>
+</h1>
 
 **Namu.nvim** brings symbols, diagnostics, and call hierarchies into a fuzzy picker with live preview, inspired by [Zed](https://zed.dev).
 
