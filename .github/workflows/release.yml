@@ -31,6 +31,31 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      - name: Preview curated notes in the release PR
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_PRS: ${{ steps.release.outputs.prs }}
+        run: |
+          number=$(jq -r '.[0].number' <<< "$RELEASE_PRS")
+          branch=$(gh pr view "$number" --json headRefName --jq .headRefName)
+          version=$(gh api "repos/${GH_REPO}/contents/version.txt?ref=${branch}" --jq .content | base64 --decode)
+          notes="doc/releases/v${version}.md"
+          if [ -f "$notes" ]; then
+            gh pr view "$number" --json body --jq .body > "$RUNNER_TEMP/release-pr-original.md"
+            python3 - "$notes" "$RUNNER_TEMP" <<'PY'
+          import pathlib, re, sys
+          notes, temporary = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+          body = (temporary / "release-pr-original.md").read_text()
+          start, end = "<!-- namu-release-notes:start -->", "<!-- namu-release-notes:end -->"
+          body = re.sub(re.escape(start) + r".*?" + re.escape(end) + r"\s*", "", body, flags=re.S)
+          summary = f"{start}\n### Release highlights\n\n{notes.read_text().strip()}\n{end}\n\n"
+          (temporary / "release-pr-body.md").write_text(summary + body)
+          PY
+            gh pr edit "$number" --body-file "$RUNNER_TEMP/release-pr-body.md"
+          fi
+
       - name: Use curated release notes when available
         if: steps.release.outputs.release_created == 'true'
         env:
