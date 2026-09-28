@@ -1,631 +1,174 @@
-# Namu.nvim
+# Namu.nvim 🌳
 
-🌿 Jump to symbols in your code with live preview, built-in fuzzy finding, and more.
-Inspired by Zed, it preserves symbol order while guiding you through your codebase.
-Supports LSP, Treesitter, ctags, and works across buffers and workspaces.
-
-
-> [!WARNING]
-> 🚧 **Beta**: This plugin is in beta. Breaking changes may occur.
-
-
+Navigate the structure of your code in Neovim. Namu brings symbols, diagnostics, and call hierarchies into a fuzzy picker with live preview, inspired by [Zed](https://zed.dev).
 
 https://github.com/user-attachments/assets/a97ff3b1-8b25-4da1-b276-f623e37d0368
 
+## Features
 
+- **Symbols with context:** search the current buffer, open buffers, or your workspace. Tree guides show how symbols fit together.
+- **Jump labels:** press `;` in a picker, then a displayed label to jump directly to that item. Enabled by default, with configurable keys and optional automatic activation.
+- **Live preview:** see a symbol's location as you move through the results.
+- **Diagnostics and calls:** browse diagnostics or follow incoming and outgoing calls when your language server supports them.
+- **Actions and multiselect:** select several items, send them to quickfix, yank or delete symbol text, or open a split. CodeCompanion and Avante integrations are available when installed.
+- **Theme-aware selection:** the focused row gets a contrasting background, including with transparent colorschemes. Custom highlights take precedence.
+- **Optional pickers:** Tree-sitter and ctags symbols, a colorscheme picker, and a `vim.ui.select` replacement.
 
-## 🧩 Built-in Modules
+## Requirements
 
-| Module         | Description                                      |
-|----------------|--------------------------------------------------|
-| 🏷️ symbols        | LSP symbols for current buffer                      |
-| 🌐 workspace      | LSP workspace symbols, interactive, live preview    |
-| 📂 watchtower    | Symbols from all open buffers (LSP or Treesitter)   |
-| 🩺 diagnostics    | Diagnostics for buffer or full workspace, live filter    |
-| 🔗 call_hierarchy | Call hierarchy (in/out/both) for symbol             |
-| 🏷️ ctags          | ctags-based symbols (buffer or watchtower)         |
-| 🪟 ui_select      | Wrapper for `vim.ui.select` with enhanced UI        |
+Namu requires **Neovim 0.11+**. The built-in `vim.pack` installation below requires **Neovim 0.12+**.
 
-
-## What Makes It Special
-
-- 🔍 **Live Preview**: See exactly where you'll land before you jump
-- 🏷 **Jump Labels**: Press `;` to show labels, then a label key to jump to a visible row (enabled by default)
-- 🌳 **Order Preservation**: Maintains symbol order as they appear in your code, even after filtering
-- 🗂️ **Hierarchy Preservation**: Keeps the parent-child structure of your code symbols intact, so you always see context.
-- 📐 **Smart Auto-resize**: Window adapts to your content in real-time as you type and filter, no need for a big window with only a couple of items
-- 🚀 **Zero Dependencies**: Works with any LSP-supported language out of the box
-- 🎯 **Context Aware**: Always shows your current location in the codebase
-- ⚡ **Powerful Filtering**:
-  - Live filtering through `/xx` such as `/fn` for fcuntions or `/bf:` for buffer names if watchtower module.
-  - Built-in fuzzy finding that understands code structure
-  - Filter by symbol types (functions, classes, methods)
-  - Use regex patterns (e.g., `^__` to filter out Python's `__init__` methods)
-- 🎨 **Quality of Life**:
-  - Auto-select when only one match remains
-  - Remembers cursor position when you cancel
-  - Customizable window style and behavior
-- ✂️  **Multi-Action Workflow**: Perform multiple operations while Namu is open (or close it after, you choose!):
-  - Delete, yank, and add to CodeCompanion chat (more plugins coming soon)
-  - Works with both single and multiple selected symbols
-- 🌑 **Initially Hidden Mode**: Start with an empty list and populate it dynamically as you type, just like the command palette in Zed and VS Code
-
-## Table of Contents
-
-- [Requirements](#-requirements)
-- [Installation](#installation)
-- [Features](#features)
-- [Keymaps](#keymaps)
-- [Commands](#commands)
-- [Make It Yours](#make-it-yours)
-- [Tips](#tips)
-- [Feature Demos](#feature-demos)
-- [Display Styles](#display-styles)
-- [Highlights](#highlights)
-- [Contributing](#contributing)
-- [Credits & Acknowledgements](#credits--acknowledgements)
-- [Demo](#demo)
-
-## ⚡ Requirements
-- LSP server for your language (Treesitter fallback for some modules)
-- Treesitter (for live preview)
-- [ctags](https://ctags.io) (for ctags module, optional)
+Use a configured language server for LSP symbols, workspace search, and call hierarchies; available features depend on the server's capabilities. Tree-sitter symbol extraction requires a parser for the buffer's language. A Nerd Font is optional for icons, and [Universal Ctags](https://ctags.io/) is needed for the ctags picker.
 
 ## Installation
 
-### Lazy.nvim
+### Built-in vim.pack
 
-Using [lazy.nvim](https://github.com/folke/lazy.nvim):
+Add this to your `init.lua`:
+
+```lua
+vim.pack.add({
+  { src = "https://github.com/bassamsdata/namu.nvim" },
+})
+
+require("namu").setup({})
+
+vim.keymap.set("n", "<leader>ss", "<cmd>Namu symbols<cr>", { desc = "Namu symbols" })
+vim.keymap.set("n", "<leader>sw", "<cmd>Namu workspace<cr>", { desc = "Namu workspace symbols" })
+```
+
+This follows the default branch. To follow v0.7 releases, add `version = vim.version.range("0.7")` to the package specification. See [Neovim's package documentation](https://neovim.io/doc/user/pack/) for installation and updates.
+
+### lazy.nvim
+
+Add this plugin specification:
+
 ```lua
 {
-    "bassamsdata/namu.nvim",
-    opts = {
-        global = {
-            -- jump = { enabled = false }, -- optional: disable the default `;` jump-label toggle
-        },
-        namu_symbols = { -- Specific Module options
-            options = {},
-        },
-    },
-    -- === Suggested Keymaps: ===
-    vim.keymap.set("n", "<leader>ss", ":Namu symbols<cr>", {
-        desc = "Jump to LSP symbol",
-        silent = true,
-    }),
-    vim.keymap.set("n", "<leader>sw", ":Namu workspace<cr>", {
-        desc = "LSP Symbols - Workspace",
-        silent = true,
-    })
-}
-```
-
-<details>
-  <summary>📦 Paq.nvim</summary>
-
-  ```lua
-  require "paq" {
-    "bassamsdata/namu.nvim"
-  }
-  ```
-
-</details>
-
-<details>
-  <summary>📦 Mini.deps</summary>
-
-  ```lua
-  require("mini.deps").add("bassamsdata/namu.nvim")
-  ```
-
-</details>
-
-
-## Features
-
-- Live kind filtering for all symbol modules (`/fn`, `/me`, etc.) and then start type like `/fnmain` to filter more [see demo](#feature-demos)
-- Filter by buffer name in watchtower: `/bf:buffer_name` [see demo](#feature-demos)
-- Combine filters: `/bf:name:fn` (buffer and function) [see demo](#feature-demos)
-- Diagnostics filtering: `/er` (errors), `/wa` (warnings), `/hi` (hints), `/in` (info) [see demo](#feature-demos)
-- Two display styles: `tree_guides` or `indent` [see pictures](## Display Styles)
-- Configurable prefix icon for current item
-- All operations are asynchronous (non-blocking)
-- No dependencies except Neovim, LSP, and optional ctags
--  Hierarchy Preservation: Keeps the parent-child structure of your code symbols intact, so you always see context.
-
-
-
-## Keymaps
-
-<details>
-<summary>Show keymaps</summary>
-
-| Key         | Action                                 |
-|-------------|----------------------------------------|
-| `<CR>`      | Select item                            |
-| `<Esc>`     | Close picker                           |
-| `<C-n>`     | Next item                              |
-| `<C-p>`     | Previous item                          |
-| `<Tab>`     | Toggle multiselect                     |
-| `<C-a>`     | Select all                             |
-| `<C-l>`     | Clear all                              |
-| `<C-y>`     | Yank symbol(s)                         |
-| `<C-d>`     | Delete symbol(s)                       |
-| `<C-v>`     | Open symbol in vertical split          |
-| `<C-h>`     | Open symbol in horizontal split        |
-| `<C-o>`     | Add symbol(s) to CodeCompanion chat    |
-
-</details>
-
-### Change Keymaps:
-
-<details>
-<summary>change the default keymaps:</summary>
-
-```lua
--- in namu_symbols.options
-  movement = {
-    next = { "<C-n>", "<DOWN>" }, -- Support multiple keys
-    previous = { "<C-p>", "<UP>" }, -- Support multiple keys
-    close = { "<ESC>" }, -- close mapping
-    select = { "<CR>" }, -- select mapping
-    delete_word = {}, -- delete word mapping
-    clear_line = {}, -- clear line mapping
-  },
-  multiselect = {
-    enabled = false,
-    indicator = "●", -- or "✓"◉
-    keymaps = {
-      toggle = "<Tab>",
-      select_all = "<C-a>",
-      clear_all = "<C-l>",
-      untoggle = "<S-Tab>",
-    },
-    max_items = nil, -- No limit by default
-  },
-  custom_keymaps = {
-    yank = {
-      keys = { "<C-y>" }, -- yank symbol text
-    },
-    delete = {
-      keys = { "<C-d>" }, -- delete symbol text
-    },
-    vertical_split = {
-      keys = { "<C-v>" }, -- open in vertical split
-    },
-    horizontal_split = {
-      keys = { "<C-h>" }, -- open in horizontal split
-    },
-    codecompanion = {
-      keys = "<C-o>", -- Add symbols to CodeCompanion
-    },
-    avante = {
-      keys = "<C-t>", -- Add symbol to Avante
-    },
-  },
-```
-
-</details>
-
-## Commands
-
-| Command                | Arguments         | Description                                 |
-|------------------------|------------------|---------------------------------------------|
-| `:Namu symbols`    | function, class, method… | Show buffer symbols, filter by kind         |
-| `:Namu workspace` | | Search workspace symbols                    |
-| `:Namu watchtower`      |                  | Symbols from all open buffers, it fallbacks to treesitter               |
-| `:Namu diagnostics`  | buffers, workspace        | Diagnostics for buffer or workspace (not only open buffers)         |
-| `:Namu call in/out/both` | in/out/both      | Call hierarchy for symbol                   |
-| `:Namu ctags [watchtower]`   | watchtower           | ctags symbols (buffer or watchtower)       |
-| `:Namu help [topic]`     | symbols/analysis | Show help                                   |
-
-## Make It Yours
-
-You can check the [configuration documentation](https://github.com/bassamsdata/namu.nvim/tree/main/doc/Namu_config.md) for details on each option.
-<details>
-  <summary>Here's the full setup with defaults:</summary>
-
-```lua
-{ -- Those are the default options
   "bassamsdata/namu.nvim",
-    opts = {
-    -- global options apply to every picker
-      global = {
-        jump = {
-          enabled = true, -- one-key jump labels, shown when you press `;`
-          toggle_key = ";", -- press in any picker to toggle label mode
-          auto_activate = false, -- enter jump mode on open: true = always, number N = only when <= N items
-        },
-        display = { format = "tree_guides" },
-      },
-      -- Enable symbols navigator which is the default
-      namu_symbols = {
-        enable = true,
-        ---@type NamuConfig
-        options = {
-          AllowKinds = {
-            default = {
-              "Function",
-              "Method",
-              "Class",
-              "Module",
-              "Property",
-              "Variable",
-              -- "Constant",
-              -- "Enum",
-              -- "Interface",
-              -- "Field",
-              -- "Struct",
-            },
-            go = {
-              "Function",
-              "Method",
-              "Struct", -- For struct definitions
-              "Field", -- For struct fields
-              "Interface",
-              "Constant",
-              -- "Variable",
-              "Property",
-              -- "TypeParameter", -- For type parameters if using generics
-            },
-            lua = { "Function", "Method", "Table", "Module" },
-            python = { "Function", "Class", "Method" },
-            -- Filetype specific
-            yaml = { "Object", "Array" },
-            json = { "Module" },
-            toml = { "Object" },
-            markdown = { "String" },
-          },
-          BlockList = {
-            default = {},
-            -- Filetype-specific
-            lua = {
-              "^vim%.", -- anonymous functions passed to nvim api
-              "%.%.%. :", -- vim.iter functions
-              ":gsub", -- lua string.gsub
-              "^callback$", -- nvim autocmds
-              "^filter$",
-              "^map$", -- nvim keymaps
-            },
-            -- another example:
-            -- python = { "^__" }, -- ignore __init__ functions
-          },
-          display = {
-            mode = "icon", -- "icon" or "raw"
-            padding = 2,
-          },
-          -- This is a preset that let's set window without really get into the hassle of tuning window options
-          -- top10 meaning top 10% of the window
-          row_position = "top10", -- options: "center"|"top10"|"top10_right"|"center_right"|"bottom",
-          preview = {
-            highlight_on_move = true, -- Whether to highlight symbols as you move through them
-            -- still needs implmenting, keep it always now
-            highlight_mode = "always", -- "always" | "select" (only highlight when selecting)
-          },
-          window = {
-            auto_size = true,
-            min_height = 1,
-            min_width = 20,
-            max_width = 120,
-            max_height = 30,
-            padding = 2,
-            border = "rounded",
-            title_pos = "left",
-            show_footer = true,
-            footer_pos = "right",
-            relative = "editor",
-            style = "minimal",
-            width_ratio = 0.6,
-            height_ratio = 0.6,
-            title_prefix = "󱠦 ",
-          },
-          debug = false,
-          focus_current_symbol = true,
-          auto_select = false,
-          initially_hidden = false,
-          multiselect = {
-            enabled = true,
-            indicator = "✓", -- or "✓"●
-            keymaps = {
-              toggle = "<Tab>",
-              untoggle = "<S-Tab>",
-              select_all = "<C-a>",
-              clear_all = "<C-l>",
-            },
-            max_items = nil, -- No limit by default
-          },
-          actions = {
-            close_on_yank = false, -- Whether to close picker after yanking
-            close_on_delete = true, -- Whether to close picker after deleting
-          },
-          movement = {-- Support multiple keys
-            next = { "<C-n>", "<DOWN>" },
-            previous = { "<C-p>", "<UP>" },
-            close = { "<ESC>" }, -- "<C-c>" can be added as well
-            select = { "<CR>" },
-            delete_word = {}, -- it can assign "<C-w>"
-            clear_line = {}, -- it can be "<C-u>"
-          },
-          custom_keymaps = {
-            yank = {
-              keys = { "<C-y>" },
-              desc = "Yank symbol text",
-            },
-            delete = {
-              keys = { "<C-d>" },
-              desc = "Delete symbol text",
-            },
-            vertical_split = {
-              keys = { "<C-v>" },
-              desc = "Open in vertical split",
-            },
-            horizontal_split = {
-              keys = { "<C-h>" },
-              desc = "Open in horizontal split",
-            },
-            codecompanion = {
-              keys = "<C-o>",
-              desc = "Add symbol to CodeCompanion",
-            },
-            avante = {
-              keys = "<C-t>",
-              desc = "Add symbol to Avante",
-            },
-          },
-          icon = "󱠦", -- 󱠦 -  -  -- 󰚟
-          kindText = {
-            Function = "function",
-            Class = "class",
-            Module = "module",
-            Constructor = "constructor",
-            Interface = "interface",
-            Property = "property",
-            Field = "field",
-            Enum = "enum",
-            Constant = "constant",
-            Variable = "variable",
-          },
-          kindIcons = {
-            File = "󰈙",
-            Module = "󰏗",
-            Namespace = "󰌗",
-            Package = "󰏖",
-            Class = "󰌗",
-            Method = "󰆧",
-            Property = "󰜢",
-            Field = "󰜢",
-            Constructor = "󰆧",
-            Enum = "󰒻",
-            Interface = "󰕘",
-            Function = "󰊕",
-            Variable = "󰀫",
-            Constant = "󰏿",
-            String = "󰀬",
-            Number = "󰎠",
-            Boolean = "󰨙",
-            Array = "󰅪",
-            Object = "󰅩",
-            Key = "󰌋",
-            Null = "󰟢",
-            EnumMember = "󰒻",
-            Struct = "󰌗",
-            Event = "󰉁",
-            Operator = "󰆕",
-            TypeParameter = "󰊄",
-          },
-          highlight = "NamuPreview",
-          highlights = {
-            parent = "NamuParent",
-            nested = "NamuNested",
-            style = "NamuStyle",
-          },
-          kinds = {
-            prefix_kind_colors = true,
-            enable_highlights = true,
-            highlights = {
-              PrefixSymbol = "NamuPrefixSymbol",
-              Function = "NamuSymbolFunction",
-              Method = "NamuSymbolMethod",
-              Class = "NamuSymbolClass",
-              Interface = "NamuSymbolInterface",
-              Variable = "NamuSymbolVariable",
-              Constant = "NamuSymbolConstant",
-              Property = "NamuSymbolProperty",
-              Field = "NamuSymbolField",
-              Enum = "NamuSymbolEnum",
-              Module = "NamuSymbolModule",
-            },
-          },
-        }
-      }
-      ui_select = { enable = false }, -- vim.ui.select() wrapper
-    }
-  end,
+  cmd = "Namu",
+  main = "namu",
+  opts = {},
+  keys = {
+    { "<leader>ss", "<cmd>Namu symbols<cr>", desc = "Namu symbols" },
+    { "<leader>sw", "<cmd>Namu workspace<cr>", desc = "Namu workspace symbols" },
+  },
 }
 ```
 
-</details>
+The command and keys load Namu on demand. Put configuration in `opts`; see [lazy.nvim's loading documentation](https://lazy.folke.io/spec/lazy_loading) for other triggers.
 
+## Getting started
 
-## Tips
+Open a file with an attached language server, then run `:Namu symbols`. Type to filter, move through the results to preview the code, and press `<CR>` to jump. Press `;` to show labels and select a result directly.
 
-- Type to filter symbols - it's fuzzy, so no need to be exact, though it prioritizes exact words first
-- Use regex patterns for precise filtering (e.g., `^test_` for test functions)
-- Press `<CR>` to jump, `<Esc>` to cancel
+Tree guides and manual jump labels are the defaults. No configuration is needed to enable them.
 
-## Feature Demos
+### Commands
 
-<details>
-  <summary>🌳 Order Preservation</summary>
-Maintains symbol order as they appear in your code, even after filtering
+| Command | What it shows |
+| --- | --- |
+| `:Namu symbols` | Symbols in the current buffer |
+| `:Namu symbols function` | Only functions; other kinds such as `class`, `method`, and `variable` are supported |
+| `:Namu treesitter` | Current-buffer symbols from Tree-sitter |
+| `:Namu workspace` | Workspace symbols from your language server |
+| `:Namu workspace query` | Workspace symbols with an initial query |
+| `:Namu watchtower` | Symbols across open buffers |
+| `:Namu diagnostics` | Current-buffer diagnostics |
+| `:Namu diagnostics buffers` | Diagnostics across open buffers |
+| `:Namu diagnostics workspace` | Available workspace diagnostics |
+| `:Namu call in` | Incoming calls |
+| `:Namu call out` | Outgoing calls |
+| `:Namu call both` | Both directions |
+| `:Namu ctags` | Current-buffer ctags symbols; enable `namu_ctags` first |
+| `:Namu ctags watchtower` | Ctags symbols across open buffers |
+| `:Namu colorscheme` | Colorscheme picker; enable `colorscheme` first |
+| `:Namu help` | Command help |
+| `:Namu help symbols` | Symbol filtering help |
+| `:Namu help analysis` | Symbol information for the current buffer |
 
+### Picker keys
 
-https://github.com/user-attachments/assets/2f84f1b0-3fb7-4d69-81ea-8ec70acb5b80
+| Key | Action |
+| --- | --- |
+| `<C-n>` / `<Down>` | Next item |
+| `<C-p>` / `<Up>` | Previous item |
+| `<CR>` | Select item |
+| `<Esc>` | Close picker; in jump mode, return to filtering first |
+| `;` | Toggle jump labels |
+| `<Tab>` / `<S-Tab>` | Select / unselect an item |
+| `<C-a>` / `<C-l>` | Select all / clear selection |
+| `<C-y>` | Yank symbol text |
+| `<C-d>` | Delete symbol text |
+| `<C-v>` / `<C-h>` | Open a vertical / horizontal split |
+| `<C-q>` | Send items to quickfix |
+| `<C-o>` / `<C-t>` | Add to CodeCompanion / Avante |
 
-</details>
+Actions depend on the picker and its items. Integrations require the corresponding plugin.
 
-<details>
-<summary>symbols</summary>
+## Configuration
 
-- Shows LSP symbols for current buffer.
-- Filter by kind: `:Namu symbols function`
-- Live kind filtering: `/fn` for fucntion , `/me` for methods, etc.
-- Live preview as you move.
+Use `global` for shared picker options and a module key for its overrides:
 
+```lua
+require("namu").setup({
+  global = {
+    display = { format = "tree_guides" },
+    jump = { enabled = true, toggle_key = ";", auto_activate = false },
+  },
+  namu_symbols = {
+    row_position = "top10",
+    window = { max_width = 100 },
+  },
+  ui_select = { enable = false },
+})
+```
 
+See the [full configuration guide](doc/Namu_config.md) for module names, option reference, defaults, and precedence. The [configuration recipes](doc/recipes.md) cover jump labels, display styles, filters, highlights, optional pickers, and testing a local checkout with `vim.pack` or lazy.nvim.
 
-https://github.com/user-attachments/assets/bb2a14da-cba0-4ae7-b826-4ceb1c828b79
+You can also read `:help namu` inside Neovim.
 
+## Demos
 
-
-</details>
-
-
-<details>
-<summary>workspace</summary>
-
-- Interactive workspace symbol search (LSP).
-- Start typing to see results, live preview.
-
-
-
-https://github.com/user-attachments/assets/e548c3ea-6cdb-4f20-9569-175c57b31039
-
-
-
-</details>
-
-
-<details>
-<summary>watchtower</summary>
-
-- Shows symbols from all open buffers (LSP or Treesitter fallback).
-- Filter by buffer: `/bf:buffer_name`
-- Combine with kind: `/bf:name:fn`
-
-
-https://github.com/user-attachments/assets/76c637d2-30d3-4f54-9290-510a51dcbe7e
-
-
-
-
-</details>
-
-
-<details>
-<summary>diagnostics</summary>
-
-- Shows diagnostics for buffer or workspace.
-- Filter by severity: `/er`, `/wa`, `/hi`, `/in`
-- Live preview and navigation.
-
-
-
-https://github.com/user-attachments/assets/02dc0ce5-c87a-445f-a477-ac4f411c6592
-
-
-
-</details>
-
-<details>
-<summary>call_hierarchy</summary>
-
-- Show incoming, outgoing, or both calls for a symbol.
-- Usage: `:Namu call in`, `:Namu call out`, `:Namu call both`
-
-https://github.com/user-attachments/assets/5d30214a-a5d8-46e3-89d4-be71203501e7
-
-</details>
+| Feature | Recording |
+| --- | --- |
+| Current-buffer symbols | [Watch](https://github.com/user-attachments/assets/bb2a14da-cba0-4ae7-b826-4ceb1c828b79) |
+| Workspace symbols | [Watch](https://github.com/user-attachments/assets/e548c3ea-6cdb-4f20-9569-175c57b31039) |
+| Watchtower | [Watch](https://github.com/user-attachments/assets/76c637d2-30d3-4f54-9290-510a51dcbe7e) |
+| Diagnostics | [Watch](https://github.com/user-attachments/assets/02dc0ce5-c87a-445f-a477-ac4f411c6592) |
+| Call hierarchy | [Watch](https://github.com/user-attachments/assets/5d30214a-a5d8-46e3-89d4-be71203501e7) |
+| Ctags | [Watch](https://github.com/user-attachments/assets/09ccc178-c067-45bb-8f86-3f8aa183e69d) |
 
 <details>
-<summary>ctags</summary>
+<summary>Compare display styles</summary>
 
-- Show ctags-based symbols for buffer or watchtower.
-- Requires ctags installed.
-- Usage: `:Namu ctags`, `:Namu ctags watchtower`
+Tree guides (default):
 
+![Tree guides](https://github.com/user-attachments/assets/5be3180c-87b8-4a06-9cd1-e65e5fe08b81)
 
-https://github.com/user-attachments/assets/09ccc178-c067-45bb-8f86-3f8aa183e69d
+Indentation (`display.format = "indent"`):
 
-
-
-</details>
-
-## Display Styles
-
-<details>
-<summary>Show display style examples</summary>
-
-- `options.display.format = "tree_guides"`:
-![tree_guides](https://github.com/user-attachments/assets/5be3180c-87b8-4a06-9cd1-e65e5fe08b81)
-
-
-- `options.display.format = "indent"`:
-![indent](https://github.com/user-attachments/assets/8d78aa5d-27d9-4331-9898-01d18e3bd23a)
-
+![Indentation](https://github.com/user-attachments/assets/8d78aa5d-27d9-4331-9898-01d18e3bd23a)
 
 </details>
-
-## Highlights
-
-<details>
-<summary>Show highlight groups</summary>
-
-| Group                | Description                                 |
-|----------------------|---------------------------------------------|
-| NamuPrefix           | Prefix highlight                            |
-| NamuMatch            | Matched characters in search                |
-| NamuFilter           | Filter prompt                               |
-| NamuPrompt           | Prompt window                               |
-| NamuSelected         | Selected item in multiselect                |
-| NamuFooter           | Footer text                                 |
-| NamuCurrentItem      | Current item highlight                      |
-| NamuPrefixSymbol     | Symbol prefix                               |
-| **LSP KINDS HIGHLIGHTS** | -----------------|
-| NamuSymbolFunction   | Function symbol                             |
-| NamuSymbolMethod     | Method symbol                               |
-| NamuSymbolClass      | Class symbol                                |
-| NamuSymbolInterface  | Interface symbol                            |
-| NamuSymbolVariable   | Variable symbol                             |
-| NamuSymbolConstant   | Constant symbol                             |
-| NamuSymbolProperty   | Property symbol                             |
-| NamuSymbolField      | Field symbol                                |
-| NamuSymbolEnum       | Enum symbol                                 |
-| NamuSymbolModule     | Module symbol                               |
-| **Some Other Styles**    | --------------------|
-| NamuTreeGuides       | Tree guide lines                            |
-| NamuFileInfo         | File info text                              |
-| NamuPreview          | Preview window highlight                    |
-| NamuParent           | Parent item highlight                       |
-| NamuNested           | Nested item highlight                       |
-| NamuStyle            | Style elements highlight                    |
-| NamuCursor           | Cursor highlight during Picker active
-
-</details>
-
-`NamuCurrentItem` uses `CursorLine` when it contrasts with the picker background.
-Otherwise, Namu tries the colorscheme's `PmenuSel` and `Visual` backgrounds, then
-derives a subtle contrasting background. Transparent pickers prefer the scheme's
-selection colors; only the focused row gets a background. These defaults and the
-current-item icon colors refresh on colorscheme changes. Explicit definitions of
-`NamuCurrentItem`, `NamuCurrentItemIcon`, and
-`NamuCurrentItemIconSelection` take precedence.
 
 ## Contributing
 
-I made this plugin for fun at first and didn't know I could replicate what Zed has, and to be independent and free from any pickers.
-Pull requests are welcome! Just please be kind and respectful.
-Any suggestions to improve and integrate with other plugins are also welcome.
+Bug reports, suggestions, and pull requests are welcome. Include your Neovim version, configuration, and a small reproduction when reporting a problem. Run `make format`, `make docs`, and relevant tests for changes.
 
-# Naming:
+“Namu” means “tree” in Korean, reflecting the structure of your code.
 
-“Namu” means “tree🌳” in Korean, just like how it helps you navigate the structure of your code.
+## Credits
 
-## Credits & Acknowledgements
+- [Zed](https://zed.dev) for the inspiration.
+- [@themastersheep](https://github.com/themastersheep) for [jump labels](https://github.com/bassamsdata/namu.nvim/pull/65). Thank you!
+- [@echasnovski](https://github.com/echasnovski) and [mini.pick](https://github.com/echasnovski/mini.nvim) for the `getchar()` idea.
+- The Magnet module for the early inspiration.
+- [@folke](https://github.com/folke) and [Snacks.nvim](https://github.com/folke/snacks.nvim) for LSP compatibility and Tree-sitter locals handling.
+- [@olimorris](https://github.com/olimorris) and [CodeCompanion](https://github.com/olimorris/codecompanion.nvim) for the tests, CI structure, and vimdoc approach.
+- [This Reddit comment](https://www.reddit.com/r/neovim/comments/1edwhk8/comment/lfb1m2f/) for colorscheme persistence.
+- [@stevearc](https://github.com/stevearc) and [Aerial.nvim](https://github.com/stevearc/aerial.nvim) for Tree-sitter queries.
 
-- [Zed](https://zed.dev) editor for the idea.
-- [Mini.pick](https://github.com/echasnovski/mini.nvim) @echasnovski for the idea of `getchar()`, without which this plugin wouldn't exist.
-- Magnet module (couldn’t find it anymore on GitHub, sorry!), which intrigued me a lot.
-- @folke for handling multiple versions of Neovim LSP requests and treesitter "locals" in [Snacks.nvim](https://github.com/folke/snacks.nvim).
-- tests and ci structure and vimdocs, thanks to @Oli [CodeCompanion](https://github.com/olimorris/codecompanion.nvim)
-- A simple mechanism to persist the colorscheme, thanks to this [Reddit comment](https://www.reddit.com/r/neovim/comments/1edwhk8/comment/lfb1m2f/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button).
-- [Aerial.nvim](https://github.com/stevearc/aerial.nvim) and @Stevearc for borroing some treesitter queries.
+## License
+
+[MIT](LICENSE)
