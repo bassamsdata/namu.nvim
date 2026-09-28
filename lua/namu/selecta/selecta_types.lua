@@ -135,7 +135,7 @@
 ---@field jump? SelectaJumpConfig Optional jump-label configuration
 
 ---@class SelectaJumpConfig
----@field enabled? boolean Master opt-in. When false (default), jump module is a no-op.
+---@field enabled? boolean Enable jump labels (default true). When false, jump module is a no-op.
 ---@field toggle_key? string Key that toggles jump mode in the prompt buffer. Default ";"
 ---@field auto_activate? boolean|number Enter jump mode immediately when the picker opens. `true` always activates; a number N activates only when the picker opens with N items or fewer; `false` (default) never.
 ---@field keys? string Ordered string of label characters. One label per visible row.

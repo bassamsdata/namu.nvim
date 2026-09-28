@@ -1,5 +1,5 @@
 -- Jump-label support for selecta pickers (one-key jumping to any visible row).
--- Opt-in: no-op unless `opts.jump.enabled = true`.
+-- Enabled by default; no-op when `opts.jump.enabled = false`.
 
 local M = {}
 local common = require("namu.selecta.common")

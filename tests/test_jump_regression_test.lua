@@ -36,6 +36,36 @@ local T = MiniTest.new_set({
   },
 })
 
+T["default picker shows labels on semicolon and selects the labeled item"] = function()
+  child.lua([[
+    require("namu.selecta.selecta").pick(items_for(3), {
+      on_select = function(item) _G.chosen = item.value end,
+    })
+  ]])
+  eq(child.lua_get('require("namu.selecta.jump").is_active(state)'), false)
+  child.type_keys(";")
+  eq(child.lua_get('require("namu.selecta.jump").is_active(state)'), true)
+  eq(child.lua_get("#vim.api.nvim_buf_get_extmarks(state.buf, state.jump.ns, 0, -1, {})"), 3)
+  child.type_keys("a")
+  eq(child.lua_get("_G.chosen"), 1)
+end
+
+T["module defaults use tree guides and allow disabling jump and choosing indent"] = function()
+  child.lua([[
+    _G.config = require("namu.core.config_manager")
+    config.setup({})
+  ]])
+  for _, module in ipairs({ "namu_symbols", "namu_ctags", "workspace", "callhierarchy", "diagnostics", "ui_select" }) do
+    eq(child.lua_get("config.get_config(...).jump.enabled", { module }), true)
+    if module ~= "ui_select" then
+      eq(child.lua_get("config.get_config(...).display.format", { module }), "tree_guides")
+    end
+  end
+  child.lua('config.setup({ global = { jump = { enabled = false }, display = { format = "indent" } } })')
+  eq(child.lua_get('config.get_config("namu_symbols").jump.enabled'), false)
+  eq(child.lua_get('config.get_config("namu_symbols").display.format'), "indent")
+end
+
 T["auto labels follow the initial selection into a scrolled viewport"] = function()
   child.lua([[
     require("namu.selecta.selecta").pick(items_for(61), {

@@ -78,11 +78,11 @@ local picker_hooks = {
 -- ----------------------------------------------------------------------
 T["Jump.config"] = new_set()
 
-T["Jump.config"]["defaults register a disabled jump table"] = function()
+T["Jump.config"]["defaults enable manual jump labels"] = function()
   selecta.setup({})
   local config = selecta.get_config()
   h.eq(type(config.jump), "table")
-  h.eq(config.jump.enabled, false)
+  h.eq(config.jump.enabled, true)
   h.eq(config.jump.toggle_key, ";")
   h.eq(config.jump.auto_activate, false)
   h.eq(type(config.jump.keys), "string")
@@ -192,7 +192,7 @@ T["Jump.toggle_key"]["close keys are mirrored into normal mode"] = function()
 end
 
 T["Jump.toggle_key"]["setup_keymap is a no-op when jump disabled"] = function()
-  local state = open_picker(items_for(3), {})
+  local state = open_picker(items_for(3), { jump = { enabled = false } })
   h.eq(buf_keymap_has(state.prompt_buf, "i", ";"), false)
   h.eq(buf_keymap_has(state.prompt_buf, "n", ";"), false)
 end
@@ -204,8 +204,12 @@ T["Jump.selection"]["label invokes on_move then on_select with the right item"] 
   local move_calls, select_calls = {}, {}
   local opts = {
     jump = selecta.get_config().jump,
-    on_move = function(item) table.insert(move_calls, item.value) end,
-    on_select = function(item) table.insert(select_calls, item.value) end,
+    on_move = function(item)
+      table.insert(move_calls, item.value)
+    end,
+    on_select = function(item)
+      table.insert(select_calls, item.value)
+    end,
   }
   local state = open_picker(items_for(4), opts)
   jump.activate(state, opts)
@@ -234,9 +238,8 @@ T["Jump.auto_activate"]["pick enters jump mode synchronously"] = function()
 end
 
 T["Jump.auto_activate"]["disabled jump skips auto_activate even when flag is set"] = function()
-  -- auto_activate is gated behind `enabled`. Setting only auto_activate=true
-  -- must be a no-op so callers can't accidentally turn it on.
-  local state = open_picker(items_for(3), { jump = { auto_activate = true } })
+  -- Explicitly disabling jump also disables automatic activation.
+  local state = open_picker(items_for(3), { jump = { enabled = false, auto_activate = true } })
   h.eq(jump.is_active(state), false)
 end
 

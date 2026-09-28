@@ -1,4 +1,4 @@
-*namu.txt*               For NVIM v0.11              Last change: 2025 June 24
+*namu.txt*            For NVIM v0.11            Last change: 2026 September 28
 
 ==============================================================================
 Table of Contents                                     *namu-table-of-contents*
@@ -59,7 +59,7 @@ https://github.com/user-attachments/assets/a97ff3b1-8b25-4da1-b276-f623e37d0368
 WHAT MAKES IT SPECIAL                   *namu-namu.nvim-what-makes-it-special*
 
 - 🔍 **Live Preview**: See exactly where you’ll land before you jump
-- 🏷 **Jump Labels**: One-key jump to any visible row via per-row labels (opt-in toggle, default `;`)
+- 🏷 **Jump Labels**: Press `;` to show labels, then a label key to jump to a visible row (enabled by default)
 - 🌳 **Order Preservation**: Maintains symbol order as they appear in your code, even after filtering
 - 🗂️ **Hierarchy Preservation**: Keeps the parent-child structure of your code symbols intact, so you always see context.
 - 📐 **Smart Auto-resize**: Window adapts to your content in real-time as you type and filter, no need for a big window with only a couple of items
@@ -115,7 +115,9 @@ Using lazy.nvim <https://github.com/folke/lazy.nvim>:
     {
         "bassamsdata/namu.nvim",
         opts = {
-            global = { },
+            global = {
+                -- jump = { enabled = false }, -- optional: disable the default `;` jump-label toggle
+            },
             namu_symbols = { -- Specific Module options
                 options = {},
             },
@@ -124,7 +126,7 @@ Using lazy.nvim <https://github.com/folke/lazy.nvim>:
         vim.keymap.set("n", "<leader>ss", ":Namu symbols<cr>", {
             desc = "Jump to LSP symbol",
             silent = true,
-        })
+        }),
         vim.keymap.set("n", "<leader>sw", ":Namu workspace<cr>", {
             desc = "LSP Symbols - Workspace",
             silent = true,
@@ -252,12 +254,21 @@ COMMANDS                                             *namu-namu.nvim-commands*
 
 MAKE IT YOURS                                   *namu-namu.nvim-make-it-yours*
 
-You can check the configuration documentation <https://github.com/bassamsdata/namu.nvim/tree/main/docs/Namu_config.md> for details on each option.Here’s the full setup with defaults: ~
+You can check the configuration documentation <https://github.com/bassamsdata/namu.nvim/tree/main/doc/Namu_config.md> for details on each option.Here’s the full setup with defaults: ~
 
 >lua
     { -- Those are the default options
       "bassamsdata/namu.nvim",
         opts = {
+        -- global options apply to every picker
+          global = {
+            jump = {
+              enabled = true, -- one-key jump labels, shown when you press `;`
+              toggle_key = ";", -- press in any picker to toggle label mode
+              auto_activate = false, -- enter jump mode on open: true = always, number N = only when <= N items
+            },
+            display = { format = "tree_guides" },
+          },
           -- Enable symbols navigator which is the default
           namu_symbols = {
             enable = true,
@@ -576,6 +587,14 @@ Show highlight groups ~
   NamuNested             Nested item highlight
   NamuStyle              Style elements highlight
   NamuCursor             Cursor highlight during Picker active
+`NamuCurrentItem` uses `CursorLine` when it contrasts with the picker
+background. Otherwise, Namu tries the colorscheme’s `PmenuSel` and `Visual`
+backgrounds, then derives a subtle contrasting background. Transparent pickers
+prefer the scheme’s selection colors; only the focused row gets a background.
+These defaults and the current-item icon colors refresh on colorscheme changes.
+Explicit definitions of `NamuCurrentItem`, `NamuCurrentItemIcon`, and
+`NamuCurrentItemIconSelection` take precedence.
+
 
 CONTRIBUTING                                     *namu-namu.nvim-contributing*
 

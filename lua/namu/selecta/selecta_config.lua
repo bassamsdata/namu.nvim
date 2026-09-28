@@ -23,6 +23,7 @@ M.defaults = {
   display = {
     mode = "icon",
     padding = 1,
+    format = "tree_guides",
   },
   current_highlight = {
     enabled = false, -- Enable custom selection highlight
@@ -68,7 +69,7 @@ M.defaults = {
     icon = "󰇚",
   },
   jump = {
-    enabled = false, -- master opt-in
+    enabled = true, -- Press toggle_key to show jump labels
     toggle_key = ";", -- key to enter/exit jump mode
     auto_activate = false, -- enter jump mode immediately on pick(); true = always, number N = only when the picker opens with <= N items
     keys = "asdfghjklqwertyuiopzxcvbnmASDFGHJKLQWERTYUIOPZXCVBNM",

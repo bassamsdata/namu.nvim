@@ -55,6 +55,7 @@ Controls how symbols are shown in the picker.
 display = {
   mode = "text", -- "icon" or "text" (prefix displayed as icons or text)
   padding = 2, -- Padding around displayed symbols
+  format = "tree_guides", -- Default; "indent" is also available
 }
 ```
 
@@ -109,13 +110,13 @@ auto_select = false,
 Leap-style one-key jumping: place a label character on every visible row,
 press the label to jump to that row and select it in one keystroke.
 
-Off by default; enable globally to bind the toggle key (`;`) on every
-selecta-based picker:
+Enabled by default: press `;` in any selecta-based picker to show jump labels.
+To disable this globally:
 
 ```lua
 require("namu").setup({
   global = {
-    jump = { enabled = true },
+    jump = { enabled = false },
   },
 })
 ```
@@ -184,7 +185,7 @@ vim.ui.select(items, {
 
 ```lua
 jump = {
-  enabled       = false, -- master opt-in; everything below is dead unless true
+  enabled       = true,  -- press toggle_key to show labels; false disables jump mode
   toggle_key    = ";",   -- key that enters/exits jump mode
   auto_activate = false, -- enter jump on open: true always, number N = only when <= N items
   keys          = "asdfghjklqwertyuiopzxcvbnmASDFGHJKLQWERTYUIOPZXCVBNM",

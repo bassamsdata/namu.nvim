@@ -30,7 +30,7 @@ https://github.com/user-attachments/assets/a97ff3b1-8b25-4da1-b276-f623e37d0368
 ## What Makes It Special
 
 - 🔍 **Live Preview**: See exactly where you'll land before you jump
-- 🏷 **Jump Labels**: One-key jump to any visible row via per-row labels (opt-in toggle, default `;`)
+- 🏷 **Jump Labels**: Press `;` to show labels, then a label key to jump to a visible row (enabled by default)
 - 🌳 **Order Preservation**: Maintains symbol order as they appear in your code, even after filtering
 - 🗂️ **Hierarchy Preservation**: Keeps the parent-child structure of your code symbols intact, so you always see context.
 - 📐 **Smart Auto-resize**: Window adapts to your content in real-time as you type and filter, no need for a big window with only a couple of items
@@ -81,7 +81,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
     "bassamsdata/namu.nvim",
     opts = {
         global = {
-            -- jump = { enabled = true }, -- opt-in: one-key jump labels, toggle with `;`
+            -- jump = { enabled = false }, -- optional: disable the default `;` jump-label toggle
         },
         namu_symbols = { -- Specific Module options
             options = {},
@@ -231,10 +231,11 @@ You can check the [configuration documentation](https://github.com/bassamsdata/n
     -- global options apply to every picker
       global = {
         jump = {
-          enabled = false, -- opt-in: one-key jump labels
+          enabled = true, -- one-key jump labels, shown when you press `;`
           toggle_key = ";", -- press in any picker to toggle label mode
           auto_activate = false, -- enter jump mode on open: true = always, number N = only when <= N items
-        }
+        },
+        display = { format = "tree_guides" },
       },
       -- Enable symbols navigator which is the default
       namu_symbols = {
@@ -600,6 +601,14 @@ https://github.com/user-attachments/assets/09ccc178-c067-45bb-8f86-3f8aa183e69d
 | NamuCursor           | Cursor highlight during Picker active
 
 </details>
+
+`NamuCurrentItem` uses `CursorLine` when it contrasts with the picker background.
+Otherwise, Namu tries the colorscheme's `PmenuSel` and `Visual` backgrounds, then
+derives a subtle contrasting background. Transparent pickers prefer the scheme's
+selection colors; only the focused row gets a background. These defaults and the
+current-item icon colors refresh on colorscheme changes. Explicit definitions of
+`NamuCurrentItem`, `NamuCurrentItemIcon`, and
+`NamuCurrentItemIconSelection` take precedence.
 
 ## Contributing
 

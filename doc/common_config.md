@@ -76,7 +76,7 @@ current_highlight = {
 ```lua
 display = {
   mode = "icon",          -- Options: "icon" or "text"
-  format = "indent",      -- Options: "indent" or "tree_guides"
+  format = "tree_guides", -- Options: "indent" or "tree_guides"
   tree_guides = {
     style = "unicode",    -- "ascii" or "unicode"
   },
