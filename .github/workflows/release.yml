@@ -32,13 +32,15 @@ jobs:
           manifest-file: .release-please-manifest.json
 
       - name: Preview curated notes in the release PR
-        if: steps.release.outputs.prs_created == 'true'
+        if: steps.release.outputs.release_created != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_PRS: ${{ steps.release.outputs.prs }}
         run: |
-          number=$(jq -r '.[0].number' <<< "$RELEASE_PRS")
+          number=$(gh pr list --state open --base main --head release-please--branches--main --json number --jq '.[0].number // empty')
+          if [ -z "$number" ]; then
+            exit 0
+          fi
           branch=$(gh pr view "$number" --json headRefName --jq .headRefName)
           version=$(gh api "repos/${GH_REPO}/contents/version.txt?ref=${branch}" --jq .content | base64 --decode)
           notes="doc/releases/v${version}.md"
