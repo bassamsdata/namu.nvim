@@ -1,7 +1,7 @@
 <!-- panvimdoc-include-comment
 # Namu.nvim
 -->
-<h1>
+<h1 align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="site/assets/logo-dark.svg">
     <img src="site/assets/logo-light.svg" alt="Namu.nvim" width="240" height="55">
@@ -10,7 +10,7 @@
 
 **Namu.nvim** brings symbols, diagnostics, and call hierarchies into a fuzzy picker with live preview, inspired by [Zed](https://zed.dev).
 
-[Documentation & interactive demos](https://namu.bassamai.com) · [Full configuration](doc/Namu_config.md)
+[Documentation & interactive demos](https://namu.bassamai.com)
 
 https://github.com/user-attachments/assets/a97ff3b1-8b25-4da1-b276-f623e37d0368
 

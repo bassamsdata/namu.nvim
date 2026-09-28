@@ -24,8 +24,7 @@ Table of Contents                                     *namu-table-of-contents*
 **Namu.nvim** brings symbols, diagnostics, and call hierarchies into a fuzzy
 picker with live preview, inspired by Zed <https://zed.dev>.
 
-Documentation & interactive demos <https://namu.bassamai.com> · Full
-configuration <doc/Namu_config.md>
+Documentation & interactive demos <https://namu.bassamai.com>
 
 
 https://github.com/user-attachments/assets/a97ff3b1-8b25-4da1-b276-f623e37d0368
