@@ -1,6 +1,8 @@
-# Namu.nvim 🌳
+# Navigate your code with context.
 
-Navigate the structure of your code in Neovim. Namu brings symbols, diagnostics, and call hierarchies into a fuzzy picker with live preview, inspired by [Zed](https://zed.dev).
+**Namu.nvim** brings symbols, diagnostics, and call hierarchies into a fuzzy picker with live preview, inspired by [Zed](https://zed.dev).
+
+[Documentation & interactive demos](https://namu.bassamai.com) · [Full configuration](doc/Namu_config.md)
 
 https://github.com/user-attachments/assets/a97ff3b1-8b25-4da1-b276-f623e37d0368
 
@@ -155,6 +157,8 @@ Indentation (`display.format = "indent"`):
 ## Contributing
 
 Bug reports, suggestions, and pull requests are welcome. Include your Neovim version, configuration, and a small reproduction when reporting a problem. Run `make format`, `make docs`, and relevant tests for changes.
+
+For website edits, recordings, and domain setup, see the [website guide](doc/website.md).
 
 “Namu” means “tree” in Korean, reflecting the structure of your code.
 
