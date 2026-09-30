@@ -418,6 +418,34 @@ function M.setup_keymaps(state, opts, close_picker_fn, process_query_fn)
     end
   end
 
+  local bookmark_keys = opts.custom_keymaps and opts.custom_keymaps.bookmark and opts.custom_keymaps.bookmark.keys
+    or { "<C-b>" }
+  for _, key in ipairs(type(bookmark_keys) == "string" and { bookmark_keys } or bookmark_keys) do
+    map_key_adapter(key, function()
+      local row = vim.api.nvim_win_get_cursor(state.win)[1]
+      require("namu.bookmarks").create_keymap_handler()(state.filtered_items[row], state)
+    end)
+  end
+  local sidebar_keys = opts.custom_keymaps and opts.custom_keymaps.sidebar and opts.custom_keymaps.sidebar.keys
+    or { "<C-s>" }
+  for _, key in ipairs(type(sidebar_keys) == "string" and { sidebar_keys } or sidebar_keys) do
+    map_key_adapter(key, function()
+      if not state.active then
+        return
+      end
+      local items = state.selected_count > 0 and state:get_selected_items() or state.filtered_items
+      -- Close first so picker cleanup cannot steal focus from the sidebar.
+      common.close_picker_with_cleanup(state, opts, close_picker_fn, false)
+      require("namu.sidebar").open(items, {
+        title = opts.title,
+        formatter = opts.formatter,
+        pre_filter = opts.pre_filter,
+        preserve_order = opts.preserve_order,
+        fuzzy = opts.fuzzy,
+      }, { original_win = state.original_window, original_buf = state.original_buf })
+    end)
+  end
+
   -- Selection
   for _, key_code in ipairs(movement_keys.select) do
     _set_picker_keymap(state.prompt_buf, opts.normal_mode, key_code, function()
@@ -511,7 +539,7 @@ end
 ---@return nil
 function M.setup_custom_keymaps(state, opts, close_picker_fn, map_key)
   for _, action in pairs(opts.custom_keymaps) do
-    if action and action.keys then
+    if action and action.keys and action ~= opts.custom_keymaps.bookmark and action ~= opts.custom_keymaps.sidebar then
       local keys = type(action.keys) == "string" and { action.keys } or action.keys
 
       for _, key_raw in ipairs(keys) do

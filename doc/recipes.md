@@ -16,6 +16,38 @@ vim.keymap.set("n", "<leader>nr", "<cmd>Namu resume<CR>", {
 
 Lua mappings can also call `require("namu").resume()`. The snapshot lasts for the current Neovim session and requires the original buffer and window to remain available. Cached asynchronous results appear immediately; changing the search requests new results. A request still pending when the picker closed is restarted on resume.
 
+## Sidebar and favorites
+
+`:Namu outline` opens symbols for the current file in a persistent split with search at the top. The outline refreshes when you switch files, save, or attach an LSP. Use `:Namu outline refresh` to refresh manually, or `:Namu outline toggle` to show/hide it.
+
+In any picker, use `<C-b>` to save the current item (or your Tab selections) to favorites. Use `<C-s>` to send the selected items, or all filtered items when nothing is selected, to a new sidebar. Reopen that list with `:Namu sidebar`; open favorites with `:Namu bookmarks`.
+
+Inside a sidebar:
+
+- `j` / `k`: move between items.
+- `h` / `l`: collapse / expand nested groups.
+- `/`: edit the search; Enter or Escape returns to the list.
+- Enter in the list: jump to the item, keeping the sidebar open.
+- `m`: save the current item to favorites.
+- `dd` in favorites: remove the current favorite.
+- Escape in the list: focus code; `q`: close and save the sidebar.
+
+Favorites, search, selection, scroll position, and collapsed groups are saved across restarts by default. Favorites store file paths and locations, so they remain usable after buffer IDs change. The default storage file is `stdpath("data") .. "/namu/sidebar.json"`.
+
+```lua
+require("namu").setup({
+  sidebar = {
+    position = "right", -- or "left"
+    width = 40,
+    persist = false, -- optional: keep state only within this session
+  },
+})
+vim.keymap.set("n", "<leader>no", "<cmd>Namu outline toggle<CR>")
+vim.keymap.set("n", "<leader>nb", "<cmd>Namu bookmarks<CR>")
+```
+
+Change picker shortcuts with `global.custom_keymaps.bookmark.keys` and `global.custom_keymaps.sidebar.keys`. Set either list to `{}` to disable that shortcut. `:Namu bookmarks clear` removes all favorites.
+
 ## Jump labels
 
 Manual activation with `;` is already enabled. Change the trigger and label keys:

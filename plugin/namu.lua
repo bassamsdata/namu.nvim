@@ -8,6 +8,9 @@ local api = vim.api
 -- Command documentation
 ---@type table<string, string>
 local command_descriptions = {
+  sidebar = "Open the last list sent to the sidebar",
+  outline = "Open the searchable symbols outline",
+  bookmarks = "Open favorites sidebar (use bookmarks clear to remove all)",
   resume = "Reopen the last closed picker with its search, selection and mode",
   symbols = "Jump to location using namu functionality",
   ctags = "Show ctags symbols (use 'ctags open' for symbols from all open buffers)",
@@ -22,6 +25,16 @@ local command_descriptions = {
 -- Argument validators
 ---@type table<string, fun(args: string[]): boolean, string?>
 local command_validators = {
+  sidebar = function(args)
+    return #args == 0, "sidebar command doesn't accept arguments"
+  end,
+  outline = function(args)
+    return #args <= 1 and (#args == 0 or args[1] == "toggle" or args[1] == "close" or args[1] == "refresh"),
+      "outline accepts toggle, close or refresh"
+  end,
+  bookmarks = function(args)
+    return #args <= 1 and (#args == 0 or args[1] == "clear"), "bookmarks accepts only clear"
+  end,
   resume = function(args)
     return #args == 0, "resume command doesn't accept arguments"
   end,
@@ -115,6 +128,15 @@ local command_validators = {
 
 ---@type table<string, function>
 local registry = {
+  sidebar = function() require("namu.sidebar").show() end,
+  outline = function(args)
+    local outline = require("namu.namu_outline")
+    if #args == 0 then outline.open() else outline[args[1]]() end
+  end,
+  bookmarks = function(args)
+    local bookmarks = require("namu.bookmarks")
+    if args[1] == "clear" then bookmarks.clear() else bookmarks.show() end
+  end,
   resume = function()
     require("namu").resume()
   end,
@@ -301,6 +323,8 @@ local function command_complete(_, line, col)
     return completions
   end
 
+  if words[2] == "outline" then return { "toggle", "close", "refresh" } end
+  if words[2] == "bookmarks" then return { "clear" } end
   if words[2] == "symbols" then
     -- stylua: ignore start 
     local symbol_types = {

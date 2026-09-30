@@ -103,6 +103,16 @@ function M.show_treesitter(opts)
   return impl.show_treesitter(M.config, opts)
 end
 
+---Fetch symbols without opening a picker.
+---@param bufnr number
+---@param callback fun(items: SelectaItem[], source: string?, err: any?)
+---@return nil
+function M.fetch_symbols(bufnr, callback)
+  resolve_config()
+  load_impl()
+  impl.fetch_symbols(M.config, bufnr, callback)
+end
+
 -- Expose test utilities if implementation is loaded
 function M._test()
   load_impl()
