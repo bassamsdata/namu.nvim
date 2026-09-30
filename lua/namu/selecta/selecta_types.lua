@@ -12,6 +12,10 @@
 ---@field filtered_items SelectaItem[] Filtered items
 ---@field active boolean Whether picker is active
 ---@field initial_open boolean First open flag
+---@field current_mode "insert"|"normal" Last prompt mode
+---@field original_opts SelectaOptions Options used to open this picker
+---@field original_window number Original window handle
+---@field _resume_saved? boolean Whether the closing state has been saved
 ---@field best_match_index number? Index of best match
 ---@field user_navigated boolean Whether cursor has moved
 ---@field row number Window row position

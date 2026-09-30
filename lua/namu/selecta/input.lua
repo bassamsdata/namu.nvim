@@ -310,6 +310,16 @@ function M.setup_keymaps(state, opts, close_picker_fn, process_query_fn)
     end,
   })
 
+  vim.api.nvim_create_autocmd("ModeChanged", {
+    group = augroup,
+    pattern = "*",
+    callback = function()
+      if state.active and vim.api.nvim_get_current_buf() == state.prompt_buf then
+        state.current_mode = vim.api.nvim_get_mode().mode:sub(1, 1) == "i" and "insert" or "normal"
+      end
+    end,
+  })
+
   local original_cleanup = state.cleanup
   state.cleanup = function(...)
     pcall(vim.api.nvim_del_augroup_by_name, augroup_name)
@@ -417,6 +427,7 @@ function M.setup_keymaps(state, opts, close_picker_fn, process_query_fn)
       if #state.filtered_items == 0 then
         common.close_picker_with_cleanup(state, opts, close_picker_fn, true) -- true = is a cancellation (no items to select)
       else
+        require("namu.selecta.selecta").save_picker(state)
         M.handle_selection(state, opts)
         -- Use the new callback-aware close function for selection
         common.close_picker_with_cleanup(state, opts, close_picker_fn, false) -- false = not a cancellation (successful selection)
