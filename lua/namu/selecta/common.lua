@@ -177,6 +177,7 @@ end
 ---@param is_cancellation boolean Whether this is a cancellation (escape/close key) vs selection/custom action
 ---@return nil
 function M.close_picker_with_cleanup(state, opts, close_picker_fn, is_cancellation)
+  require("namu.selecta.selecta").save_picker(state)
   -- Call cancellation-specific callback only if this is a cancellation
   if is_cancellation and opts.on_cancel then
     opts.on_cancel()

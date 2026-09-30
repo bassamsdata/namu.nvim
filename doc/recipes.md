@@ -4,6 +4,18 @@
 
 Each setup example shows only the settings it changes. Combine them into one `require("namu").setup(...)` call, or into lazy.nvim's `opts` table.
 
+## Resume the last picker
+
+Use `:Namu resume` to reopen the last closed picker with its search, options, selected row, scroll position, multiselections, and insert/normal/jump-label mode.
+
+```lua
+vim.keymap.set("n", "<leader>nr", "<cmd>Namu resume<CR>", {
+  desc = "Namu: Resume last picker",
+})
+```
+
+Lua mappings can also call `require("namu").resume()`. The snapshot lasts for the current Neovim session and requires the original buffer and window to remain available. Cached asynchronous results appear immediately; changing the search requests new results. A request still pending when the picker closed is restarted on resume.
+
 ## Jump labels
 
 Manual activation with `;` is already enabled. Change the trigger and label keys:

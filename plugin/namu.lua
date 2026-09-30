@@ -8,6 +8,7 @@ local api = vim.api
 -- Command documentation
 ---@type table<string, string>
 local command_descriptions = {
+  resume = "Reopen the last closed picker with its search, selection and mode",
   symbols = "Jump to location using namu functionality",
   ctags = "Show ctags symbols (use 'ctags open' for symbols from all open buffers)",
   colorscheme = "Select and apply colorscheme",
@@ -21,6 +22,9 @@ local command_descriptions = {
 -- Argument validators
 ---@type table<string, fun(args: string[]): boolean, string?>
 local command_validators = {
+  resume = function(args)
+    return #args == 0, "resume command doesn't accept arguments"
+  end,
   symbols = function(args)
     if #args > 1 then
       return false, "symbols command accepts only one optional argument for type"
@@ -111,6 +115,9 @@ local command_validators = {
 
 ---@type table<string, function>
 local registry = {
+  resume = function()
+    require("namu").resume()
+  end,
   symbols = function(args)
     if #args == 0 then
       require("namu.namu_symbols").show()

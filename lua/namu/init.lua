@@ -1,5 +1,11 @@
 local M = {}
 
+---Reopen the last closed picker with its saved search, options and mode.
+---@return boolean resumed Whether a picker could be resumed
+function M.resume()
+  return require("namu.selecta.selecta").resume()
+end
+
 -- Helper function to check if a module should be enabled
 local function is_module_enabled(module_name)
   local config_manager = require("namu.core.config_manager")
