@@ -52,7 +52,8 @@ end
 ---@param config table
 ---@param source? string The source of the symbols ("lsp" or "treesitter")
 ---@return SelectaItem[]
-local function symbols_to_selecta_items(raw_symbols, config, source)
+local function symbols_to_selecta_items(raw_symbols, config, source, source_state)
+  local state = source_state or state
   source = source or "lsp"
   local bufnr = vim.api.nvim_get_current_buf()
   local cache_key = string.format("%d_%d", bufnr, vim.b[bufnr].changedtick or 0)
@@ -62,7 +63,7 @@ local function symbols_to_selecta_items(raw_symbols, config, source)
     or buf_name:match("_test%.lua$")
     or buf_name:match("/tests/.+%.lua$")
 
-  if symbol_cache and symbol_cache.key == cache_key then
+  if not source_state and symbol_cache and symbol_cache.key == cache_key then
     return symbol_cache.items
   end
   local items = {}
@@ -207,7 +208,7 @@ local function symbols_to_selecta_items(raw_symbols, config, source)
   if config.display.format == "tree_guides" then
     items = format_utils.add_tree_state_to_items(items)
   end
-  if not core_utils.is_big_buffer(bufnr) then
+  if not source_state and not core_utils.is_big_buffer(bufnr) then
     symbol_cache = {
       key = cache_key,
       items = items,
@@ -380,6 +381,51 @@ function M.show_treesitter(config, opts, silent)
     prompt_info
   )
   return true
+end
+
+---Fetch symbol items without opening a picker or changing its state.
+---@param config table
+---@param bufnr number
+---@param callback fun(items: SelectaItem[], source: string?, err: any?)
+---@return nil
+function M.fetch_symbols(config, bufnr, callback)
+  local source_state = { original_buf = bufnr, original_ft = vim.bo[bufnr].filetype }
+  local function convert(raw, source)
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+      return
+    end
+    local ok, items = pcall(vim.api.nvim_buf_call, bufnr, function()
+      return symbols_to_selecta_items(raw, config, source, source_state)
+    end)
+    callback(ok and items or {}, source, not ok and items or nil)
+  end
+  local function treesitter_fallback()
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+      return false
+    end
+    local ok, raw = pcall(treesitter_symbols.get_symbols, bufnr)
+    if ok and raw and #raw > 0 then
+      convert(raw, "treesitter")
+      return true
+    end
+    return false
+  end
+  if config.source_priority == "treesitter" and treesitter_fallback() then
+    return
+  end
+  local ok, err = pcall(lsp.request_symbols, bufnr, "textDocument/documentSymbol", function(error, raw)
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+      return
+    end
+    if not error and raw and #raw > 0 then
+      convert(raw, "lsp")
+    elseif not treesitter_fallback() then
+      callback({}, nil, error)
+    end
+  end)
+  if not ok and not treesitter_fallback() then
+    callback({}, nil, err)
+  end
 end
 
 M._test = {

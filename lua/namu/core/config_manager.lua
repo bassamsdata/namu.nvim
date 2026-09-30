@@ -55,6 +55,8 @@ M.global_defaults = {
 }
 
 M.module_defaults = {
+  sidebar = { position = "right", width = 40, persist = true },
+  namu_outline = { position = "right", width = 40 },
   namu_symbols = {
     -- Module-specific defaults that differ from global
     display = { mode = "icon", format = "tree_guides" },

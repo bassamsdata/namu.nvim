@@ -976,64 +976,14 @@ function M.add_to_quickfix(items_or_state, module_state)
   return true
 end
 
+---Send picker items to a persistent searchable sidebar.
+---@param items SelectaItem[]
+---@param opts? table
+---@param module_state? table
+---@return number window_id
 function M.create_sidebar(items, opts, module_state)
-  opts = opts or {}
-  -- Create sidebar state with complete options
-  local sidebar_state = StateManager.new(items, opts)
-  sidebar_state.filtered_items = items
-  -- Create split window config
-  local win_config = {
-    split = opts.position or "right",
-    win = module_state.original_win,
-  }
-  if opts.position == "left" or opts.position == "right" then
-    win_config.width = opts.width or 40
-  end
-  -- Create the split window
-  sidebar_state.win = vim.api.nvim_open_win(sidebar_state.buf, true, win_config)
-  local win_opts = {
-    cursorline = true,
-    cursorlineopt = "both",
-    number = false,
-    relativenumber = false,
-    signcolumn = "no",
-    foldcolumn = "0",
-    statuscolumn = "",
-    wrap = false,
-    spell = false,
-    list = false,
-    colorcolumn = "",
-  }
-  for option, value in pairs(win_opts) do
-    vim.wo[sidebar_state.win][option] = value
-  end
-  local buf_opts = {
-    buftype = "nofile",
-    bufhidden = "wipe",
-    filetype = "namu_sidebar",
-  }
-  for option, value in pairs(buf_opts) do
-    vim.api.nvim_set_option_value(option, value, { buf = sidebar_state.buf })
-  end
-
-  -- Disable all completion mechanisms for sidebar
-  vim.b[sidebar_state.buf].completion = false
-  vim.api.nvim_set_option_value("completefunc", "", { buf = sidebar_state.buf })
-  vim.api.nvim_set_option_value("omnifunc", "", { buf = sidebar_state.buf })
-
-  -- Disable built-in autocomplete option if available (Neovim 0.11+)
-  if vim.fn.exists("+complete") == 1 then
-    vim.api.nvim_set_option_value("complete", "", { buf = sidebar_state.buf })
-  end
-
-  input_handler.setup_sidebar_keymaps(sidebar_state, opts)
-  ui.render_visible_items(sidebar_state, opts)
-  vim.api.nvim_set_option_value("modifiable", false, { buf = sidebar_state.buf })
-  -- Update highlights
-  common.update_current_highlight(sidebar_state, opts, 0)
-  common.update_selection_highlights(sidebar_state, opts)
-
-  return sidebar_state.win
+  local panel = require("namu.sidebar").open(items, opts, module_state)
+  return panel.win
 end
 
 return M
