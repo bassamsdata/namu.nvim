@@ -434,16 +434,17 @@ function M.setup_keymaps(state, opts, close_picker_fn, process_query_fn)
         return
       end
       local items = state.selected_count > 0 and state:get_selected_items() or state.filtered_items
+      local focused = state.filtered_items[vim.api.nvim_win_get_cursor(state.win)[1]]
+      local sidebar_opts = vim.deepcopy(opts)
+      sidebar_opts.replace = true
+      sidebar_opts.initial_item = focused
       -- Close first so picker cleanup cannot steal focus from the sidebar.
       common.close_picker_with_cleanup(state, opts, close_picker_fn, false)
-      require("namu.sidebar").open(items, {
-        title = opts.title,
-        replace = true,
-        formatter = opts.formatter,
-        pre_filter = opts.pre_filter,
-        preserve_order = opts.preserve_order,
-        fuzzy = opts.fuzzy,
-      }, { original_win = state.original_window, original_buf = state.original_buf })
+      require("namu.sidebar").open(
+        items,
+        sidebar_opts,
+        { original_win = state.original_window, original_buf = state.original_buf }
+      )
     end)
   end
 

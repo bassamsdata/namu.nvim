@@ -145,6 +145,7 @@ function M.record(item, fallback_buf)
     icon = item.icon,
     kind = item.kind,
     depth = item.depth or 0,
+    tree_state = vim.deepcopy(item.tree_state),
     location = location,
   }
 end

@@ -327,4 +327,90 @@ T["sending another list replaces stale filters and formatter in the existing sid
   eq(child.lua_get("vim.api.nvim_buf_get_lines(panel.buf, 0, -1, false)[1]:find('new: Other', 1, true) ~= nil"), true)
 end
 
+T["sidebar renders picker guides and highlights without extra indentation"] = function()
+  child.lua([[
+    open({ display = { mode = "icon", format = "tree_guides" } })
+    _G.lines = vim.api.nvim_buf_get_lines(panel.buf, 0, -1, false)
+  ]])
+  eq(child.lua_get("lines[2]:find('└─', 1, true) ~= nil"), true)
+  eq(
+    child.lua_get(
+      ' #vim.api.nvim_buf_get_extmarks(panel.buf, vim.api.nvim_create_namespace("namu_formatted_highlights"), 0, -1, {}) > 0'
+    ),
+    true
+  )
+end
+
+T["moving previews in code and Escape restores the original code cursor"] = function()
+  child.lua("open()")
+  child.type_keys("j")
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(source_win)[1]"), 2)
+  eq(child.lua_get("vim.api.nvim_get_current_win() == panel.win"), true)
+  eq(child.lua_get("#vim.api.nvim_buf_get_extmarks(source_buf, panel.preview_ns, 0, -1, {}) > 0"), true)
+  child.type_keys("<Esc>")
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(source_win)[1]"), 1)
+  eq(child.lua_get("#vim.api.nvim_buf_get_extmarks(source_buf, panel.preview_ns, 0, -1, {})"), 0)
+end
+
+T["jump labels select without closing the sidebar and restore navigation"] = function()
+  child.lua("open()")
+  child.type_keys(";")
+  eq(child.lua_get('require("namu.selecta.jump").is_active(panel)'), true)
+  eq(child.lua_get("#vim.api.nvim_buf_get_extmarks(panel.buf, panel.jump.ns, 0, -1, {})"), 3)
+  child.type_keys("s")
+  eq(child.lua_get("panel.active"), true)
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(source_win)[1]"), 2)
+  child.lua("vim.api.nvim_set_current_win(panel.win)")
+  child.type_keys("j")
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1]"), 3)
+end
+
+T["picker transfer preserves focused item and rendering hook"] = function()
+  child.lua([[
+    local manager = require("namu.selecta.state").StateManager
+    local new = manager.new
+    manager.new = function(...) _G.picker = new(...); return picker end
+    require("namu.selecta.selecta").pick(items, {
+      initial_index = 3,
+      formatter = function(item) return "picker: " .. item.text end,
+      hooks = { on_render = function() _G.render_count = (_G.render_count or 0) + 1 end },
+    })
+  ]])
+  child.type_keys("<C-s>")
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(sidebar.get().win)[1]"), 3)
+  eq(child.lua_get("render_count > 1"), true)
+  eq(child.lua_get("vim.api.nvim_buf_get_lines(sidebar.get().buf, 2, 3, false)[1]"), "picker: Other")
+  child.lua("_G.panel = sidebar.get()")
+end
+
+T["outline initially focuses the symbol at the code cursor"] = function()
+  child.lua([[
+    vim.api.nvim_win_set_cursor(source_win, { 4, 0 })
+    require("namu.namu_symbols").fetch_symbols = function(_, cb) cb(items) end
+    require("namu.namu_outline").open()
+    _G.panel = sidebar.get("outline")
+  ]])
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1]"), 3)
+end
+
+T["preview and jump labels can be disabled independently"] = function()
+  child.lua("open({ preview = { highlight_on_move = false }, jump = { enabled = false } })")
+  child.type_keys("j")
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(source_win)[1]"), 1)
+  eq(child.lua_get('require("namu.selecta.jump").is_active(panel)'), false)
+end
+
+T["auto labels activate when outline results arrive and toggling restores j k"] = function()
+  child.lua([[
+    require("namu.namu_symbols").fetch_symbols = function(_, cb) _G.deliver = cb end
+    require("namu.namu_outline").open({ jump = { enabled = true, auto_activate = true } })
+    _G.panel = sidebar.get("outline")
+    deliver(items)
+  ]])
+  eq(child.lua_get('require("namu.selecta.jump").is_active(panel)'), true)
+  child.type_keys(";", "j")
+  eq(child.lua_get('require("namu.selecta.jump").is_active(panel)'), false)
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1]"), 2)
+end
+
 return T

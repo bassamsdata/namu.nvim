@@ -22,12 +22,15 @@ Lua mappings can also call `require("namu").resume()`. The snapshot lasts for th
 
 In any picker, use `<C-b>` to save the current item (or your Tab selections) to favorites. Use `<C-s>` to send the selected items, or all filtered items when nothing is selected, to a new sidebar. Reopen that list with `:Namu sidebar`; open favorites with `:Namu bookmarks`.
 
+Sidebars reuse the picker’s formatter, tree/indent guides, kind colors, search highlights, and preview while moving. A list sent from a picker opens on its focused item; a new outline focuses the symbol at the code cursor. `preview.highlight_on_move = false` disables preview, and `jump.enabled = false` disables labels.
+
 Inside a sidebar:
 
 - `j` / `k`: move between items.
 - `h` / `l`: collapse / expand nested groups.
 - `/`: edit the search; Enter or Escape returns to the list.
 - Enter in the list: jump to the item, keeping the sidebar open.
+- `;`: toggle jump labels; pressing a label jumps to code and keeps the sidebar open.
 - `m`: save the current item to favorites.
 - `dd` in favorites: remove the current favorite.
 - Escape in the list: focus code; `q`: close and save the sidebar.

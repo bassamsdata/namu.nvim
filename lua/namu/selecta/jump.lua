@@ -44,14 +44,15 @@ function M.activate(state, opts)
   state.jump.ns = state.jump.ns or vim.api.nvim_create_namespace("namu_jump_" .. tostring(state.picker_id))
   state.jump.bound_keys = {}
   state.jump.saved_keymaps = {}
-  for _, mapping in ipairs(vim.api.nvim_buf_get_keymap(state.prompt_buf, "n")) do
+  local keymap_buf = state.sidebar_mode and state.buf or state.prompt_buf
+  for _, mapping in ipairs(vim.api.nvim_buf_get_keymap(keymap_buf, "n")) do
     state.jump.saved_keymaps[mapping.lhs] = mapping
   end
-  state.jump.prev_modifiable = vim.bo[state.prompt_buf].modifiable
+  state.jump.prev_modifiable = vim.bo[keymap_buf].modifiable
 
   -- Lock the prompt buffer (so unbound keys can't edit the filter) and drop
   -- out of insert mode (so the normal-mode label keymaps below fire).
-  vim.bo[state.prompt_buf].modifiable = false
+  vim.bo[keymap_buf].modifiable = false
   vim.cmd("stopinsert")
 
   -- Place a label per visible row, bind a normal-mode keymap per label.
@@ -76,6 +77,10 @@ function M.activate(state, opts)
       if not state.active then
         return
       end
+      if state.sidebar_mode then
+        state.jump_select(row)
+        return
+      end
       local item = state.filtered_items[row]
       vim.api.nvim_win_set_cursor(state.win, { row, 0 })
       common.update_current_highlight(state, opts, row - 1)
@@ -87,7 +92,7 @@ function M.activate(state, opts)
         opts.on_select(item)
       end
     end, {
-      buffer = state.prompt_buf,
+      buffer = keymap_buf,
       nowait = true,
       silent = true,
       desc = "Namu: Jump label " .. key,
@@ -100,14 +105,15 @@ function M.deactivate(state)
     return
   end
   state.jump.active = false
+  local keymap_buf = state.sidebar_mode and state.buf or state.prompt_buf
 
   if vim.api.nvim_buf_is_valid(state.buf) then
     vim.api.nvim_buf_clear_namespace(state.buf, state.jump.ns, 0, -1)
   end
-  if vim.api.nvim_buf_is_valid(state.prompt_buf) then
-    vim.api.nvim_buf_call(state.prompt_buf, function()
+  if vim.api.nvim_buf_is_valid(keymap_buf) then
+    vim.api.nvim_buf_call(keymap_buf, function()
       for _, key in ipairs(state.jump.bound_keys) do
-        pcall(vim.keymap.del, "n", key, { buffer = state.prompt_buf })
+        pcall(vim.keymap.del, "n", key, { buffer = keymap_buf })
         local previous = state.jump.saved_keymaps[key]
         if previous then
           pcall(vim.fn.mapset, "n", false, previous)
@@ -118,14 +124,15 @@ function M.deactivate(state)
   state.jump.bound_keys = {}
   state.jump.saved_keymaps = {}
 
-  if vim.api.nvim_buf_is_valid(state.prompt_buf) then
-    vim.bo[state.prompt_buf].modifiable = state.jump.prev_modifiable ~= false
+  if vim.api.nvim_buf_is_valid(keymap_buf) then
+    vim.bo[keymap_buf].modifiable = state.jump.prev_modifiable ~= false
   end
 
   -- Re-enter insert mode only if the prompt window still owns the focus —
   -- skipped during cleanup-driven deactivation where the window is going away.
   if
-    state.active
+    not state.sidebar_mode
+    and state.active
     and vim.api.nvim_win_is_valid(state.prompt_win)
     and vim.api.nvim_get_current_win() == state.prompt_win
   then

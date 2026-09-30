@@ -52,6 +52,7 @@ function M.open(opts)
     name = "outline",
     title = "Outline",
     storage_key = "outline:" .. api.nvim_buf_get_name(source_buf),
+    initial_line = api.nvim_win_get_cursor(source_win)[1],
   })
   panel = sidebar.open({}, opts, { original_win = source_win, original_buf = source_buf })
   api.nvim_create_autocmd({ "BufEnter", "BufWritePost", "LspAttach" }, {

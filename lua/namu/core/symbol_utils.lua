@@ -555,6 +555,8 @@ function M.show_picker(
     row_position = opts.row_position,
     custom_keymaps = vim.tbl_deep_extend("force", opts.custom_keymaps, {}),
     normal_mode = opts.normal_mode,
+    preview = opts.preview,
+    jump = opts.jump,
     debug = opts.debug,
     preserve_hierarchy = opts.preserve_hierarchy or false,
     -- root_item_first = true,
