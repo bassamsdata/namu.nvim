@@ -132,7 +132,9 @@ local function get_prompt_border(border)
       rounded = { "╭", "─", "╮", "│", "", "", "", "│" },
       single = { "┌", "─", "┐", "│", "", "", "", "│" },
       double = { "╔", "═", "╗", "║", "", "", "", "║" },
+      bold = { "┏", "━", "┓", "┃", "", "", "", "┃" },
       solid = { "▛", "▀", "▜", "▌", "", "", "", "▐" },
+      shadow = { "", "", { " ", "FloatShadowThrough" }, { " ", "FloatShadow" }, "", "", "", "" },
     }
     -- If it's a predefined style
     if borders[border] then
@@ -176,6 +178,7 @@ local function get_border_with_footer(opts)
   local borders = {
     single = { "┌", "─", "┐", "│", "┘", "─", "└", "│" },
     double = { "╔", "═", "╗", "║", "╝", "═", "╚", "║" },
+    bold = { "┏", "━", "┓", "┃", "┛", "━", "┗", "┃" },
     rounded = { "╭", "─", "╮", "│", "╯", "─", "╰", "│" },
   }
 
@@ -416,7 +419,7 @@ function M.resize_window(state, opts)
     width = new_width,
     height = new_height,
     style = current_config.style,
-    border = opts.window.border,
+    border = get_border_with_footer(opts),
   }
 
   -- Prompt window config

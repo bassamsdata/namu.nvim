@@ -1,102 +1,33 @@
-# 🧩 Actions & Integrations
+# Actions and integrations
 
-This section documents custom actions available across `namu.nvim` modules, and how they integrate with other tools — especially [CodeCompanion](https://github.com/codecompanion/codecompanion.nvim).
+[Configuration guide](Namu_config.md) · [Recipes](recipes.md)
 
-These actions can be triggered with keymaps, support multiple item selection, and return control to your configured handler functions.
+Action availability depends on the picker and its item data. In the symbols picker, select several items with `<Tab>`, then invoke an action to use the selection. Without a multiselection, the action uses the current item.
 
----
+| Key | Action |
+| --- | --- |
+| `<C-y>` | Yank symbol text |
+| `<C-d>` | Delete symbol text from the source buffer |
+| `<C-v>` / `<C-h>` | Open the location in a vertical / horizontal split |
+| `<C-q>` | Send locations to quickfix |
+| `<C-o>` | Add symbol text to CodeCompanion |
+| `<C-t>` | Add symbol text to Avante |
 
-## 📋 Multi-item Support
-
-Most actions in `namu.nvim` support multiple selection. For example:
-- Yank (`<C-y>`) will concatenate all selected items into a single string.
-- Delete (`<C-d>`) will remove all selected items.
-- CodeCompanion actions send the text of all selected symbols.
-
----
-
-## 💬 CodeCompanion Integration
-
-### 🔹 Add to Chat
-
-Sends one or more symbols (with line numbers) to a CodeCompanion chat.
+The AI integrations require the corresponding plugin to be installed and configured. Diagnostics can also provide context to supported integrations. Namu supplies the built-in action handlers; you only need to configure keys or closing behavior:
 
 ```lua
-codecompanion = {
-  keys = { "<C-o>" },
-  desc = "Add to CodeCompanion",
-  handler = function(items_or_item, state)
-    local impl = M.get_impl()
-    if not impl then return end
-    return impl.add_to_codecompanion(M.config, items_or_item, state)
-  end,
-},
+require("namu").setup({
+  namu_symbols = {
+    custom_keymaps = {
+      codecompanion = { keys = { "<C-o>" }, desc = "Add to CodeCompanion" },
+      avante = { keys = { "<C-t>" }, desc = "Add to Avante" },
+      quickfix = { keys = { "<C-q>" }, desc = "Send to quickfix" },
+    },
+    actions = {
+      close_on_yank = false,
+      close_on_delete = true,
+      close_on_quickfix = false,
+    },
+  },
+})
 ```
-
-<details>
-<summary>🎥 Upload video or gif for: sending symbols to chat</summary>
-<!-- Drop media here -->
-</details>
-
-### 🔹 Add with Diagnostics (for diagnostics module)
-
-If used in the diagnostics module, the symbol text is sent along with the associated diagnostic info.
-
-<details>
-<summary>🎥 Upload video or gif for: sending diagnostics to chat</summary>
-<!-- Drop media here -->
-</details>
-
----
-
-## 🪟 Window Actions
-
-### 🔸 Vertical Split
-
-```lua
-vertical_split = {
-  keys = { "<C-v>" },
-  desc = "Open in vertical split",
-  handler = function(items_or_item, state)
-    local impl = M.get_impl()
-    if impl then
-      return impl.open_in_vertical_split(M.config, items_or_item, state)
-    end
-  end,
-},
-```
-
-### 🔸 Horizontal Split
-
-```lua
-horizontal_split = {
-  keys = { "<C-s>", "<C-h>" },
-  desc = "Open in horizontal split",
-  handler = function(items_or_item, state)
-    local impl = M.get_impl()
-    if impl then
-      return impl.open_in_horizontal_split(M.config, items_or_item, state)
-    end
-  end,
-},
-```
-
----
-
-## 📝 Utility Actions
-
-### 🔸 Yank
-
-Copies the symbol text (or texts) into the unnamed register.
-```lua
--- Default key: <C-y>
-```
-
-### 🔸 Delete
-
-Removes the symbol(s) from the list.
-```lua
--- Default key: <C-d>
-```
-
-Let me know if you'd like to rename actions, document a new integration, or refactor this layout!

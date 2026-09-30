@@ -6,11 +6,16 @@
 ---@field prompt_win number? Prompt window handle
 ---@field query string[] Current search query
 ---@field query_changed boolean Whether the query has changed since last render
+---@field jump_auto_pending? boolean Whether initial results may still auto-activate jump mode
 ---@field cursor_pos number Cursor position in query
 ---@field items SelectaItem[] All items
 ---@field filtered_items SelectaItem[] Filtered items
 ---@field active boolean Whether picker is active
 ---@field initial_open boolean First open flag
+---@field current_mode "insert"|"normal" Last prompt mode
+---@field original_opts SelectaOptions Options used to open this picker
+---@field original_window number Original window handle
+---@field _resume_saved? boolean Whether the closing state has been saved
 ---@field best_match_index number? Index of best match
 ---@field user_navigated boolean Whether cursor has moved
 ---@field row number Window row position
@@ -131,6 +136,17 @@
 ---@field items_fully_loaded? boolean Whether all items have been loaded (async)
 ---@field on_close? fun() Function to call when picker closes
 ---@field logical_item_counter? fun(items: SelectaItem[]): number Custom function to count logical items (for multiline/grouped items)
+---@field jump? SelectaJumpConfig Optional jump-label configuration
+
+---@class SelectaJumpConfig
+---@field enabled? boolean Enable jump labels (default true). When false, jump module is a no-op.
+---@field toggle_key? string Key that toggles jump mode in the prompt buffer. Default ";"
+---@field auto_activate? boolean|number Enter jump mode immediately when the picker opens. `true` always activates; a number N activates only when the picker opens with N items or fewer; `false` (default) never.
+---@field keys? string Ordered string of label characters. One label per visible row.
+---@field hl_group? string Highlight group used for the label virt_text. Default "NamuJumpLabel".
+---@field priority? number Extmark priority for the labels. Default 300.
+---@field min_items? number Skip jump mode if fewer than this many items are visible.
+---@field skip_kinds? table<string, boolean> Map of vim.ui.select kinds for which auto_activate is suppressed.
 
 ---@class CurrentHighlightConfig
 ---@field enabled boolean Whether to use custom highlight

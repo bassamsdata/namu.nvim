@@ -47,6 +47,8 @@ local input_handler = require("namu.selecta.input")
 local ui = require("namu.selecta.ui")
 local config = require("namu.selecta.selecta_config").values
 local notify_opts = { title = "Namu", icon = config.icon }
+local last_picker
+local active_picker
 
 function M.log(message)
   logger.log(message)
@@ -227,6 +229,7 @@ function M.update_filtered_items(state, query, opts)
   if opts.auto_select and #state.filtered_items == 1 and not state.initial_open then
     local selected = state.filtered_items[1]
     if selected and opts.on_select then
+      M.save_picker(state)
       opts.on_select(selected)
       M.close_picker(state)
     end
@@ -353,6 +356,7 @@ function M.start_async_fetch(state, query, opts, callback)
         end
       else
         -- Handle error or empty results
+        state.jump_auto_pending = false
         state.filtered_items = { { text = "No matching results found", icon = "󰅚", value = nil } }
       end
       state.is_loading = false -- Clear loading state
@@ -366,6 +370,28 @@ function M.start_async_fetch(state, query, opts, callback)
   process_fn(handle_items, status_provider)
 
   return true
+end
+
+---Auto-activate once the initial results are visible, unless the user has taken over.
+---@param state SelectaState
+---@param opts SelectaOptions
+local function maybe_auto_activate_jump(state, opts)
+  if not state.jump_auto_pending or not state.active or state.is_loading then
+    return
+  end
+  if state:get_query_string() ~= "" or state.user_navigated or vim.api.nvim_get_current_win() ~= state.prompt_win then
+    state.jump_auto_pending = false
+    return
+  end
+  if #state.filtered_items == 0 then
+    return
+  end
+
+  state.jump_auto_pending = false
+  local jump = require("namu.selecta.jump")
+  if not opts.initially_hidden and jump.should_auto_activate(opts, #state.filtered_items) then
+    jump.activate(state, opts)
+  end
 end
 
 ---@param state SelectaState
@@ -396,12 +422,22 @@ function M.process_query(state, opts)
       -- Try to start async fetch, pass callback for display update
       local started_async = M.start_async_fetch(state, query, opts, function()
         -- This callback runs after async operation completes
+        local jump = require("namu.selecta.jump")
+        local refresh_jump = jump.is_active(state)
+        if refresh_jump then
+          jump.deactivate(state)
+        end
         M.update_filtered_items(state, query, opts)
         ui.update_display(state, opts)
         common.update_selection_highlights(state, opts)
         -- Handle cursor positioning and on_move callback
         -- state:handle_post_filter_cursor(opts)
         vim.cmd("redraw")
+        if refresh_jump then
+          jump.activate(state, opts)
+        else
+          maybe_auto_activate_jump(state, opts)
+        end
       end)
 
       -- If async started successfully, return early without updating display
@@ -425,6 +461,58 @@ function M.process_query(state, opts)
   -- state:handle_post_filter_cursor(opts)
 end
 
+---Save the last picker before callbacks or cleanup change its state.
+---@param state SelectaState
+---@return nil
+function M.save_picker(state)
+  if not state or not state.active or state._resume_saved or not state.prompt_buf then
+    return
+  end
+  state._resume_saved = true
+  local query = state:get_query_string()
+  if vim.api.nvim_buf_is_valid(state.prompt_buf) then
+    query = vim.api.nvim_buf_get_lines(state.prompt_buf, 0, 1, false)[1] or query
+  end
+  last_picker = {
+    items = vim.list_extend({}, state.items),
+    opts = vim.deepcopy(state.original_opts),
+    filtered_items = vim.list_extend({}, state.filtered_items),
+    filter_metadata = vim.deepcopy(state.filter_metadata),
+    query = query,
+    selected = vim.deepcopy(state.selected),
+    selected_count = state.selected_count,
+    mode = state.current_mode,
+    is_loading = state.is_loading,
+    jump_active = require("namu.selecta.jump").is_active(state),
+    original_buf = state.original_buf,
+    original_window = state.original_window,
+    prompt_cursor = vim.api.nvim_win_is_valid(state.prompt_win) and vim.api.nvim_win_get_cursor(state.prompt_win),
+    view = vim.api.nvim_win_is_valid(state.win) and vim.api.nvim_win_call(state.win, vim.fn.winsaveview),
+  }
+end
+
+---Reopen the last closed picker with its saved search, options and mode.
+---@return boolean resumed Whether a picker could be resumed
+function M.resume()
+  if active_picker and active_picker:is_valid() then
+    vim.api.nvim_set_current_win(active_picker.prompt_win)
+    return true
+  end
+  if not last_picker then
+    vim.notify("No picker to resume", vim.log.levels.INFO, notify_opts)
+    return false
+  end
+  local saved = last_picker
+  if not vim.api.nvim_buf_is_valid(saved.original_buf) or not vim.api.nvim_win_is_valid(saved.original_window) then
+    vim.notify("Cannot resume picker: its original buffer or window was closed", vim.log.levels.WARN, notify_opts)
+    return false
+  end
+  vim.api.nvim_set_current_win(saved.original_window)
+  vim.api.nvim_win_set_buf(saved.original_window, saved.original_buf)
+  M.pick(vim.list_extend({}, saved.items), vim.deepcopy(saved.opts), saved)
+  return true
+end
+
 ---Close the picker and restore cursor
 ---@param state SelectaState
 ---@return nil
@@ -432,6 +520,7 @@ function M.close_picker(state)
   if not state then
     return
   end
+  M.save_picker(state)
   state.active = false
   -- No need to explicitly terminate coroutines - just mark as inactive
   state.async_co = nil
@@ -475,6 +564,7 @@ function M.setup_prompt_buffer(state, opts)
 
       -- Update query from buffer content - but don't process yet
       if state:update_query_from_buffer() and state.active then
+        state.jump_auto_pending = false
         -- Instead of calling process_query directly, set a flag and trigger it
         -- on the next UI event via vim.schedule
         state.query_changed = true
@@ -495,6 +585,9 @@ function M.setup_prompt_buffer(state, opts)
   })
 
   input_handler.setup_keymaps(state, opts, M.close_picker, M.process_query)
+  if opts.jump and opts.jump.enabled then
+    require("namu.selecta.jump").setup_keymap(state, opts)
+  end
   ui.update_prompt_prefix(state, opts, state:get_query_string())
   vim.cmd("startinsert")
 end
@@ -502,8 +595,9 @@ end
 ---Pick an item from the list with cursor management
 ---@param items SelectaItem[]
 ---@param opts? SelectaOptions
+---@param resume_state? table Saved picker state (internal)
 ---@return nil
-function M.pick(items, opts)
+function M.pick(items, opts, resume_state)
   local base_opts = {
     title = "Select",
     display = config.display,
@@ -521,6 +615,7 @@ function M.pick(items, opts)
     row_position = config.row_position,
     debug = config.debug,
     normal_mode = false,
+    jump = config.jump,
   }
   opts = vim.tbl_deep_extend("force", base_opts, opts or {})
 
@@ -549,7 +644,9 @@ function M.pick(items, opts)
 
   -- Create state
   local state = StateManager.new(items, opts)
+  active_picker = state
   state.picker_id = tostring(vim.uv.hrtime())
+  state.jump_auto_pending = require("namu.selecta.jump").should_auto_activate(opts, 0)
 
   local _ = ui.get_container_dimensions(opts, state.picker_id)
   -- Calculate dimensions and position for the state
@@ -564,14 +661,30 @@ function M.pick(items, opts)
   state.height = height
   -- Create the UI
   ui.create_windows(state, opts)
+  if resume_state then
+    vim.api.nvim_buf_set_lines(state.prompt_buf, 0, -1, false, { resume_state.query })
+    state:update_query_from_buffer()
+    state.initial_open = false
+    state.jump_auto_pending = false
+    state.filtered_items = vim.list_extend({}, resume_state.filtered_items)
+    state.filter_metadata = vim.deepcopy(resume_state.filter_metadata)
+    state.selected = vim.deepcopy(resume_state.selected)
+    state.selected_count = resume_state.selected_count
+    state.user_navigated = true
+  end
   -- Set up the prompt buffer with event handling
   M.setup_prompt_buffer(state, opts)
   -- Initial processing
-  M.process_query(state, opts)
+  if resume_state then
+    ui.update_display(state, opts)
+    common.update_selection_highlights(state, opts)
+  else
+    M.process_query(state, opts)
+  end
   vim.cmd("redraw")
 
   -- Handle initial cursor position
-  if opts.initial_index and opts.initial_index <= #items then
+  if not resume_state and opts.initial_index and opts.initial_index <= #items then
     local target_pos = math.min(opts.initial_index, #state.filtered_items)
     -- Validate that we have items and the window is valid before setting cursor
     if target_pos > 0 and #state.filtered_items > 0 and vim.api.nvim_win_is_valid(state.win) then
@@ -590,6 +703,38 @@ function M.pick(items, opts)
   -- Focus the prompt window and start in insert mode
   if state.prompt_win and vim.api.nvim_win_is_valid(state.prompt_win) then
     vim.api.nvim_set_current_win(state.prompt_win)
+  end
+
+  -- Resolve the viewport after focusing the initial item, before placing labels.
+  -- Async pickers retry after their first results have been rendered.
+  vim.cmd("redraw")
+  if resume_state then
+    if resume_state.view then
+      vim.api.nvim_win_call(state.win, function()
+        vim.fn.winrestview(resume_state.view)
+      end)
+      local row = vim.api.nvim_win_get_cursor(state.win)[1]
+      common.update_current_highlight(state, opts, row - 1)
+      if opts.on_move and state.filtered_items[row] then
+        opts.on_move(state.filtered_items[row])
+      end
+    end
+    if resume_state.prompt_cursor then
+      pcall(vim.api.nvim_win_set_cursor, state.prompt_win, resume_state.prompt_cursor)
+    end
+    vim.cmd("redraw")
+    if resume_state.jump_active then
+      require("namu.selecta.jump").activate(state, opts)
+    elseif resume_state.mode == "normal" then
+      state.current_mode = "normal"
+      vim.cmd("stopinsert")
+    end
+    -- A request interrupted by closing must be started again.
+    if resume_state.is_loading and opts.async_source then
+      M.process_query(state, opts)
+    end
+  else
+    maybe_auto_activate_jump(state, opts)
   end
 end
 

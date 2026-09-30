@@ -424,7 +424,9 @@ function impl.show_with_query(config, query, opts)
         end,
 
         on_cancel = function()
-          api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
+          if api.nvim_buf_is_valid(state.original_buf) then
+            api.nvim_buf_clear_namespace(state.original_buf, state.preview_ns, 0, -1)
+          end
           if
             state.preview_state
             and state.preview_state.scratch_buf

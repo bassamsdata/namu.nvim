@@ -2,6 +2,8 @@ local M = {}
 
 -- Global defaults that apply to all modules
 M.global_defaults = {
+  display = { format = "tree_guides" },
+  jump = { enabled = true, auto_activate = false },
   movement = {
     next = { "<C-n>", "<DOWN>" },
     previous = { "<C-p>", "<UP>" },
@@ -55,7 +57,7 @@ M.global_defaults = {
 M.module_defaults = {
   namu_symbols = {
     -- Module-specific defaults that differ from global
-    display = { mode = "icon", format = "indent" },
+    display = { mode = "icon", format = "tree_guides" },
     hierarchical_mode = false,
     enhance_lua_test_symbols = true,
     lua_test_truncate_length = 50,
