@@ -438,6 +438,7 @@ function M.setup_keymaps(state, opts, close_picker_fn, process_query_fn)
       common.close_picker_with_cleanup(state, opts, close_picker_fn, false)
       require("namu.sidebar").open(items, {
         title = opts.title,
+        replace = true,
         formatter = opts.formatter,
         pre_filter = opts.pre_filter,
         preserve_order = opts.preserve_order,

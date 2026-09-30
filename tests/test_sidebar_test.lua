@@ -312,4 +312,19 @@ T["opening favorites from the outline still jumps into the code window"] = funct
   eq(child.lua_get("favorites.active"), true)
 end
 
+T["sending another list replaces stale filters and formatter in the existing sidebar"] = function()
+  child.lua("open()")
+  child.type_keys("/", "Child", "<Esc>")
+  child.lua([[
+    sidebar.open({ items[3] }, {
+      replace = true, title = "New list",
+      formatter = function(item) return "new: " .. item.text end,
+    }, { original_win = source_win, original_buf = source_buf })
+  ]])
+  eq(child.lua_get("panel.query"), "")
+  eq(child.lua_get("panel.title"), "New list")
+  eq(child.lua_get("#panel.filtered_items"), 1)
+  eq(child.lua_get("vim.api.nvim_buf_get_lines(panel.buf, 0, -1, false)[1]:find('new: Other', 1, true) ~= nil"), true)
+end
+
 return T

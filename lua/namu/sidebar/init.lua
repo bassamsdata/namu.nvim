@@ -266,6 +266,17 @@ function M.open(items, opts, module_state)
   local existing = panels[name]
   if existing and existing.active then
     existing.items = items
+    existing.opts = vim.tbl_deep_extend("force", opts, { auto_select = false, initially_hidden = false })
+    existing.title = opts.title or existing.title
+    existing.original_win = module_state.original_win or existing.original_win
+    existing.original_buf = module_state.original_buf or existing.original_buf
+    if opts.replace then
+      existing.query = ""
+      existing.selected_id = nil
+      existing.pending_view = nil
+      existing.collapsed = {}
+      api.nvim_buf_set_lines(existing.prompt_buf, 0, -1, false, { "" })
+    end
     render(existing)
     api.nvim_set_current_win(existing.win)
     return existing
