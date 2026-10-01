@@ -7,7 +7,7 @@ local T = MiniTest.new_set({
       child.lua([[
         vim.o.lines, vim.o.columns = 40, 120
         vim.o.hidden = true
-        vim.opt.runtimepath:append(vim.fn.getcwd() .. "/deps/nvim-treesitter")
+        vim.opt.runtimepath:prepend(vim.fn.getcwd() .. "/deps/nvim-treesitter")
         vim.cmd("filetype on")
         _G.directory = vim.fn.tempname()
         vim.fn.mkdir(directory, "p")

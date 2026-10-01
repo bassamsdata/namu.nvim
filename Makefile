@@ -26,11 +26,11 @@ format:
 
 .PHONY: test test_file deps
 
-test: deps
+test: deps deps/nvim-treesitter/parser/lua.so
 	@echo "Running all tests..."
 	nvim --headless --noplugin -u ./scripts/minimal_init.lua -c "lua MiniTest.run()"
 
-test_file: deps
+test_file: deps deps/nvim-treesitter/parser/lua.so
 	@echo "Testing specific file..."
 	nvim --headless --noplugin -u ./scripts/minimal_init.lua -c "lua MiniTest.run_file('$(FILE)')"
 
@@ -39,7 +39,10 @@ deps: deps/nvim-treesitter deps/mini.nvim deps/panvimdoc
 
 deps/nvim-treesitter:
 	@mkdir -p deps
-	git clone --filter=blob:none https://github.com/nvim-treesitter/nvim-treesitter.git $@
+	git clone --filter=blob:none --branch master https://github.com/nvim-treesitter/nvim-treesitter.git $@
+
+deps/nvim-treesitter/parser/lua.so: deps/nvim-treesitter
+	nvim --headless -u NONE -l scripts/install_test_parser.lua
 
 deps/mini.nvim:
 	@mkdir -p deps
