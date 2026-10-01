@@ -18,13 +18,27 @@ Lua mappings can also call `require("namu").resume()`. The snapshot lasts for th
 
 ## Sidebar and favorites
 
-`:Namu sidebar` opens symbols for the current file in a persistent split with search at the top, or restores the last list sent from a picker. Live symbol lists follow the active code split and refresh when you switch files, save, or attach an LSP. Use `:Namu sidebar symbols` to replace a transferred list with current-file symbols, `:Namu sidebar refresh` to refresh live symbols manually, `:Namu sidebar toggle` to show/hide it, or `:Namu sidebar close` to close it.
+**Open and manage:**
 
-In any picker, use `<C-b>` to save the current item (or your Tab selections) to favorites. Use `<C-s>` to send the selected items, or all filtered items when nothing is selected, to a new sidebar. Reopen that list with `:Namu sidebar`; open favorites with `:Namu bookmarks`.
+- `:Namu sidebar`: open current-file symbols in a persistent split, or restore the last list sent from a picker.
+- `:Namu sidebar symbols`: replace a transferred list with live symbols.
+- `:Namu sidebar toggle` / `close`: show/hide or close the sidebar.
+- `:Namu sidebar refresh`: refresh live symbols manually.
+- `:Namu bookmarks`: open favorites alongside the main sidebar.
 
-Sidebars reuse the picker’s formatter, tree/indent guides, kind colors, search highlights, and preview while moving. A list sent from a picker opens on its focused item; a new symbols sidebar focuses the symbol at the code cursor. The input uses the picker icon, filter count, and a source indicator (TreeSitter or LSP when known). `/fn`, `/mo`, and `/cl` work in symbol lists, transferred lists, and saved favorites; append text to search within a kind, such as `/fnrender`. Preview uses the same symbol-body highlighting as the floating picker, with saved symbol ranges as a fallback when no parser is available. `preview.highlight_on_move = false` disables preview, and `jump.enabled = false` disables labels.
+**From any picker:**
 
-Current-buffer symbol lists sent with `<C-s>` also follow buffer switches. Workspace, diagnostics, and other transferred lists remain lists of saved locations. Favorites use the same sidebar UI and can stay open alongside the main sidebar. Try [search, following, and favorites in the interactive demo](https://namu.bassamai.com/#sidebar-demo).
+- `<C-b>`: save the current item or your Tab selections to favorites.
+- `<C-s>`: send selected items to the sidebar, or all filtered items if nothing is selected. The sidebar opens on the focused item.
+
+**Search and preview:**
+
+- Live symbols follow the active code split and refresh on file switches, saves, and LSP attachment. Current-buffer lists sent with `<C-s>` also follow file switches; workspace and diagnostics lists keep saved locations.
+- Filter symbols, transferred lists, or favorites with `/fn`, `/mo`, or `/cl`. Add text to search within a kind: `/fnrender`.
+- The sidebar shares picker formatting, tree guides, kind colors, search highlights, and symbol-body previews. Its input shows the filter count and symbol source when known.
+- New symbol lists focus the symbol at the code cursor. Preview falls back to saved ranges without a parser; set `preview.highlight_on_move = false` to disable it, or `jump.enabled = false` to disable labels.
+
+Try [search, following, and favorites in the interactive demo](https://namu.bassamai.com/#sidebar-demo).
 
 Inside a sidebar:
 
