@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.0](https://github.com/bassamsdata/namu.nvim/compare/v0.7.0...v0.8.0) (2026-10-01)
+
+
+### Features
+
+* add searchable persistent sidebars and favorites ([#70](https://github.com/bassamsdata/namu.nvim/issues/70)) ([11e7782](https://github.com/bassamsdata/namu.nvim/commit/11e77821fc6796294b13e6ab2509bc2a694f2251))
+* resume the last closed picker with its saved state ([#69](https://github.com/bassamsdata/namu.nvim/issues/69)) ([12c3580](https://github.com/bassamsdata/namu.nvim/commit/12c3580efb05d66b9e1adcf5a6c37b277f68d325))
+* unify sidebar navigation and add interactive favorites demo ([#71](https://github.com/bassamsdata/namu.nvim/issues/71)) ([69106f8](https://github.com/bassamsdata/namu.nvim/commit/69106f89d0d3f8c013a0185ec64ff734ae223410))
+
+
+### Bug Fixes
+
+* support bold and shadow picker borders ([#67](https://github.com/bassamsdata/namu.nvim/issues/67)) ([6532825](https://github.com/bassamsdata/namu.nvim/commit/6532825315bbbb56ae16bad089cfeed3a4b89e48))
+
 ## [0.7.0](https://github.com/bassamsdata/namu.nvim/compare/v0.6.0...v0.7.0) (2026-09-28)
 
 
