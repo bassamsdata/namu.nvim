@@ -280,61 +280,61 @@ end
 ---@param win number Window handle
 ---@param ns_id number Namespace ID
 ---@param state? table Optional state object that may contain buffer information
+---@param highlight_group? string
+---@return nil
 function M.preview_symbol(symbol, win, ns_id, state, highlight_group)
-  if state and state.last_highlighted_bufnr and vim.api.nvim_buf_is_valid(state.last_highlighted_bufnr) then
+  if not symbol or not vim.api.nvim_win_is_valid(win) then
+    return
+  end
+  state = state or {}
+  if state.last_highlighted_bufnr and vim.api.nvim_buf_is_valid(state.last_highlighted_bufnr) then
     vim.api.nvim_buf_clear_namespace(state.last_highlighted_bufnr, ns_id, 0, -1)
   end
-  local current_bufnr = vim.api.nvim_win_get_buf(win)
-  local target_bufnr = nil
-  -- Check if we have buffer info in symbol
-  if symbol.bufnr then
-    target_bufnr = symbol.bufnr
-  elseif symbol.value.bufnr then
-    target_bufnr = symbol.value.bufnr
-  end
-  local value = symbol.value
-  -- Determine if we need to switch buffers
-  local need_buffer_switch = target_bufnr and target_bufnr ~= current_bufnr and vim.api.nvim_buf_is_valid(target_bufnr)
-
-  -- Switch buffer if needed (before win_call)
-  if need_buffer_switch then
+  local value = symbol.value or symbol
+  local target_bufnr = symbol.bufnr or value.bufnr
+  if target_bufnr and vim.api.nvim_buf_is_valid(target_bufnr) then
     pcall(vim.api.nvim_win_set_buf, win, target_bufnr)
   end
-  -- use buffer in window regardless of the success of switching buffers so no erros will happen
   local bufnr = vim.api.nvim_win_get_buf(win)
   state.last_highlighted_bufnr = bufnr
   vim.api.nvim_win_call(win, function()
     vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
-    local line = vim.api.nvim_buf_get_lines(bufnr, value.lnum - 1, value.lnum, false)[1]
-    if not line then
-      return
-    end
-    local first_char_col = line:find("%S")
-    if not first_char_col then
-      return
-    end
-    first_char_col = first_char_col - 1
-    local node = vim.treesitter.get_node({
-      pos = { value.lnum - 1, first_char_col },
+    local line_count = vim.api.nvim_buf_line_count(bufnr)
+    local srow = math.max(0, math.min((value.lnum or 1) - 1, line_count - 1))
+    local line = vim.api.nvim_buf_get_lines(bufnr, srow, srow + 1, false)[1] or ""
+    local scol = (line:find("%S") or 1) - 1
+    local ok, node = pcall(vim.treesitter.get_node, {
+      bufnr = bufnr,
+      pos = { srow, scol },
       ignore_injections = false,
     })
-    if node then
-      node = M.find_meaningful_node(node, value.lnum - 1)
+    if ok and node then
+      local found, meaningful = pcall(M.find_meaningful_node, node, srow)
+      node = found and meaningful or node
+    else
+      node = nil
     end
+    local erow = value.end_lnum and value.end_lnum - 1 or srow + 1
+    local ecol = value.end_col and value.end_col - 1 or 0
     if node then
-      local srow, scol, erow, ecol = node:range()
-      vim.api.nvim_buf_set_extmark(bufnr, ns_id, srow, 0, {
-        end_row = erow,
-        end_col = ecol,
-        hl_group = highlight_group,
-        hl_eol = true,
-        priority = 201,
-        strict = false,
-      })
-      -- Set cursor position in this window
-      vim.api.nvim_win_set_cursor(win, { srow + 1, scol })
-      vim.cmd("normal! zz")
+      srow, scol, erow, ecol = node:range()
     end
+    erow = math.max(srow, math.min(erow, line_count))
+    local end_line = vim.api.nvim_buf_get_lines(bufnr, erow, erow + 1, false)[1] or ""
+    ecol = math.max(0, math.min(ecol, #end_line))
+    if erow == srow and ecol <= scol then
+      erow, ecol = srow + 1, 0
+    end
+    vim.api.nvim_buf_set_extmark(bufnr, ns_id, srow, 0, {
+      end_row = erow,
+      end_col = ecol,
+      hl_group = highlight_group or "NamuPreview",
+      hl_eol = true,
+      priority = 201,
+      strict = false,
+    })
+    vim.api.nvim_win_set_cursor(win, { srow + 1, scol })
+    vim.cmd("normal! zz")
   end)
 end
 

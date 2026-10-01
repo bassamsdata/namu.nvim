@@ -256,7 +256,8 @@ end
 -- Function to update the filter info display
 ---@param state SelectaState
 ---@param filter_metadata table|nil
-function M.update_filter_info(state, filter_metadata)
+---@param source_info? table Optional source displayed alongside the filter count
+function M.update_filter_info(state, filter_metadata, source_info)
   -- Clear previous extmarks
   if state.prompt_buf and vim.api.nvim_buf_is_valid(state.prompt_buf) then
     vim.api.nvim_buf_clear_namespace(state.prompt_buf, filter_info_ns, 0, -1)
@@ -272,6 +273,9 @@ function M.update_filter_info(state, filter_metadata)
 
         -- Format: "14 fn"
         local info_text = string.format("%d %s", direct_count, description)
+        if source_info and source_info.text then
+          info_text = info_text .. "  " .. source_info.text
+        end
 
         -- Set the extmark with the filter info - right aligned
         vim.api.nvim_buf_set_extmark(

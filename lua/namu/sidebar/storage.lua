@@ -124,7 +124,13 @@ function M.location(item, fallback_buf)
   if not line then
     return nil
   end
-  return { path = vim.fn.fnamemodify(path, ":p"), line = math.max(1, line), col = math.max(0, col) }
+  return {
+    path = vim.fn.fnamemodify(path, ":p"),
+    line = math.max(1, line),
+    col = math.max(0, col),
+    end_line = range and range["end"] and range["end"].line + 1 or value.end_lnum,
+    end_col = range and range["end"] and range["end"].character or (value.end_col and value.end_col - 1),
+  }
 end
 
 ---Convert an item into a serializable favorite.
@@ -144,6 +150,7 @@ function M.record(item, fallback_buf)
     text = item.text or "Bookmark",
     icon = item.icon,
     kind = item.kind,
+    source = item.source,
     depth = item.depth or 0,
     tree_state = vim.deepcopy(item.tree_state),
     location = location,

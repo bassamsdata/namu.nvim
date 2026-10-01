@@ -61,6 +61,11 @@ function M.activate(state, opts)
   -- target item. Multiselect users keep using their Tab binding.
   local win_info = vim.fn.getwininfo(state.win)[1]
   local labels = jump_opts.keys
+  if state.jump_reserved_keys then
+    labels = labels:gsub(".", function(key)
+      return not state.jump_reserved_keys[key] and key or ""
+    end)
+  end
   for i = 1, #labels do
     local row = win_info.topline + i - 1
     if row > win_info.botline or not state.filtered_items[row] then

@@ -8,6 +8,8 @@ local common = require("namu.selecta.common")
 local jump = require("namu.selecta.jump")
 local update_current
 local clear_preview
+local schedule_follow
+local symbol_index = require("namu.sidebar.symbol_index")
 
 local function picker_options(opts)
   local resolved = vim.tbl_deep_extend(
@@ -21,7 +23,18 @@ local function picker_options(opts)
       initially_hidden = false,
     }
   )
+  resolved = vim.deepcopy(resolved)
+  resolved.follow_cursor = vim.tbl_deep_extend(
+    "force",
+    { enabled = true, toggle_key = "<C-f>", letter_key = "f" },
+    resolved.follow_cursor or {}
+  )
   resolved.jump = vim.tbl_deep_extend("force", require("namu.selecta.selecta_config").values.jump, resolved.jump or {})
+  resolved.pre_filter = opts.pre_filter
+    or function(items, query)
+      return require("namu.core.symbol_utils").filter_items(items, query, resolved)
+    end
+  resolved.preserve_order = opts.preserve_order ~= false
   resolved.formatter = opts.formatter
     or function(item)
       return require("namu.core.format_utils").format_item_for_display(item, resolved)
@@ -67,6 +80,7 @@ local function remember(panel)
     saved.view = api.nvim_win_call(panel.win, vim.fn.winsaveview)
   end
   if panel.name == "sidebar" then
+    saved.follow_buffer = panel.opts.follow_buffer == true
     saved.items = {}
     for _, entry in ipairs(panel.items) do
       local record = storage.record(entry, panel.original_buf)
@@ -74,20 +88,64 @@ local function remember(panel)
         table.insert(saved.items, record)
       end
     end
+    storage.get().panels.sidebar = saved
   end
   storage.get().panels[panel.storage_key] = saved
+end
+
+local function update_prompt(panel)
+  local ui = require("namu.selecta.ui")
+  ui.update_prompt_prefix(panel, panel.opts, panel.query)
+  local source = current_item(panel) and current_item(panel).source
+  local source_info = source
+      and {
+        text = source == "treesitter" and " TS" or source == "lsp" and "󰿘 LSP" or source,
+        hl_group = "NamuSourceIndicator",
+      }
+    or panel.source_info
+    or panel.opts.initial_prompt_info
+  local filter_only = panel.filter_metadata and (panel.filter_metadata.remaining or "") == ""
+  ui.update_prompt_info(panel, { initial_prompt_info = source_info }, not filter_only)
+  ui.update_filter_info(panel, panel.filter_metadata, source_info)
+  vim.wo[panel.prompt_win].statusline = "%#NamuSidebarHint# "
+    .. (panel.opts.preview.toggle_key or "p"):gsub("%%", "%%%%")
+    .. ":preview "
+    .. panel.opts.follow_cursor.letter_key:gsub("%%", "%%%%")
+    .. ":follow g?:help %= follow:"
+    .. (panel.opts.follow_cursor.enabled and "on" or "off")
+    .. " %*"
 end
 
 local function render(panel)
   if not panel.active or not api.nvim_win_is_valid(panel.win) then
     return
   end
+  local sources = {}
+  for _, item in ipairs(panel.items) do
+    if item.source then
+      sources[item.source] = true
+    end
+  end
+  local source = vim.tbl_count(sources) == 1 and next(sources) or vim.tbl_count(sources) > 1 and "Mixed" or nil
+  panel.source_info = source
+      and {
+        text = source == "treesitter" and " TS" or source == "lsp" and "󰿘 LSP" or source,
+        hl_group = "NamuSourceIndicator",
+      }
+    or nil
   local refresh_jump = jump.is_active(panel)
   if refresh_jump then
     jump.deactivate(panel)
   end
   local filter_state = { items = panel.items, filtered_items = {}, initial_open = false }
   require("namu.selecta.selecta").update_filtered_items(filter_state, panel.query, panel.opts)
+  panel.filter_metadata = filter_state.filter_metadata
+  panel.best_match_index = filter_state.best_match_index
+  if panel.query_changed then
+    local best = filter_state.best_match_index and filter_state.filtered_items[filter_state.best_match_index]
+    panel.selected_id = best and item_id(best) or nil
+    panel.query_changed = false
+  end
   panel.opts.display.prefix_width =
     require("namu.selecta.ui").calculate_max_prefix_width(panel.items, panel.opts.display.mode)
   for index, item in ipairs(panel.items) do
@@ -127,6 +185,8 @@ local function render(panel)
     end
   end
   panel.filtered_items = visible
+  panel.follow_index = panel.opts.follow_cursor.enabled and symbol_index.new(visible, panel.original_buf) or nil
+  panel.follow_last = nil
   if #lines == 0 then
     lines = { panel.query == "" and "  No items" or "  No matching items" }
   end
@@ -198,18 +258,12 @@ local function render(panel)
   end
   panel.opts.hooks.on_render(panel.buf, visible, panel.opts)
   common.update_current_highlight(panel, panel.opts, api.nvim_win_get_cursor(panel.win)[1] - 1)
-  local hint_ns = api.nvim_create_namespace("namu_sidebar_hint")
-  api.nvim_buf_clear_namespace(panel.prompt_buf, hint_ns, 0, -1)
-  if panel.query == "" then
-    api.nvim_buf_set_extmark(panel.prompt_buf, hint_ns, 0, 0, {
-      virt_text = { { "Type to search…", "Comment" } },
-      virt_text_pos = "overlay",
-    })
-  end
+  update_prompt(panel)
   remember(panel)
   if update_current then
     update_current(panel)
   end
+  schedule_follow(panel)
   if refresh_jump then
     vim.cmd("redraw")
     jump.activate(panel, panel.opts)
@@ -229,20 +283,29 @@ local function code_window(panel)
 end
 
 clear_preview = function(panel, restore)
-  for _, buf in ipairs(api.nvim_list_bufs()) do
-    if api.nvim_buf_is_valid(buf) then
-      api.nvim_buf_clear_namespace(buf, panel.preview_ns, 0, -1)
-    end
+  local buf = panel.last_highlighted_bufnr
+  if buf and api.nvim_buf_is_valid(buf) then
+    api.nvim_buf_clear_namespace(buf, panel.preview_ns, 0, -1)
   end
+  panel.last_highlighted_bufnr = nil
   local saved = panel.preview_saved
   panel.preview_saved = nil
-  if restore and saved and api.nvim_win_is_valid(panel.original_win) and api.nvim_buf_is_valid(saved.buf) then
+  -- A buffer chosen by the user after leaving the sidebar must not be replaced
+  -- by the earlier preview snapshot.
+  if
+    restore
+    and saved
+    and buf
+    and api.nvim_win_is_valid(saved.win)
+    and api.nvim_buf_is_valid(saved.buf)
+    and api.nvim_win_get_buf(saved.win) == buf
+  then
     panel.previewing = true
     local previous = vim.o.eventignore
     vim.o.eventignore = "all"
-    pcall(api.nvim_win_call, panel.original_win, function()
-      api.nvim_win_set_buf(panel.original_win, saved.buf)
-      api.nvim_win_set_cursor(panel.original_win, saved.cursor)
+    pcall(api.nvim_win_call, saved.win, function()
+      api.nvim_win_set_buf(saved.win, saved.buf)
+      api.nvim_win_set_cursor(saved.win, saved.cursor)
       vim.fn.winrestview(saved.view)
     end)
     vim.o.eventignore = previous
@@ -251,6 +314,7 @@ clear_preview = function(panel, restore)
 end
 
 update_current = function(panel)
+  update_prompt(panel)
   remember(panel)
   local row = api.nvim_win_get_cursor(panel.win)[1]
   local selected = panel.filtered_items[row]
@@ -269,11 +333,13 @@ update_current = function(panel)
   local item = current_item(panel)
   local location = item and storage.location(item, panel.original_buf)
   local win = code_window(panel)
-  if not location or not win or vim.fn.filereadable(location.path) == 0 then
+  if not location or not win then
+    clear_preview(panel, true)
     return
   end
   if not panel.preview_saved then
     panel.preview_saved = {
+      win = win,
       buf = api.nvim_win_get_buf(win),
       cursor = api.nvim_win_get_cursor(win),
       view = api.nvim_win_call(win, vim.fn.winsaveview),
@@ -298,14 +364,55 @@ update_current = function(panel)
     local text = api.nvim_buf_get_lines(buf, line - 1, line, false)[1] or ""
     api.nvim_win_set_cursor(win, { line, math.min(location.col, #text) })
     vim.cmd("normal! zz")
-    api.nvim_buf_clear_namespace(buf, panel.preview_ns, 0, -1)
-    api.nvim_buf_set_extmark(buf, panel.preview_ns, line - 1, 0, {
-      line_hl_group = "NamuPreview",
-      priority = 100,
+    -- Normalize saved bookmarks into the same symbol shape as the picker.
+    local symbol = vim.deepcopy(item)
+    symbol.bufnr = buf
+    symbol.value = vim.tbl_extend("force", type(item.value) == "table" and item.value or {}, {
+      lnum = line,
+      col = location.col + 1,
+      end_lnum = location.end_line,
+      end_col = location.end_col and location.end_col + 1,
     })
+    require("namu.namu_symbols.ui").preview_symbol(symbol, win, panel.preview_ns, panel, panel.opts.highlight)
   end)
   vim.o.eventignore = previous
   panel.previewing = false
+end
+
+schedule_follow = function(panel)
+  if not panel.active or not panel.opts.follow_cursor.enabled or panel.previewing or panel.follow_pending then
+    return
+  end
+  if api.nvim_get_current_win() ~= panel.original_win then
+    return
+  end
+  panel.follow_pending = true
+  vim.schedule(function()
+    panel.follow_pending = false
+    if not panel.active or not panel.opts.follow_cursor.enabled or panel.previewing then
+      return
+    end
+    if api.nvim_get_current_win() ~= panel.original_win or not api.nvim_win_is_valid(panel.win) then
+      return
+    end
+    local buf = api.nvim_win_get_buf(panel.original_win)
+    local line = api.nvim_win_get_cursor(panel.original_win)[1]
+    local last = panel.follow_last
+    if last and last.buf == buf and last.line == line then
+      return
+    end
+    panel.follow_last = { buf = buf, line = line }
+    local row = symbol_index.find(panel.follow_index or {}, api.nvim_buf_get_name(buf), line)
+    if not row or api.nvim_win_get_cursor(panel.win)[1] == row then
+      return
+    end
+    api.nvim_win_set_cursor(panel.win, { row, 0 })
+    -- Change only the selected row; never move code, run preview, or serialize items.
+    local item = panel.filtered_items[row]
+    panel.selected_id = item_id(item)
+    common.update_current_highlight(panel, panel.opts, row - 1)
+    update_prompt(panel)
+  end)
 end
 
 local function jump_to_item(panel)
@@ -344,6 +451,13 @@ local function jump_to_item(panel)
 end
 
 local function setup_keymaps(panel)
+  -- Reserve control letters so they and g? still work in jump mode.
+  panel.jump_reserved_keys = { g = true }
+  for _, key in ipairs({ panel.opts.preview.toggle_key or "p", panel.opts.follow_cursor.letter_key }) do
+    if #key == 1 then
+      panel.jump_reserved_keys[key] = true
+    end
+  end
   local function map(modes, lhs, callback, buf)
     vim.keymap.set(modes, lhs, callback, { buffer = buf or panel.buf, silent = true, nowait = true })
   end
@@ -393,6 +507,12 @@ local function setup_keymaps(panel)
         render(panel)
       end
     end, buf)
+    map("n", "g?", function()
+      M.show_help(panel.name)
+    end, buf)
+    map("n", panel.opts.follow_cursor.letter_key, function()
+      M.toggle_follow_cursor(panel.name)
+    end, buf)
     map("n", "m", function()
       local item = current_item(panel)
       if item then
@@ -402,14 +522,26 @@ local function setup_keymaps(panel)
   end
   map({ "i", "n" }, "<CR>", focus_list, panel.prompt_buf)
   map("i", "<Esc>", focus_list, panel.prompt_buf)
-  map("i", "<C-n>", function()
-    focus_list()
-    vim.cmd("normal! j")
-  end, panel.prompt_buf)
-  map("i", "<C-p>", function()
-    focus_list()
-    vim.cmd("normal! k")
-  end, panel.prompt_buf)
+  for _, direction in ipairs({ { "next", 1 }, { "previous", -1 } }) do
+    for _, key in ipairs(panel.opts.movement[direction[1]] or {}) do
+      map("i", key, function()
+        local row = api.nvim_win_get_cursor(panel.win)[1]
+        api.nvim_win_set_cursor(panel.win, { math.max(1, math.min(row + direction[2], #panel.filtered_items)), 0 })
+        update_current(panel)
+      end, panel.prompt_buf)
+    end
+  end
+  for _, buf in ipairs({ panel.buf, panel.prompt_buf }) do
+    map("n", panel.opts.preview.toggle_key or "p", function()
+      M.toggle_preview(panel.name)
+    end, buf)
+    map({ "i", "n" }, panel.opts.follow_cursor.toggle_key, function()
+      M.toggle_follow_cursor(panel.name)
+    end, buf)
+    map({ "i", "n" }, "<C-o>", function()
+      M.toggle_preview(panel.name)
+    end, buf)
+  end
   if panel.opts.jump.enabled then
     for _, buf in ipairs({ panel.buf, panel.prompt_buf }) do
       map({ "i", "n" }, panel.opts.jump.toggle_key, function()
@@ -468,6 +600,7 @@ function M.open(items, opts, module_state)
   local name = opts.name or "sidebar"
   local existing = panels[name]
   if existing and existing.active then
+    existing.source_generation = (existing.source_generation or 0) + 1
     existing.items = items
     existing.opts = picker_options(opts)
     existing.title = opts.title or existing.title
@@ -481,12 +614,20 @@ function M.open(items, opts, module_state)
       api.nvim_buf_set_lines(existing.prompt_buf, 0, -1, false, { "" })
     end
     render(existing)
+    if existing.opts.follow_buffer then
+      require("namu.sidebar.source").attach(existing)
+      if #items == 0 then
+        require("namu.sidebar.source").refresh(existing)
+      end
+    end
     api.nvim_set_current_win(existing.win)
     return existing
   end
   local original_win = module_state.original_win or M.source_window()
   local original_buf = module_state.original_buf or api.nvim_win_get_buf(original_win)
-  local storage_key = opts.storage_key or name
+  local storage_key = opts.storage_key
+    or (opts.follow_buffer and name .. ":" .. api.nvim_buf_get_name(original_buf))
+    or name
   local saved = storage.get().panels[storage_key]
   saved = type(saved) == "table" and saved or {}
   local panel = {
@@ -531,6 +672,7 @@ function M.open(items, opts, module_state)
     vim.bo[buf].filetype = "namu_sidebar"
     vim.bo[buf].completefunc = ""
     vim.bo[buf].omnifunc = ""
+    vim.bo[buf].complete = ""
     vim.b[buf].completion = false
     if vim.fn.exists("+autocomplete") == 1 then
       vim.bo[buf].autocomplete = false
@@ -547,7 +689,7 @@ function M.open(items, opts, module_state)
   end
   vim.wo[panel.win].cursorline = true
   vim.wo[panel.prompt_win].winfixheight = true
-  vim.wo[panel.prompt_win].statusline = " Search (/ to edit)"
+  vim.bo[panel.prompt_buf].filetype = "namu_prompt"
   api.nvim_buf_set_lines(panel.prompt_buf, 0, -1, false, { panel.query })
   panel.group = api.nvim_create_augroup("NamuSidebar_" .. panel.buf, { clear = true })
   api.nvim_create_autocmd("CursorMoved", {
@@ -562,6 +704,12 @@ function M.open(items, opts, module_state)
     buffer = panel.buf,
     callback = function()
       update_current(panel)
+    end,
+  })
+  api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI", "WinScrolled", "WinEnter", "BufEnter" }, {
+    group = panel.group,
+    callback = function()
+      schedule_follow(panel)
     end,
   })
   api.nvim_create_autocmd("WinLeave", {
@@ -605,6 +753,7 @@ function M.open(items, opts, module_state)
         if query ~= panel.query then
           panel.jump_auto_pending = false
           panel.selected_id = nil
+          panel.query_changed = true
         end
         panel.query = query
         render(panel)
@@ -621,6 +770,12 @@ function M.open(items, opts, module_state)
     panel.jump_auto_pending = false
     if jump.should_auto_activate(panel.opts, #panel.filtered_items) then
       jump.activate(panel, panel.opts)
+    end
+  end
+  if panel.opts.follow_buffer then
+    require("namu.sidebar.source").attach(panel)
+    if #items == 0 then
+      require("namu.sidebar.source").refresh(panel)
     end
   end
   return panel
@@ -645,17 +800,27 @@ function M.update(name, items)
   end
 end
 
----Switch an outline to a new source buffer and restore that file's search.
+---Switch a symbol sidebar to a new source buffer and restore that file's search.
 ---@param name string
 ---@param bufnr number
+---@param win? number New code window
 ---@return nil
-function M.set_source(name, bufnr)
+function M.set_source(name, bufnr, win)
   local panel = panels[name]
   if not panel or not panel.active then
     return
   end
+  clear_preview(panel, win ~= nil and win ~= panel.original_win)
+  if win then
+    panel.original_win = win
+  end
+  if panel.original_buf == bufnr then
+    return
+  end
   remember(panel)
   panel.original_buf = bufnr
+  panel.follow_index = nil
+  panel.follow_last = nil
   panel.storage_key = name .. ":" .. api.nvim_buf_get_name(bufnr)
   local saved = storage.get().panels[panel.storage_key]
   saved = type(saved) == "table" and saved or {}
@@ -663,6 +828,11 @@ function M.set_source(name, bufnr)
   panel.selected_id = saved.selected_id
   panel.pending_view = type(saved.view) == "table" and saved.view or nil
   panel.collapsed = type(saved.collapsed) == "table" and saved.collapsed or {}
+  panel.initial_item = nil
+  panel.initial_line = nil
+  panel.query_changed = false
+  panel.items = {}
+  render(panel)
   api.nvim_buf_set_lines(panel.prompt_buf, 0, -1, false, { panel.query })
 end
 
@@ -676,6 +846,7 @@ function M.close(name)
   end
   remember(panel)
   storage.save()
+  require("namu.sidebar.help").close(panel, false)
   jump.deactivate(panel)
   clear_preview(panel, true)
   panel.active = false
@@ -701,6 +872,51 @@ function M.focus_code(name)
       vim.cmd("stopinsert")
       api.nvim_set_current_win(win)
     end
+  end
+end
+
+---Toggle symbol body preview while keeping jump letters independent.
+---@param name? string
+---@return nil
+function M.toggle_preview(name)
+  local panel = panels[name or "sidebar"]
+  if not panel or not panel.active then
+    return
+  end
+  panel.opts.preview.highlight_on_move = not panel.opts.preview.highlight_on_move
+  if panel.opts.preview.highlight_on_move then
+    update_current(panel)
+  else
+    clear_preview(panel, true)
+  end
+end
+
+---Toggle tracking the code cursor without changing preview or jump labels.
+---@param name? string
+---@return nil
+function M.toggle_follow_cursor(name)
+  local panel = panels[name or "sidebar"]
+  if not panel or not panel.active then
+    return
+  end
+  panel.opts.follow_cursor.enabled = not panel.opts.follow_cursor.enabled
+  panel.follow_last = nil
+  update_prompt(panel)
+  if panel.opts.follow_cursor.enabled then
+    panel.follow_index = symbol_index.new(panel.filtered_items, panel.original_buf)
+    schedule_follow(panel)
+  else
+    panel.follow_index = nil
+  end
+end
+
+---Show the sidebar shortcuts and current toggle states.
+---@param name? string
+---@return nil
+function M.show_help(name)
+  local panel = panels[name or "sidebar"]
+  if panel and panel.active then
+    require("namu.sidebar.help").open(panel)
   end
 end
 
@@ -734,7 +950,21 @@ function M.show()
     return
   end
   local saved = storage.get().panels.sidebar
-  if type(saved) == "table" and type(saved.items) == "table" and #saved.items > 0 then
+  local symbol_list = type(saved) == "table" and saved.follow_buffer
+  if type(saved) == "table" and saved.follow_buffer == nil and type(saved.items) == "table" and #saved.items > 0 then
+    -- Migrate saved symbol lists that predate buffer tracking.
+    local first_location = storage.location(saved.items[1])
+    symbol_list = first_location
+      and vim.iter(saved.items):all(function(item)
+        local location = storage.location(item)
+        return (item.source == "treesitter" or item.source == "lsp")
+          and location
+          and location.path == first_location.path
+      end)
+  end
+  if symbol_list then
+    M.open({}, { title = "Sidebar", follow_buffer = true })
+  elseif type(saved) == "table" and type(saved.items) == "table" and #saved.items > 0 then
     M.open(saved.items, { title = "Sidebar" })
   else
     require("namu.namu_outline").open()
