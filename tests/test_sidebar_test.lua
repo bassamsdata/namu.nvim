@@ -26,7 +26,7 @@ local T = MiniTest.new_set({
     end,
     post_case = function()
       child.lua([[
-        for _, name in ipairs({ "sidebar", "outline", "favorites" }) do sidebar.close(name) end
+        for _, name in ipairs({ "sidebar", "favorites" }) do sidebar.close(name) end
         vim.fn.delete(path)
         vim.fn.delete(store_path)
       ]])
@@ -186,30 +186,61 @@ T["workspace and diagnostic coordinates are normalized correctly"] = function()
   )
 end
 
-T["outline ignores stale results and refreshes without stealing code focus"] = function()
+T["symbol sidebar ignores stale results and refreshes without stealing code focus"] = function()
   child.lua([[
     _G.deliveries = {}
     require("namu.namu_symbols").fetch_symbols = function(buf, cb)
       table.insert(deliveries, cb)
     end
-    _G.outline = require("namu.namu_outline")
-    outline.open()
-    _G.panel = sidebar.get("outline")
-    outline.refresh()
+    _G.symbol_sidebar = sidebar
+    symbol_sidebar.open_symbols()
+    _G.panel = sidebar.get("sidebar")
+    symbol_sidebar.refresh()
     deliveries[#deliveries](items)
     deliveries[1]({ items[1] })
-    sidebar.focus_code("outline")
+    sidebar.focus_code()
   ]])
   eq(child.lua_get("#panel.items"), 3)
   eq(child.lua_get("vim.api.nvim_get_current_win() == source_win"), true)
-  child.lua("outline.close(); deliveries[#deliveries](items)")
-  eq(child.lua_get('sidebar.get("outline") == nil'), true)
+  child.lua("symbol_sidebar.close(); deliveries[#deliveries](items)")
+  eq(child.lua_get('sidebar.get("sidebar") == nil'), true)
 end
 
-T["bookmark and outline commands are available"] = function()
+T["bookmark and sidebar commands are available without a separate outline"] = function()
   child.lua('vim.cmd("runtime plugin/namu.lua"); vim.cmd("Namu bookmarks")')
   eq(child.lua_get('sidebar.get("favorites").active'), true)
   child.type_keys("q")
+  child.lua([[
+    require("namu.namu_symbols").fetch_symbols = function(_, cb) cb(items) end
+    vim.cmd("Namu sidebar")
+    _G.panel = sidebar.get()
+    vim.cmd("Namu sidebar")
+  ]])
+  eq(child.lua_get("sidebar.get() == panel"), true)
+  eq(child.lua_get('vim.tbl_contains(vim.fn.getcompletion("Namu ", "cmdline"), "outline")'), false)
+  eq(child.lua_get('vim.tbl_contains(vim.fn.getcompletion("Namu sidebar ", "cmdline"), "symbols")'), true)
+  child.lua('vim.cmd("Namu sidebar close")')
+  eq(child.lua_get("sidebar.get() == nil"), true)
+  child.lua('vim.cmd("Namu sidebar toggle")')
+  eq(child.lua_get("sidebar.get().opts.follow_buffer"), true)
+  child.lua('vim.cmd("Namu sidebar toggle")')
+  eq(child.lua_get("sidebar.get() == nil"), true)
+end
+
+T["sidebar symbols replaces a transferred list in the same panel"] = function()
+  child.lua([[
+    open({ follow_buffer = false })
+    _G.previous_win = panel.win
+    require("namu.namu_symbols").fetch_symbols = function(_, cb) cb({ items[2] }) end
+    vim.cmd("runtime plugin/namu.lua")
+    vim.cmd("Namu sidebar symbols")
+  ]])
+  eq(child.lua_get("sidebar.get().win == previous_win"), true)
+  eq(child.lua_get("panel.opts.follow_buffer"), true)
+  eq(child.lua_get("#panel.items"), 1)
+  eq(child.lua_get('panel.storage_key == "sidebar:" .. path'), true)
+  child.lua("sidebar.focus_code(); vim.cmd('Namu sidebar refresh')")
+  eq(child.lua_get("vim.api.nvim_get_current_win() == source_win"), true)
 end
 
 T["favorites survive a fresh Neovim process and jump without old buffer IDs"] = function()
@@ -248,22 +279,26 @@ T["favorites survive a fresh Neovim process and jump without old buffer IDs"] = 
   eq(child.lua_get("vim.api.nvim_win_get_cursor(code_win)"), { 4, 1 })
 end
 
-T["outline follows source buffer switches and clears old items on empty results"] = function()
+T["symbol sidebar follows source buffer switches and clears old items on empty results"] = function()
   child.lua([[
     _G.requests = {}
     require("namu.namu_symbols").fetch_symbols = function(buf, callback)
       table.insert(requests, { buf = buf, callback = callback })
     end
-    require("namu.namu_outline").open()
-    _G.panel = sidebar.get("outline")
+    sidebar.open_symbols()
+    _G.panel = sidebar.get("sidebar")
     requests[#requests].callback(items)
   ]])
+  eq(child.lua_get("#requests"), 1)
+  eq(child.lua_get("requests[1].buf == source_buf"), true)
   child.type_keys("<Esc>")
   child.lua([[
     _G.other_buf = vim.api.nvim_create_buf(true, false)
     vim.api.nvim_set_current_buf(other_buf)
   ]])
-  child.lua("requests[#requests].callback({})")
+  eq(child.lua_get("#requests"), 2)
+  eq(child.lua_get("requests[2].buf == other_buf"), true)
+  child.lua("requests[2].callback({})")
   eq(child.lua_get("panel.original_buf == other_buf"), true)
   eq(child.lua_get("#panel.items"), 0)
   eq(child.lua_get("#panel.filtered_items"), 0)
@@ -271,7 +306,7 @@ T["outline follows source buffer switches and clears old items on empty results"
   eq(child.lua_get("#panel.items"), 0)
 end
 
-T["outline conversion reads its source even while a sidebar or another picker is active"] = function()
+T["symbol sidebar conversion reads its source even while a sidebar or another picker is active"] = function()
   child.lua([[
     local config = require("namu.namu_symbols.config").values
     require("namu.namu_symbols.lsp").request_symbols = function(_, _, callback)
@@ -297,10 +332,10 @@ T["search keeps matching children visible inside collapsed groups"] = function()
   eq(child.lua_get("panel.filtered_items[1].text"), "Child")
 end
 
-T["opening favorites from the outline still jumps into the code window"] = function()
+T["opening favorites from the symbol sidebar still jumps into the code window"] = function()
   child.lua([[
     require("namu.namu_symbols").fetch_symbols = function(_, cb) cb(items) end
-    require("namu.namu_outline").open()
+    sidebar.open_symbols()
     require("namu.bookmarks").add(items[2])
     require("namu.bookmarks").show()
     _G.favorites = sidebar.get("favorites")
@@ -308,7 +343,7 @@ T["opening favorites from the outline still jumps into the code window"] = funct
   eq(child.lua_get("favorites.original_win == source_win"), true)
   child.type_keys("<CR>")
   eq(child.lua_get("vim.api.nvim_get_current_win() == source_win"), true)
-  eq(child.lua_get('sidebar.get("outline").active'), true)
+  eq(child.lua_get('sidebar.get("sidebar").active'), true)
   eq(child.lua_get("favorites.active"), true)
 end
 
@@ -325,6 +360,337 @@ T["sending another list replaces stale filters and formatter in the existing sid
   eq(child.lua_get("panel.title"), "New list")
   eq(child.lua_get("#panel.filtered_items"), 1)
   eq(child.lua_get("vim.api.nvim_buf_get_lines(panel.buf, 0, -1, false)[1]:find('new: Other', 1, true) ~= nil"), true)
+end
+
+T["sidebar renders picker guides and highlights without extra indentation"] = function()
+  child.lua([[
+    open({ display = { mode = "icon", format = "tree_guides" } })
+    _G.lines = vim.api.nvim_buf_get_lines(panel.buf, 0, -1, false)
+  ]])
+  eq(child.lua_get("lines[2]:find('└─', 1, true) ~= nil"), true)
+  eq(
+    child.lua_get(
+      ' #vim.api.nvim_buf_get_extmarks(panel.buf, vim.api.nvim_create_namespace("namu_formatted_highlights"), 0, -1, {}) > 0'
+    ),
+    true
+  )
+end
+
+T["moving previews in code and Escape restores the original code cursor"] = function()
+  child.lua("open()")
+  child.type_keys("j")
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(source_win)[1]"), 2)
+  eq(child.lua_get("vim.api.nvim_get_current_win() == panel.win"), true)
+  eq(child.lua_get("#vim.api.nvim_buf_get_extmarks(source_buf, panel.preview_ns, 0, -1, {}) > 0"), true)
+  child.type_keys("<Esc>")
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(source_win)[1]"), 1)
+  eq(child.lua_get("#vim.api.nvim_buf_get_extmarks(source_buf, panel.preview_ns, 0, -1, {})"), 0)
+end
+
+T["jump labels select without closing the sidebar and restore navigation"] = function()
+  child.lua("open()")
+  child.type_keys(";")
+  eq(child.lua_get('require("namu.selecta.jump").is_active(panel)'), true)
+  eq(child.lua_get("#vim.api.nvim_buf_get_extmarks(panel.buf, panel.jump.ns, 0, -1, {})"), 3)
+  child.type_keys("s")
+  eq(child.lua_get("panel.active"), true)
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(source_win)[1]"), 2)
+  child.lua("vim.api.nvim_set_current_win(panel.win)")
+  child.type_keys("j")
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1]"), 3)
+end
+
+T["picker transfer preserves focused item and rendering hook"] = function()
+  child.lua([[
+    local manager = require("namu.selecta.state").StateManager
+    local new = manager.new
+    manager.new = function(...) _G.picker = new(...); return picker end
+    require("namu.selecta.selecta").pick(items, {
+      initial_index = 3,
+      formatter = function(item) return "picker: " .. item.text end,
+      hooks = { on_render = function() _G.render_count = (_G.render_count or 0) + 1 end },
+    })
+  ]])
+  child.type_keys("<C-s>")
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(sidebar.get().win)[1]"), 3)
+  eq(child.lua_get("render_count > 1"), true)
+  eq(child.lua_get("vim.api.nvim_buf_get_lines(sidebar.get().buf, 2, 3, false)[1]"), "picker: Other")
+  child.lua("_G.panel = sidebar.get()")
+end
+
+T["symbol sidebar initially focuses the symbol at the code cursor"] = function()
+  child.lua([[
+    vim.api.nvim_win_set_cursor(source_win, { 4, 0 })
+    require("namu.namu_symbols").fetch_symbols = function(_, cb) cb(items) end
+    sidebar.open_symbols()
+    _G.panel = sidebar.get("sidebar")
+  ]])
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1]"), 3)
+end
+
+T["preview and jump labels can be disabled independently"] = function()
+  child.lua("open({ preview = { highlight_on_move = false }, jump = { enabled = false } })")
+  child.type_keys("j")
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(source_win)[1]"), 1)
+  eq(child.lua_get('require("namu.selecta.jump").is_active(panel)'), false)
+end
+
+T["auto labels activate when symbol sidebar results arrive and toggling restores j k"] = function()
+  child.lua([[
+    require("namu.namu_symbols").fetch_symbols = function(_, cb) _G.deliver = cb end
+    sidebar.open_symbols({ jump = { enabled = true, auto_activate = true } })
+    _G.panel = sidebar.get("sidebar")
+    deliver(items)
+  ]])
+  eq(child.lua_get('require("namu.selecta.jump").is_active(panel)'), true)
+  child.type_keys(";", "j")
+  eq(child.lua_get('require("namu.selecta.jump").is_active(panel)'), false)
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1]"), 2)
+end
+
+T["symbol filters work for direct sidebars and saved bookmarks"] = function()
+  child.lua([[
+    items[1].kind, items[1].source = "Module", "lsp"
+    items[2].kind, items[2].source = "Function", "lsp"
+    items[3].kind, items[3].source = "Class", "treesitter"
+    open()
+  ]])
+  for _, example in ipairs({ { "/fn", "Child" }, { "/mo", "Parent" }, { "/cl", "Other" }, { "/fnChild", "Child" } }) do
+    child.lua("sidebar.search()")
+    child.type_keys("<C-u>", example[1])
+    eq(child.lua_get("#panel.filtered_items"), 1)
+    eq(child.lua_get("panel.filtered_items[1].text"), example[2])
+    eq(child.lua_get("panel.filter_metadata.is_symbol_filter"), true)
+  end
+  child.lua([[
+    vim.cmd("stopinsert")
+    sidebar.close()
+    for _, item in ipairs(items) do require("namu.bookmarks").add(item, source_buf) end
+    sidebar.open_favorites()
+    _G.panel = sidebar.get("favorites")
+  ]])
+  child.type_keys("/", "/fn")
+  eq(child.lua_get("panel.query"), "/fn")
+  eq(child.lua_get("#panel.filtered_items"), 1)
+  eq(child.lua_get("panel.filtered_items[1].kind"), "Function")
+  eq(child.lua_get("panel.filtered_items[1].source"), "lsp")
+end
+
+T["prompt shares the icon and shows the selected source while searching"] = function()
+  child.lua([[
+    items[1].source = "treesitter"
+    items[2].source = "lsp"
+    open()
+  ]])
+  eq(
+    child.lua_get(
+      "#vim.api.nvim_buf_get_extmarks(panel.prompt_buf, require('namu.selecta.common').prompt_icon_ns, 0, -1, {})"
+    ),
+    1
+  )
+  child.type_keys("j")
+  eq(
+    child.lua_get(
+      "vim.api.nvim_buf_get_extmarks(panel.prompt_buf, require('namu.selecta.common').prompt_info_ns, 0, -1, { details = true })[1][4].virt_text[1][1]:find('LSP') ~= nil"
+    ),
+    true
+  )
+  child.type_keys("/", "Child")
+  eq(
+    child.lua_get(
+      "#vim.api.nvim_buf_get_extmarks(panel.prompt_buf, require('namu.selecta.common').prompt_info_ns, 0, -1, {})"
+    ),
+    1
+  )
+end
+
+T["search movement keeps input focus and insert mode"] = function()
+  child.lua("open()")
+  child.type_keys("/", "<C-n>")
+  eq(child.fn.mode(), "i")
+  eq(child.lua_get("vim.api.nvim_get_current_win() == panel.prompt_win"), true)
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1]"), 2)
+  child.type_keys("<C-p>")
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1]"), 1)
+end
+
+T["preview covers saved ranges without a parser and toggles independently of letters"] = function()
+  child.lua([[
+    vim.treesitter.get_node = function() return nil end
+    items[1].value.end_lnum, items[1].value.end_col = 3, 6
+    require("namu.bookmarks").add(items[1], source_buf)
+    sidebar.open_favorites()
+    _G.panel = sidebar.get("favorites")
+  ]])
+  eq(
+    child.lua_get(
+      "vim.api.nvim_buf_get_extmarks(source_buf, panel.preview_ns, 0, -1, { details = true })[1][4].end_row"
+    ),
+    2
+  )
+  child.type_keys(";")
+  eq(child.lua_get("require('namu.selecta.jump').is_active(panel)"), true)
+  child.type_keys("<C-o>")
+  eq(child.lua_get("panel.opts.preview.highlight_on_move"), false)
+  eq(child.lua_get("#vim.api.nvim_buf_get_extmarks(source_buf, panel.preview_ns, 0, -1, {})"), 0)
+  eq(child.lua_get("require('namu.selecta.jump').is_active(panel)"), true)
+  child.type_keys("<C-o>")
+  eq(child.lua_get("#vim.api.nvim_buf_get_extmarks(source_buf, panel.preview_ns, 0, -1, {})"), 1)
+  child.type_keys(";", "p")
+  eq(child.lua_get("panel.opts.preview.highlight_on_move"), false)
+end
+
+T["empty search results clear preview and restore code view"] = function()
+  child.lua("open()")
+  child.type_keys("j", "/", "missing-symbol")
+  eq(child.lua_get("#panel.filtered_items"), 0)
+  eq(child.lua_get("#vim.api.nvim_buf_get_extmarks(source_buf, panel.preview_ns, 0, -1, {})"), 0)
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(source_win)[1]"), 1)
+end
+
+T["sidebar previews the same meaningful Treesitter node as the floating picker"] = function()
+  child.lua([[
+    _G.fake_node = {
+      type = function() return "function_declaration" end,
+      range = function() return 0, 0, 3, 0 end,
+      parent = function() return nil end,
+    }
+    vim.treesitter.get_node = function() return fake_node end
+    require("namu.namu_symbols.ui").find_meaningful_node = function(node) return node end
+    open()
+  ]])
+  eq(
+    child.lua_get(
+      "vim.api.nvim_buf_get_extmarks(source_buf, panel.preview_ns, 0, -1, { details = true })[1][4].end_row"
+    ),
+    3
+  )
+end
+
+T["preview toggles stay local to each panel and leave symbol defaults unchanged"] = function()
+  child.lua([[
+    open()
+    sidebar.toggle_preview()
+    require("namu.bookmarks").add(items[1], source_buf)
+    sidebar.open_favorites()
+    _G.favorites = sidebar.get("favorites")
+  ]])
+  eq(child.lua_get("panel.opts.preview.highlight_on_move"), false)
+  eq(child.lua_get("favorites.opts.preview.highlight_on_move"), true)
+  eq(child.lua_get("require('namu.namu_symbols.config').values.preview.highlight_on_move"), true)
+end
+
+T["search focuses the picker best match while preserving list order"] = function()
+  child.lua([[
+    items[1].text, items[2].text, items[3].text = "render_extra_details", "render", "pre_render"
+    for _, item in ipairs(items) do item.kind = "Function" end
+    open({ preview = { highlight_on_move = false } })
+  ]])
+  child.type_keys("/", "render")
+  eq(child.lua_get("#panel.filtered_items"), 3)
+  eq(child.lua_get("panel.filtered_items[1].text"), "render_extra_details")
+  eq(child.lua_get("panel.best_match_index"), 2)
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1]"), 2)
+  child.type_keys("<C-n>")
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1]"), 3)
+  child.lua("sidebar.update('sidebar', items)")
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1]"), 3)
+  child.type_keys("<C-u>", "/fnrender")
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1]"), 2)
+end
+
+T["code following selects nested symbols without focus preview or rendering work"] = function()
+  child.lua([[
+    items[1].value.end_lnum = 5
+    items[2].value.end_lnum = 3
+    items[3].value.end_lnum = 5
+    open()
+    sidebar.focus_code()
+    _G.code_before = vim.api.nvim_win_get_buf(source_win)
+    _G.list_tick = vim.api.nvim_buf_get_changedtick(panel.buf)
+    _G.follow_index = panel.follow_index
+    _G.fetch_count = 0
+    require("namu.namu_symbols").fetch_symbols = function() fetch_count = fetch_count + 1 end
+    vim.api.nvim_win_set_cursor(source_win, { 3, 0 })
+    vim.api.nvim_exec_autocmds("CursorMoved", { buffer = source_buf })
+  ]])
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1]"), 2)
+  eq(child.lua_get("vim.api.nvim_get_current_win()"), child.lua_get("source_win"))
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(source_win)[1]"), 3)
+  eq(child.lua_get("vim.api.nvim_win_get_buf(source_win) == code_before"), true)
+  eq(child.lua_get("vim.api.nvim_buf_get_changedtick(panel.buf) == list_tick"), true)
+  eq(child.lua_get("panel.follow_index == follow_index"), true)
+  eq(child.lua_get("fetch_count"), 0)
+  eq(child.lua_get("#vim.api.nvim_buf_get_extmarks(source_buf, panel.preview_ns, 0, -1, {})"), 0)
+  child.lua([[
+    vim.api.nvim_win_set_cursor(source_win, { 5, 0 })
+    vim.api.nvim_exec_autocmds("WinScrolled", { pattern = tostring(source_win) })
+  ]])
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1]"), 3)
+end
+
+T["follow cursor is optional and can be toggled without changing preview or labels"] = function()
+  child.lua([[
+    open({ follow_cursor = { enabled = false } })
+    sidebar.focus_code()
+    vim.api.nvim_win_set_cursor(source_win, { 4, 0 })
+    vim.api.nvim_exec_autocmds("CursorMoved", { buffer = source_buf })
+  ]])
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1]"), 1)
+  child.lua("sidebar.toggle_follow_cursor()")
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1]"), 3)
+  child.lua("vim.api.nvim_set_current_win(panel.win)")
+  child.type_keys(";", "<C-f>")
+  eq(child.lua_get("panel.opts.follow_cursor.enabled"), false)
+  eq(child.lua_get("panel.opts.preview.highlight_on_move"), true)
+  eq(child.lua_get("require('namu.selecta.jump').is_active(panel)"), true)
+  child.type_keys("<C-f>")
+  eq(child.lua_get("panel.opts.follow_cursor.enabled"), true)
+end
+
+T["follow cursor respects filters collapse and file identity"] = function()
+  child.lua([[
+    items[1].value.end_lnum = 5
+    open()
+  ]])
+  child.type_keys("h", "<Esc>")
+  child.lua([[
+    vim.api.nvim_win_set_cursor(source_win, { 2, 0 })
+    vim.api.nvim_exec_autocmds("CursorMoved", { buffer = source_buf })
+  ]])
+  eq(child.lua_get("#panel.filtered_items"), 2)
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1]"), 1)
+  child.lua("vim.api.nvim_set_current_win(panel.win)")
+  child.type_keys("/", "Other", "<Esc>", "<Esc>")
+  child.lua([[
+    vim.api.nvim_win_set_cursor(source_win, { 2, 0 })
+    vim.api.nvim_exec_autocmds("CursorMoved", { buffer = source_buf })
+  ]])
+  eq(child.lua_get("panel.query"), "Other")
+  eq(child.lua_get("panel.filtered_items[1].text"), "Other")
+  child.lua([[
+    _G.other = vim.api.nvim_create_buf(true, false)
+    vim.api.nvim_win_set_buf(source_win, other)
+    vim.api.nvim_exec_autocmds("CursorMoved", { buffer = other })
+  ]])
+  eq(child.lua_get("vim.api.nvim_get_current_win() == source_win"), true)
+  eq(child.lua_get("panel.filtered_items[1].text"), "Other")
+end
+
+T["following stays idle outside the source window and cancels safely on close"] = function()
+  child.lua([[
+    open()
+    vim.api.nvim_win_set_cursor(source_win, { 4, 0 })
+    vim.api.nvim_exec_autocmds("CursorMoved", { buffer = source_buf })
+  ]])
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1]"), 1)
+  child.lua([[
+    sidebar.focus_code()
+    vim.api.nvim_win_set_cursor(source_win, { 2, 0 })
+    vim.api.nvim_exec_autocmds("CursorMoved", { buffer = source_buf })
+    sidebar.close()
+  ]])
+  eq(child.lua_get("panel.active"), false)
 end
 
 return T

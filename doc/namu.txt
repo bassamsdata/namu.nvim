@@ -1,4 +1,4 @@
-*namu.txt*            For NVIM v0.11            Last change: 2026 September 28
+*namu.txt*             For NVIM v0.11             Last change: 2026 October 01
 
 ==============================================================================
 Table of Contents                                     *namu-table-of-contents*
@@ -8,6 +8,7 @@ Table of Contents                                     *namu-table-of-contents*
   - Requirements                                 |namu-namu.nvim-requirements|
   - Installation                                 |namu-namu.nvim-installation|
   - Getting started                           |namu-namu.nvim-getting-started|
+  - Sidebar and favorites               |namu-namu.nvim-sidebar-and-favorites|
   - Configuration                               |namu-namu.nvim-configuration|
   - Demos                                               |namu-namu.nvim-demos|
   - Contributing                                 |namu-namu.nvim-contributing|
@@ -35,6 +36,8 @@ FEATURES                                             *namu-namu.nvim-features*
 - **Symbols with context:** search the current buffer, open buffers, or your workspace. Tree guides show how symbols fit together.
 - **Jump labels:** press `;` in a picker, then a displayed label to jump directly to that item. Enabled by default, with configurable keys and optional automatic activation.
 - **Live preview:** see a symbol’s location as you move through the results.
+- **Persistent sidebar:** keep symbols beside your code with search, preview, and optional cursor following. Send picker results into the same sidebar.
+- **Favorites:** save file-backed locations from any picker or sidebar and reopen them across Neovim sessions.
 - **Diagnostics and calls:** browse diagnostics or follow incoming and outgoing calls when your language server supports them.
 - **Actions and multiselect:** select several items, send them to quickfix, yank or delete symbol text, or open a split. CodeCompanion and Avante integrations are available when installed.
 - **Theme-aware selection:** the focused row gets a contrasting background, including with transparent colorschemes. Custom highlights take precedence.
@@ -122,6 +125,21 @@ COMMANDS ~
   :Namu treesitter                    Current-buffer symbols from
                                       Tree-sitter
 
+  :Namu sidebar                       Current-file symbols, or the last
+                                      list sent from a picker
+
+  :Namu sidebar symbols               Replace the sidebar list with live
+                                      current-file symbols
+
+  :Namu sidebar toggle                Show or hide the sidebar
+
+  :Namu sidebar close /               Close the sidebar / refresh its
+  :Namu sidebar refresh               live symbols
+
+  :Namu bookmarks                     Saved favorites
+
+  :Namu bookmarks clear               Remove all favorites
+
   :Namu workspace                     Workspace symbols from your
                                       language server
 
@@ -161,7 +179,7 @@ COMMANDS ~
 PICKER KEYS ~
 
   Key               Action
-  ----------------- -------------------------------------------------------
+  ----------------- ------------------------------------------------------------
   <C-n> / <Down>    Next item
   <C-p> / <Up>      Previous item
   <CR>              Select item
@@ -173,9 +191,34 @@ PICKER KEYS ~
   <C-d>             Delete symbol text
   <C-v> / <C-h>     Open a vertical / horizontal split
   <C-q>             Send items to quickfix
+  <C-s>             Send selected items, or all filtered items, to the sidebar
+  <C-b>             Save the current item or multiselection to favorites
   <C-o> / <C-t>     Add to CodeCompanion / Avante
 Actions depend on the picker and its items. Integrations require the
 corresponding plugin.
+
+
+SIDEBAR AND FAVORITES                   *namu-namu.nvim-sidebar-and-favorites*
+
+Run `:Namu sidebar` to keep symbols beside your code. Live symbol lists follow
+the active code buffer and refresh on file changes, saves, or LSP attachment.
+Lists transferred from workspace, diagnostics, or other pickers keep their
+saved locations. Use `:Namu sidebar symbols` to return to current-file symbols.
+
+Inside the sidebar, press `/` to search (including `/fn`, `/cl`, and `/mo`
+filters), Enter to jump without closing, and Escape to focus code. Use `p` to
+toggle preview, `f` to toggle cursor following, `;` for jump labels, and `g?`
+for the full shortcut reference. `m` saves the current item; `dd` removes an
+item from the favorites sidebar. Close with `q`.
+
+Favorites, searches, selection, collapsed groups, and scroll position persist
+across restarts. Favorites store file paths and locations rather than buffer
+IDs. Set `sidebar.persist = false` for session-only state. Bookmarks is the
+command name for favorites.
+
+Try the interactive sidebar demo <https://namu.bassamai.com/#sidebar-demo>, or
+see the sidebar recipe <doc/recipes.md#sidebar-and-favorites> for configuration
+and mappings.
 
 
 CONFIGURATION                                   *namu-namu.nvim-configuration*
@@ -192,6 +235,7 @@ Use `global` for shared picker options and a module key for its overrides:
         row_position = "top10",
         window = { max_width = 100 },
       },
+      sidebar = { position = "right", width = 40, persist = true },
       ui_select = { enable = false },
     })
 <
@@ -210,6 +254,8 @@ DEMOS                                                   *namu-namu.nvim-demos*
   Feature                             Recording
   ----------------------------------- -----------------------------------
   Current-buffer symbols              Watch
+
+  Sidebar and favorites               Try the interactive demo
 
   Workspace symbols                   Watch
 

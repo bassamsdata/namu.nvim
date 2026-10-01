@@ -18,6 +18,7 @@ require("namu").setup({
   watchtower = { enable = true },
   diagnostics = { enable = true },
   callhierarchy = { enable = true },
+  sidebar = { position = "right", width = 40, persist = true },
   namu_ctags = { enable = false },
   colorscheme = { enable = false },
   ui_select = { enable = false },
@@ -107,6 +108,8 @@ Action keymaps live in `custom_keymaps`. Each action accepts `keys` (a string or
 | `vertical_split` | `<C-v>` |
 | `horizontal_split` | `<C-h>` |
 | `quickfix` | `<C-q>` |
+| `sidebar` | `<C-s>` (handled by the picker) |
+| `bookmark` | `<C-b>` (handled by the picker) |
 | `codecompanion` | `<C-o>` |
 | `avante` | `<C-t>` |
 
@@ -209,6 +212,26 @@ Disabled by default. Enable it to use the colorscheme picker and its setup behav
 
 Disabled by default. Enabling it replaces `vim.ui.select`. It uses raw display, numbered items, and a maximum height of 30 rows. Shared jump settings apply here too; use a `ui_select.jump` override to change them for selection dialogs.
 
+### Sidebar and favorites (`sidebar`)
+
+The sidebar is available without a separate enable flag. `:Namu sidebar` restores the last transferred list or opens current-file symbols. `:Namu sidebar symbols` replaces that list with live symbols. Favorites use `:Namu bookmarks` and share the sidebar settings and storage.
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `position` | `"right"` | Split side: `"left"` or `"right"` |
+| `width` | `40` | Split width in columns |
+| `persist` | `true` | Save favorites and view state across restarts |
+| `storage_path` | `stdpath("data") .. "/namu/sidebar.json"` | JSON file for favorites and views |
+| `follow_cursor.enabled` | `true` | Select the visible symbol containing the code cursor |
+| `follow_cursor.toggle_key` | `"<C-f>"` | Toggle following in normal or insert mode |
+| `follow_cursor.letter_key` | `"f"` | Toggle following in normal mode |
+| `preview.highlight_on_move` | `true` | Preview the selected symbol's body in code |
+| `preview.toggle_key` | `"p"` | Normal-mode preview toggle; `<C-o>` also toggles preview |
+
+Sidebar settings also accept picker display, movement, and jump options. Favoriting uses `global.custom_keymaps.bookmark.keys`; sending to the sidebar uses `global.custom_keymaps.sidebar.keys`. Set either to `{}` to disable its shortcut. In sidebars, `m` saves the current item, `dd` removes a favorite, and `g?` lists the configured shortcuts. File-backed locations are required for saving favorites.
+
+Live current-file symbols follow buffer changes automatically, independently of cursor following and preview. Transferred workspace and diagnostic lists retain their locations. See the [sidebar recipe](recipes.md#sidebar-and-favorites) and [interactive demo](https://namu.bassamai.com/#sidebar-demo).
+
 ## Highlights
 
 Namu defines its highlights in [core/highlights.lua](../lua/namu/core/highlights.lua).
@@ -223,6 +246,9 @@ Namu defines its highlights in [core/highlights.lua](../lua/namu/core/highlights
 | `NamuPrompt` / `NamuFilter` | Picker prompt and filter |
 | `NamuFooter` | Footer |
 | `NamuPreview` | Code preview highlight |
+| `NamuSidebarHint` | Muted sidebar shortcut hints |
+| `NamuHelp`, `NamuHelpBorder`, `NamuHelpTitle` | Sidebar shortcut window |
+| `NamuHelpKey`, `NamuHelpHint` | Help keys and explanatory text |
 | `NamuSymbolFunction`, `NamuSymbolMethod`, etc. | Symbol kind colors |
 
 The default focused-row background uses `CursorLine` when it provides enough contrast. Otherwise, Namu tries `PmenuSel`, `Visual`, and a derived contrasting background. Transparent pickers prefer selection colors. Defaults refresh on colorscheme changes, while explicit current-item and icon highlight definitions take precedence. A custom override is responsible for its own contrast.

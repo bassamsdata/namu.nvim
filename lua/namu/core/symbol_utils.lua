@@ -507,6 +507,34 @@ local function filter_by_symbol(items, filter, opts, metadata)
   return result_items, filter.remaining, metadata
 end
 
+---Apply the symbol and buffer filters shared by pickers and sidebars.
+---@param items table[]
+---@param query string
+---@param opts table
+---@return table[], string, table?
+function M.filter_items(items, query, opts)
+  -- First check if there's a filter
+  local filter = M.parse_symbol_filter(query, opts)
+  -- If no filter, return items unchanged
+  if not filter then
+    return items, query
+  end
+  local metadata = {
+    is_symbol_filter = true,
+    remaining = filter.remaining,
+  }
+  -- Handle buffer filtering
+  if filter.buffer_filter then
+    return filter_by_buffer(items, filter, opts, metadata)
+  end
+  -- Handle symbol type filtering
+  if filter.kinds then
+    return filter_by_symbol(items, filter, opts, metadata)
+  end
+
+  return items, query
+end
+
 ---Displays the fuzzy finder UI with symbol list
 ---@param selectaItems table[] Items to display
 ---@param state table State object
@@ -543,6 +571,7 @@ function M.show_picker(
   end
 
   local picker_opts = {
+    follow_buffer = context == "buffer" and not is_ctags,
     title = opts.title or title or " Symbols ",
     fuzzy = false,
     preserve_order = true,
@@ -555,6 +584,8 @@ function M.show_picker(
     row_position = opts.row_position,
     custom_keymaps = vim.tbl_deep_extend("force", opts.custom_keymaps, {}),
     normal_mode = opts.normal_mode,
+    preview = opts.preview,
+    jump = opts.jump,
     debug = opts.debug,
     preserve_hierarchy = opts.preserve_hierarchy or false,
     -- root_item_first = true,
@@ -569,26 +600,7 @@ function M.show_picker(
       return format_utils.format_item_for_display(item, opts)
     end,
     pre_filter = function(items, query)
-      -- First check if there's a filter
-      local filter = M.parse_symbol_filter(query, opts)
-      -- If no filter, return items unchanged
-      if not filter then
-        return items, query
-      end
-      local metadata = {
-        is_symbol_filter = true,
-        remaining = filter.remaining,
-      }
-      -- Handle buffer filtering
-      if filter.buffer_filter then
-        return filter_by_buffer(items, filter, opts, metadata)
-      end
-      -- Handle symbol type filtering
-      if filter.kinds then
-        return filter_by_symbol(items, filter, opts, metadata)
-      end
-
-      return items, query
+      return M.filter_items(items, query, opts)
     end,
     hooks = {
       on_render = function(buf, filtered_items)

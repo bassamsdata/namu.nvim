@@ -41,6 +41,20 @@ local function blend(a, b, amount)
   return color
 end
 
+local function sidebar_hint_highlight()
+  local status, normal = get_highlight("StatusLine"), get_highlight("Normal")
+  local bg = status.reverse and status.fg or status.bg
+  local fg = status.reverse and status.bg or status.fg
+  bg = bg or normal.bg or (vim.o.background == "light" and 0xf0f0f0 or 0x202020)
+  fg = fg or normal.fg or (vim.o.background == "light" and 0x202020 or 0xf0f0f0)
+  return {
+    fg = blend(bg, fg, 0.25),
+    bg = bg,
+    ctermfg = vim.o.background == "light" and 245 or 240,
+    ctermbg = status.cterm and status.cterm.reverse and status.ctermfg or status.ctermbg or normal.ctermbg,
+  }
+end
+
 local function current_item_highlight()
   local normal, float = get_highlight("Normal"), get_highlight("NormalFloat")
   local bg, fg = float.bg or normal.bg, float.fg or normal.fg
@@ -149,6 +163,7 @@ end
 
 local function refresh_generated_highlights()
   set_generated_highlight("NamuCurrentItem", current_item_highlight())
+  set_generated_highlight("NamuSidebarHint", sidebar_hint_highlight())
   for name, recipe in pairs(combined_groups) do
     apply_combined_highlight(recipe.fg_group, recipe.bg_group, name, recipe.opts)
   end
@@ -178,6 +193,11 @@ function M.setup()
     NamuSelected = "Statement", -- Selected item in selection mode
     NamuEmptyIndicator = "Comment", -- Empty selection indicator
     NamuFooter = "Comment", -- Footer text
+    NamuHelp = "NormalFloat",
+    NamuHelpBorder = "FloatBorder",
+    NamuHelpTitle = "Title",
+    NamuHelpKey = "Special",
+    NamuHelpHint = "Comment",
     NamuJumpLabel = "Special", -- Jump-mode label characters
     -- NamuCurrentItemIcon = "NamuCurrentItem", -- Icon highlight, defaults to current item, overridden when custom colors are used
     -- Namu Symbols

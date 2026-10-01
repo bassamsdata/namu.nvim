@@ -18,9 +18,27 @@ Lua mappings can also call `require("namu").resume()`. The snapshot lasts for th
 
 ## Sidebar and favorites
 
-`:Namu outline` opens symbols for the current file in a persistent split with search at the top. The outline refreshes when you switch files, save, or attach an LSP. Use `:Namu outline refresh` to refresh manually, or `:Namu outline toggle` to show/hide it.
+**Open and manage:**
 
-In any picker, use `<C-b>` to save the current item (or your Tab selections) to favorites. Use `<C-s>` to send the selected items, or all filtered items when nothing is selected, to a new sidebar. Reopen that list with `:Namu sidebar`; open favorites with `:Namu bookmarks`.
+- `:Namu sidebar`: open current-file symbols in a persistent split, or restore the last list sent from a picker.
+- `:Namu sidebar symbols`: replace a transferred list with live symbols.
+- `:Namu sidebar toggle` / `close`: show/hide or close the sidebar.
+- `:Namu sidebar refresh`: refresh live symbols manually.
+- `:Namu bookmarks`: open favorites alongside the main sidebar.
+
+**From any picker:**
+
+- `<C-b>`: save the current item or your Tab selections to favorites.
+- `<C-s>`: send selected items to the sidebar, or all filtered items if nothing is selected. The sidebar opens on the focused item.
+
+**Search and preview:**
+
+- Live symbols follow the active code split and refresh on file switches, saves, and LSP attachment. Current-buffer lists sent with `<C-s>` also follow file switches; workspace and diagnostics lists keep saved locations.
+- Filter symbols, transferred lists, or favorites with `/fn`, `/mo`, or `/cl`. Add text to search within a kind: `/fnrender`.
+- The sidebar shares picker formatting, tree guides, kind colors, search highlights, and symbol-body previews. Its input shows the filter count and symbol source when known.
+- New symbol lists focus the symbol at the code cursor. Preview falls back to saved ranges without a parser; set `preview.highlight_on_move = false` to disable it, or `jump.enabled = false` to disable labels.
+
+Try [search, following, and favorites in the interactive demo](https://namu.bassamai.com/#sidebar-demo).
 
 Inside a sidebar:
 
@@ -28,9 +46,19 @@ Inside a sidebar:
 - `h` / `l`: collapse / expand nested groups.
 - `/`: edit the search; Enter or Escape returns to the list.
 - Enter in the list: jump to the item, keeping the sidebar open.
+- `p` in normal mode: toggle preview (`preview.toggle_key` customizes this key). `<C-o>` toggles preview in either mode, including while jump labels are active.
+- Search keeps the original list order and focuses the highest-scoring match, just like the floating picker.
+- `<C-n>` / `<C-p>` (or configured movement keys): move through results while remaining in the search input.
+- `f` (normal mode) or `<C-f>` (either mode): toggle following the code cursor. While code has focus, the sidebar selects the most specific visible symbol containing its cursor line. Search and collapsed groups remain in effect; following never steals focus or moves code.
+- `;`: toggle jump labels; pressing a label jumps to code and keeps the sidebar open.
+- `g?`: open a floating shortcut reference with the configured keys and current toggle states. Escape, `q`, or `g?` closes help.
 - `m`: save the current item to favorites.
 - `dd` in favorites: remove the current favorite.
 - Escape in the list: focus code; `q`: close and save the sidebar.
+
+Inline shortcut hints use the muted, theme-derived `NamuSidebarHint` highlight. Customize that group to change their color; generated defaults refresh with your colorscheme and preserve your override. The letters used by preview, following, and the `g?` help prefix are reserved while jump labels are active.
+
+Code following caches symbol ranges when the list changes, batches cursor events, and skips unchanged lines and selections. It does not request symbols, redraw the list, or write storage while scrolling. Toggle it from Lua with `require("namu.sidebar").toggle_follow_cursor()`.
 
 Favorites, search, selection, scroll position, and collapsed groups are saved across restarts by default. Favorites store file paths and locations, so they remain usable after buffer IDs change. The default storage file is `stdpath("data") .. "/namu/sidebar.json"`.
 
@@ -39,14 +67,17 @@ require("namu").setup({
   sidebar = {
     position = "right", -- or "left"
     width = 40,
+    follow_cursor = { enabled = true, toggle_key = "<C-f>", letter_key = "f" }, -- defaults; set enabled = false to start disabled
     persist = false, -- optional: keep state only within this session
   },
 })
-vim.keymap.set("n", "<leader>no", "<cmd>Namu outline toggle<CR>")
+vim.keymap.set("n", "<leader>ns", "<cmd>Namu sidebar toggle<CR>")
 vim.keymap.set("n", "<leader>nb", "<cmd>Namu bookmarks<CR>")
 ```
 
 Change picker shortcuts with `global.custom_keymaps.bookmark.keys` and `global.custom_keymaps.sidebar.keys`. Set either list to `{}` to disable that shortcut. `:Namu bookmarks clear` removes all favorites.
+
+The earlier `:Namu outline` command, `namu_outline` setup key, and `require("namu.namu_outline")` API have been removed. Use the sidebar commands above and put its settings under `sidebar`.
 
 ## Jump labels
 
