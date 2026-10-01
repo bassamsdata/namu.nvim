@@ -37,7 +37,6 @@ M.setup = function(opts)
   local config_manager = require("namu.core.config_manager")
   config_manager.setup(M.config)
   require("namu.sidebar").setup(config_manager.get_config("sidebar"))
-  require("namu.namu_outline").setup(config_manager.get_config("namu_outline"))
 
   -- Defer highlights setup to avoid blocking main initialization
   vim.schedule(function()

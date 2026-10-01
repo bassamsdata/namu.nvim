@@ -607,7 +607,13 @@ function M.open(items, opts, module_state)
     existing.original_win = module_state.original_win or existing.original_win
     existing.original_buf = module_state.original_buf or existing.original_buf
     if opts.replace then
+      clear_preview(existing, true)
+      existing.storage_key = opts.storage_key
+        or (opts.follow_buffer and name .. ":" .. api.nvim_buf_get_name(existing.original_buf))
+        or name
       existing.query = ""
+      existing.initial_item = opts.initial_item
+      existing.initial_line = opts.initial_line
       existing.selected_id = opts.initial_item and item_id(opts.initial_item) or nil
       existing.pending_view = nil
       existing.collapsed = {}
@@ -940,9 +946,47 @@ function M.get(name)
   return panels[name or "sidebar"]
 end
 
----Reopen the last list sent from a picker, or open the current symbols outline.
+---Open the current file's symbols in the sidebar, replacing any transferred list.
+---@param opts? table
+---@return table panel
+function M.open_symbols(opts)
+  local source_win = M.source_window()
+  local source_buf = api.nvim_win_get_buf(source_win)
+  opts = vim.tbl_deep_extend("force", opts or {}, {
+    name = "sidebar",
+    title = "Sidebar",
+    follow_buffer = true,
+    replace = true,
+    storage_key = "sidebar:" .. api.nvim_buf_get_name(source_buf),
+    initial_line = api.nvim_win_get_cursor(source_win)[1],
+  })
+  return M.open({}, opts, { original_win = source_win, original_buf = source_buf })
+end
+
+---Refresh the live symbols sidebar without changing focus.
+---@param source_win? number
 ---@return nil
-function M.show()
+function M.refresh(source_win)
+  local panel = panels.sidebar
+  if panel then
+    require("namu.sidebar.source").refresh(panel, source_win)
+  end
+end
+
+---Toggle the sidebar, restoring its last list when reopening.
+---@return nil
+function M.toggle()
+  if panels.sidebar then
+    M.close()
+  else
+    M.show()
+  end
+end
+
+---Reopen the last list sent from a picker, or show the current file's symbols.
+---@param opts? table
+---@return nil
+function M.show(opts)
   ensure_config()
   local panel = panels.sidebar
   if panel then
@@ -963,11 +1007,11 @@ function M.show()
       end)
   end
   if symbol_list then
-    M.open({}, { title = "Sidebar", follow_buffer = true })
+    M.open_symbols(opts)
   elseif type(saved) == "table" and type(saved.items) == "table" and #saved.items > 0 then
-    M.open(saved.items, { title = "Sidebar" })
+    M.open(saved.items, vim.tbl_extend("force", { title = "Sidebar" }, opts or {}))
   else
-    require("namu.namu_outline").open()
+    M.open_symbols(opts)
   end
 end
 

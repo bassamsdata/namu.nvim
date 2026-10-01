@@ -60,7 +60,7 @@ local function schedule_refresh(panel, win)
   end)
 end
 
----Attach buffer tracking to a symbol sidebar, sharing it with the outline.
+---Attach buffer tracking to a symbol sidebar.
 ---@param panel table
 ---@return nil
 function M.attach(panel)

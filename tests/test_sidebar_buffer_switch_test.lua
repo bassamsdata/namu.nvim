@@ -37,7 +37,6 @@ local T = MiniTest.new_set({
     post_case = function()
       child.lua([[
         sidebar.close("sidebar")
-        sidebar.close("outline")
         vim.fn.delete(directory, "rf")
       ]])
     end,
@@ -45,7 +44,7 @@ local T = MiniTest.new_set({
   },
 })
 
-for _, route in ipairs({ "outline", "sidebar", "picker", "saved sidebar" }) do
+for _, route in ipairs({ "sidebar", "sidebar symbols", "picker", "saved sidebar" }) do
   for _, toggles_enabled in ipairs({ true, false }) do
     local state = toggles_enabled and "preview/follow on" or "preview/follow off"
     T[route .. " with " .. state .. " displays actual symbols after edit, buffer, split, and empty file switches"] = function()
@@ -59,7 +58,7 @@ for _, route in ipairs({ "outline", "sidebar", "picker", "saved sidebar" }) do
       else
         child.lua('vim.cmd("Namu ' .. route .. '")')
       end
-      child.lua('_G.panel = sidebar.get("sidebar") or sidebar.get("outline")')
+      child.lua("_G.panel = sidebar.get()")
       local initial_symbol = route == "saved sidebar" and "beta" or "alpha"
       eq(child.lua_get('vim.wait(1500, function() return has_symbol("' .. initial_symbol .. '") end, 10)'), true)
       if not toggles_enabled then
