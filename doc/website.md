@@ -6,6 +6,7 @@ GitHub Pages hosts the website, and Cloudflare manages DNS for `namu.bassamai.co
 
 - Edit [site/index.html](../site/index.html) for the landing page and interactive example layout.
 - Edit [site/assets/style.css](../site/assets/style.css) for appearance and [site/assets/app.js](../site/assets/app.js) for interactions.
+- Edit [site/assets/sidebar-demo.js](../site/assets/sidebar-demo.js) for the sidebar and favorites simulator. It supports file switches, kind filters, preview, cursor following, jump labels, and browser-local favorites. Its saved examples are separate from Neovim's bookmark storage.
 - Edit [Namu_config.md](Namu_config.md), [recipes.md](recipes.md), and [action_intergration.md](action_intergration.md) for the guide pages. The build generates their HTML, including syntax highlighting and copy buttons.
 - Edit [site/templates/page.html](../site/templates/page.html) for the guide pages' shared navigation and reading controls.
 - Edit [configuration.lua](configuration.lua) for the downloadable starter config. The build copies it to the website.
