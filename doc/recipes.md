@@ -18,11 +18,11 @@ Lua mappings can also call `require("namu").resume()`. The snapshot lasts for th
 
 ## Sidebar and favorites
 
-`:Namu outline` opens symbols for the current file in a persistent split with search at the top. The outline refreshes when you switch files, save, or attach an LSP. Use `:Namu outline refresh` to refresh manually, or `:Namu outline toggle` to show/hide it.
+`:Namu outline` opens symbols for the current file in a persistent split with search at the top. The outline follows the active code split and refreshes when you switch files, save, or attach an LSP. Use `:Namu outline refresh` to refresh manually, or `:Namu outline toggle` to show/hide it.
 
 In any picker, use `<C-b>` to save the current item (or your Tab selections) to favorites. Use `<C-s>` to send the selected items, or all filtered items when nothing is selected, to a new sidebar. Reopen that list with `:Namu sidebar`; open favorites with `:Namu bookmarks`.
 
-Sidebars reuse the picker’s formatter, tree/indent guides, kind colors, search highlights, and preview while moving. A list sent from a picker opens on its focused item; a new outline focuses the symbol at the code cursor. `preview.highlight_on_move = false` disables preview, and `jump.enabled = false` disables labels.
+Sidebars reuse the picker’s formatter, tree/indent guides, kind colors, search highlights, and preview while moving. A list sent from a picker opens on its focused item; a new outline focuses the symbol at the code cursor. The input uses the picker icon, filter count, and a source indicator (TreeSitter or LSP when known). `/fn`, `/mo`, and `/cl` work in outlines, transferred lists, and saved favorites; append text to search within a kind, such as `/fnrender`. Preview uses the same symbol-body highlighting as the floating picker, with saved symbol ranges as a fallback when no parser is available. `preview.highlight_on_move = false` disables preview, and `jump.enabled = false` disables labels.
 
 Inside a sidebar:
 
@@ -30,10 +30,19 @@ Inside a sidebar:
 - `h` / `l`: collapse / expand nested groups.
 - `/`: edit the search; Enter or Escape returns to the list.
 - Enter in the list: jump to the item, keeping the sidebar open.
+- `p` in normal mode: toggle preview (`preview.toggle_key` customizes this key). `<C-o>` toggles preview in either mode, including while jump labels are active.
+- Search keeps the original list order and focuses the highest-scoring match, just like the floating picker.
+- `<C-n>` / `<C-p>` (or configured movement keys): move through results while remaining in the search input.
+- `f` (normal mode) or `<C-f>` (either mode): toggle following the code cursor. While code has focus, the sidebar selects the most specific visible symbol containing its cursor line. Search and collapsed groups remain in effect; following never steals focus or moves code.
 - `;`: toggle jump labels; pressing a label jumps to code and keeps the sidebar open.
+- `g?`: open a floating shortcut reference with the configured keys and current toggle states. Escape, `q`, or `g?` closes help.
 - `m`: save the current item to favorites.
 - `dd` in favorites: remove the current favorite.
 - Escape in the list: focus code; `q`: close and save the sidebar.
+
+Inline shortcut hints use the muted, theme-derived `NamuSidebarHint` highlight. Customize that group to change their color; generated defaults refresh with your colorscheme and preserve your override. The letters used by preview, following, and the `g?` help prefix are reserved while jump labels are active.
+
+Code following caches symbol ranges when the list changes, batches cursor events, and skips unchanged lines and selections. It does not request symbols, redraw the list, or write storage while scrolling. Toggle it from Lua with `require("namu.sidebar").toggle_follow_cursor("outline")`.
 
 Favorites, search, selection, scroll position, and collapsed groups are saved across restarts by default. Favorites store file paths and locations, so they remain usable after buffer IDs change. The default storage file is `stdpath("data") .. "/namu/sidebar.json"`.
 
@@ -42,6 +51,7 @@ require("namu").setup({
   sidebar = {
     position = "right", -- or "left"
     width = 40,
+    follow_cursor = { enabled = true, toggle_key = "<C-f>", letter_key = "f" }, -- defaults; set enabled = false to start disabled
     persist = false, -- optional: keep state only within this session
   },
 })
