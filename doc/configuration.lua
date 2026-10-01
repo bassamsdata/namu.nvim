@@ -60,6 +60,13 @@ return {
     -- AllowKinds, BlockList, and kindIcons can be overridden here.
   },
   workspace = { enable = true, window = { min_width = 50, max_width = 75 } },
+  sidebar = {
+    position = "right",
+    width = 40,
+    persist = true,
+    follow_cursor = { enabled = true, toggle_key = "<C-f>", letter_key = "f" },
+    preview = { highlight_on_move = true, toggle_key = "p" },
+  },
   watchtower = { enable = true, preserve_hierarchy = true },
   diagnostics = {
     enable = true,

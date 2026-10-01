@@ -19,6 +19,8 @@ https://github.com/user-attachments/assets/a97ff3b1-8b25-4da1-b276-f623e37d0368
 - **Symbols with context:** search the current buffer, open buffers, or your workspace. Tree guides show how symbols fit together.
 - **Jump labels:** press `;` in a picker, then a displayed label to jump directly to that item. Enabled by default, with configurable keys and optional automatic activation.
 - **Live preview:** see a symbol's location as you move through the results.
+- **Persistent sidebar:** keep symbols beside your code with search, preview, and optional cursor following. Send picker results into the same sidebar.
+- **Favorites:** save file-backed locations from any picker or sidebar and reopen them across Neovim sessions.
 - **Diagnostics and calls:** browse diagnostics or follow incoming and outgoing calls when your language server supports them.
 - **Actions and multiselect:** select several items, send them to quickfix, yank or delete symbol text, or open a split. CodeCompanion and Avante integrations are available when installed.
 - **Theme-aware selection:** the focused row gets a contrasting background, including with transparent colorschemes. Custom highlights take precedence.
@@ -81,6 +83,12 @@ Tree guides and manual jump labels are the defaults. No configuration is needed 
 | `:Namu symbols` | Symbols in the current buffer |
 | `:Namu symbols function` | Only functions; other kinds such as `class`, `method`, and `variable` are supported |
 | `:Namu treesitter` | Current-buffer symbols from Tree-sitter |
+| `:Namu sidebar` | Current-file symbols, or the last list sent from a picker |
+| `:Namu sidebar symbols` | Replace the sidebar list with live current-file symbols |
+| `:Namu sidebar toggle` | Show or hide the sidebar |
+| `:Namu sidebar close` / `:Namu sidebar refresh` | Close the sidebar / refresh its live symbols |
+| `:Namu bookmarks` | Saved favorites |
+| `:Namu bookmarks clear` | Remove all favorites |
 | `:Namu workspace` | Workspace symbols from your language server |
 | `:Namu workspace query` | Workspace symbols with an initial query |
 | `:Namu watchtower` | Symbols across open buffers |
@@ -112,9 +120,21 @@ Tree guides and manual jump labels are the defaults. No configuration is needed 
 | `<C-d>` | Delete symbol text |
 | `<C-v>` / `<C-h>` | Open a vertical / horizontal split |
 | `<C-q>` | Send items to quickfix |
+| `<C-s>` | Send selected items, or all filtered items, to the sidebar |
+| `<C-b>` | Save the current item or multiselection to favorites |
 | `<C-o>` / `<C-t>` | Add to CodeCompanion / Avante |
 
 Actions depend on the picker and its items. Integrations require the corresponding plugin.
+
+## Sidebar and favorites
+
+Run `:Namu sidebar` to keep symbols beside your code. Live symbol lists follow the active code buffer and refresh on file changes, saves, or LSP attachment. Lists transferred from workspace, diagnostics, or other pickers keep their saved locations. Use `:Namu sidebar symbols` to return to current-file symbols.
+
+Inside the sidebar, press `/` to search (including `/fn`, `/cl`, and `/mo` filters), Enter to jump without closing, and Escape to focus code. Use `p` to toggle preview, `f` to toggle cursor following, `;` for jump labels, and `g?` for the full shortcut reference. `m` saves the current item; `dd` removes an item from the favorites sidebar. Close with `q`.
+
+Favorites, searches, selection, collapsed groups, and scroll position persist across restarts. Favorites store file paths and locations rather than buffer IDs. Set `sidebar.persist = false` for session-only state. Bookmarks is the command name for favorites.
+
+[Try the interactive sidebar demo](https://namu.bassamai.com/#sidebar-demo), or see the [sidebar recipe](doc/recipes.md#sidebar-and-favorites) for configuration and mappings.
 
 ## Configuration
 
@@ -130,6 +150,7 @@ require("namu").setup({
     row_position = "top10",
     window = { max_width = 100 },
   },
+  sidebar = { position = "right", width = 40, persist = true },
   ui_select = { enable = false },
 })
 ```
@@ -143,6 +164,7 @@ You can also read `:help namu` inside Neovim.
 | Feature | Recording |
 | --- | --- |
 | Current-buffer symbols | [Watch](https://github.com/user-attachments/assets/bb2a14da-cba0-4ae7-b826-4ceb1c828b79) |
+| Sidebar and favorites | [Try the interactive demo](https://namu.bassamai.com/#sidebar-demo) |
 | Workspace symbols | [Watch](https://github.com/user-attachments/assets/e548c3ea-6cdb-4f20-9569-175c57b31039) |
 | Watchtower | [Watch](https://github.com/user-attachments/assets/76c637d2-30d3-4f54-9290-510a51dcbe7e) |
 | Diagnostics | [Watch](https://github.com/user-attachments/assets/02dc0ce5-c87a-445f-a477-ac4f411c6592) |
