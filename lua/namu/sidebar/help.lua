@@ -56,7 +56,7 @@ function M.open(panel)
   local entries = {
     { section = "NAVIGATION" },
     { key = "j / k", text = "Move through items" },
-    { key = "/", text = "Search; Enter or Escape returns to the list" },
+    { key = "i or /", text = "Search; Enter or Escape returns to the list" },
     { key = table.concat(opts.movement.next or {}, " / "), text = "Next result while searching" },
     { key = table.concat(opts.movement.previous or {}, " / "), text = "Previous result while searching" },
     { key = "Enter", text = "Jump to the symbol and keep the sidebar open" },

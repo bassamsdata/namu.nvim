@@ -48,6 +48,21 @@ T["persistent split has search above it and remains open when code is focused"] 
 end
 
 for _, name in ipairs({ "sidebar", "favorites" }) do
+  T[name .. " i starts search and resumes the query after returning to the list"] = function()
+    child.lua("open({ name = " .. vim.inspect(name) .. " })")
+    child.type_keys("i", "Chi")
+    eq(child.fn.mode(), "i")
+    eq(child.lua_get("vim.api.nvim_get_current_win() == panel.prompt_win"), true)
+    eq(child.lua_get("panel.query"), "Chi")
+    eq(child.lua_get("panel.filtered_items[1].text"), "Child")
+    child.type_keys("<Esc>", "i", "ld", "<CR>")
+    eq(child.fn.mode(), "n")
+    eq(child.lua_get("vim.api.nvim_get_current_win() == panel.win"), true)
+    eq(child.lua_get("panel.query"), "Child")
+    eq(child.lua_get("vim.api.nvim_buf_get_lines(panel.buf, 0, -1, false)[1]:find('Child', 1, true) ~= nil"), true)
+    eq(child.lua_get("vim.bo[panel.buf].modifiable"), false)
+  end
+
   T[name .. " list and search windows reject buffer replacement"] = function()
     child.lua("open({ name = " .. vim.inspect(name) .. " })")
     child.lua([[

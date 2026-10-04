@@ -496,6 +496,9 @@ local function setup_keymaps(panel)
       update_current(panel)
     end
   end
+  map("n", "i", function()
+    M.search(panel.name)
+  end)
   for _, buf in ipairs({ panel.buf, panel.prompt_buf }) do
     map("n", "q", function()
       M.close(panel.name)
