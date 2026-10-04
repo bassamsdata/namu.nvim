@@ -30,7 +30,7 @@ function M.should_auto_activate(opts, item_count)
   return false
 end
 
-function M.activate(state, opts)
+local function activate(state, opts, keep_mode)
   if M.is_active(state) or not state.active or state.is_loading then
     return
   end
@@ -53,7 +53,9 @@ function M.activate(state, opts)
   -- Lock the prompt buffer (so unbound keys can't edit the filter) and drop
   -- out of insert mode (so the normal-mode label keymaps below fire).
   vim.bo[keymap_buf].modifiable = false
-  vim.cmd("stopinsert")
+  if not keep_mode then
+    vim.cmd("stopinsert")
+  end
 
   -- Place a label per visible row, bind a normal-mode keymap per label.
   -- Label presses are always single-select: move cursor to the row (so
@@ -102,6 +104,21 @@ function M.activate(state, opts)
       silent = true,
       desc = "Namu: Jump label " .. key,
     })
+  end
+end
+
+function M.activate(state, opts)
+  activate(state, opts, false)
+end
+
+---Refresh a sidebar's visible jump labels without changing the current mode.
+---@param state table
+---@param opts SelectaOptions
+---@return nil
+function M.refresh_sidebar(state, opts)
+  if state.sidebar_mode and M.is_active(state) then
+    M.deactivate(state)
+    activate(state, opts, true)
   end
 end
 

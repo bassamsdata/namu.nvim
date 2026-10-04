@@ -1,6 +1,28 @@
 local M = {}
 local api = vim.api
 
+local function layout(content_width, line_count)
+  local width = math.max(1, math.min(content_width + 2, vim.o.columns - 6))
+  local height = math.max(1, math.min(line_count, vim.o.lines - vim.o.cmdheight - 6))
+  return {
+    relative = "editor",
+    width = width,
+    height = height,
+    row = math.max(0, math.floor((vim.o.lines - height) / 2) - 1),
+    col = math.max(0, math.floor((vim.o.columns - width) / 2)),
+  }
+end
+
+---Resize and recenter an open help window to fit the editor.
+---@param panel table
+---@return nil
+function M.resize(panel)
+  local help = panel.help
+  if help and api.nvim_win_is_valid(help.win) then
+    pcall(api.nvim_win_set_config, help.win, layout(help.content_width, help.line_count))
+  end
+end
+
 ---Close a sidebar's help window, optionally returning to its previous window.
 ---@param panel table
 ---@param restore? boolean
@@ -99,21 +121,27 @@ function M.open(panel)
   vim.bo[buf].swapfile = false
   api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modifiable = false
-  local width = math.max(1, math.min(content_width + 2, vim.o.columns - 6))
-  local height = math.max(1, math.min(#lines, vim.o.lines - vim.o.cmdheight - 6))
-  local win = api.nvim_open_win(buf, true, {
-    relative = "editor",
-    style = "minimal",
-    border = "rounded",
-    title = " Namu shortcuts ",
-    title_pos = "center",
-    width = width,
-    height = height,
-    row = math.max(0, math.floor((vim.o.lines - height) / 2) - 1),
-    col = math.max(0, math.floor((vim.o.columns - width) / 2)),
-    zindex = 70,
-  })
-  panel.help = { win = win, buf = buf, return_win = return_win, insert = insert }
+  local win_config = layout(content_width, #lines)
+  local win = api.nvim_open_win(
+    buf,
+    true,
+    vim.tbl_extend("force", win_config, {
+      style = "minimal",
+      border = "rounded",
+      title = " Namu shortcuts ",
+      title_pos = "center",
+      zindex = 70,
+    })
+  )
+  panel.help = {
+    win = win,
+    buf = buf,
+    return_win = return_win,
+    insert = insert,
+    content_width = content_width,
+    line_count = #lines,
+  }
+  vim.wo[win].winfixbuf = true
   vim.wo[win].winhighlight = "Normal:NamuHelp,FloatBorder:NamuHelpBorder,FloatTitle:NamuHelpTitle"
   vim.wo[win].wrap = true
   vim.wo[win].spell = false
