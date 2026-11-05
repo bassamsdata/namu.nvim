@@ -116,6 +116,47 @@ local function update_prompt(panel)
     .. " %*"
 end
 
+local function highlight(panel, lines)
+  api.nvim_buf_clear_namespace(panel.buf, common.ns_id, 0, -1)
+  for index, item in ipairs(panel.filtered_items) do
+    require("namu.selecta.ui").apply_highlights(
+      panel.buf,
+      index - 1,
+      item,
+      panel.opts,
+      panel.query,
+      #lines[index],
+      panel
+    )
+  end
+  panel.opts.hooks.on_render(panel.buf, panel.filtered_items, panel.opts)
+  common.update_current_highlight(panel, panel.opts, api.nvim_win_get_cursor(panel.win)[1] - 1)
+end
+
+local function schedule_resize(panel)
+  if panel.resize_pending then
+    return
+  end
+  panel.resize_pending = true
+  vim.schedule(function()
+    panel.resize_pending = false
+    if not panel.active or not api.nvim_win_is_valid(panel.win) or not api.nvim_win_is_valid(panel.prompt_win) then
+      return
+    end
+    -- Split widths and list heights follow Neovim's layout, including manual
+    -- resizing. Only the search row has a fixed size.
+    if api.nvim_win_get_height(panel.prompt_win) ~= 1 then
+      pcall(api.nvim_win_set_height, panel.prompt_win, 1)
+    end
+    require("namu.sidebar.help").resize(panel)
+    update_prompt(panel)
+    if api.nvim_win_get_tabpage(panel.win) == api.nvim_get_current_tabpage() then
+      highlight(panel, api.nvim_buf_get_lines(panel.buf, 0, -1, false))
+      jump.refresh_sidebar(panel, panel.opts)
+    end
+  end)
+end
+
 local function render(panel)
   if not panel.active or not api.nvim_win_is_valid(panel.win) then
     return
@@ -244,20 +285,7 @@ local function render(panel)
     end)
     panel.pending_view = nil
   end
-  api.nvim_buf_clear_namespace(panel.buf, common.ns_id, 0, -1)
-  for index, item in ipairs(visible) do
-    require("namu.selecta.ui").apply_highlights(
-      panel.buf,
-      index - 1,
-      item,
-      panel.opts,
-      panel.query,
-      #lines[index],
-      panel
-    )
-  end
-  panel.opts.hooks.on_render(panel.buf, visible, panel.opts)
-  common.update_current_highlight(panel, panel.opts, api.nvim_win_get_cursor(panel.win)[1] - 1)
+  highlight(panel, lines)
   update_prompt(panel)
   remember(panel)
   if update_current then
@@ -468,6 +496,9 @@ local function setup_keymaps(panel)
       update_current(panel)
     end
   end
+  map("n", "i", function()
+    M.search(panel.name)
+  end)
   for _, buf in ipairs({ panel.buf, panel.prompt_buf }) do
     map("n", "q", function()
       M.close(panel.name)
@@ -691,6 +722,7 @@ function M.open(items, opts, module_state)
     vim.wo[win].foldcolumn = "0"
     vim.wo[win].wrap = false
     vim.wo[win].winfixwidth = true
+    vim.wo[win].winfixbuf = true
     vim.wo[win].spell = false
   end
   vim.wo[panel.win].cursorline = true
@@ -698,6 +730,19 @@ function M.open(items, opts, module_state)
   vim.bo[panel.prompt_buf].filetype = "namu_prompt"
   api.nvim_buf_set_lines(panel.prompt_buf, 0, -1, false, { panel.query })
   panel.group = api.nvim_create_augroup("NamuSidebar_" .. panel.buf, { clear = true })
+  api.nvim_create_autocmd({ "WinResized", "VimResized", "TabEnter" }, {
+    group = panel.group,
+    callback = function(args)
+      local resized = vim.v.event.windows or {}
+      if
+        args.event ~= "WinResized"
+        or vim.tbl_contains(resized, panel.win)
+        or vim.tbl_contains(resized, panel.prompt_win)
+      then
+        schedule_resize(panel)
+      end
+    end,
+  })
   api.nvim_create_autocmd("CursorMoved", {
     group = panel.group,
     buffer = panel.buf,

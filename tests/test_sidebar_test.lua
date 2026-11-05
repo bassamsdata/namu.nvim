@@ -47,6 +47,117 @@ T["persistent split has search above it and remains open when code is focused"] 
   eq(child.lua_get("panel.active"), true)
 end
 
+for _, name in ipairs({ "sidebar", "favorites" }) do
+  T[name .. " i starts search and resumes the query after returning to the list"] = function()
+    child.lua("open({ name = " .. vim.inspect(name) .. " })")
+    child.type_keys("i", "Chi")
+    eq(child.fn.mode(), "i")
+    eq(child.lua_get("vim.api.nvim_get_current_win() == panel.prompt_win"), true)
+    eq(child.lua_get("panel.query"), "Chi")
+    eq(child.lua_get("panel.filtered_items[1].text"), "Child")
+    child.type_keys("<Esc>", "i", "ld", "<CR>")
+    eq(child.fn.mode(), "n")
+    eq(child.lua_get("vim.api.nvim_get_current_win() == panel.win"), true)
+    eq(child.lua_get("panel.query"), "Child")
+    eq(child.lua_get("vim.api.nvim_buf_get_lines(panel.buf, 0, -1, false)[1]:find('Child', 1, true) ~= nil"), true)
+    eq(child.lua_get("vim.bo[panel.buf].modifiable"), false)
+  end
+
+  T[name .. " list and search windows reject buffer replacement"] = function()
+    child.lua("open({ name = " .. vim.inspect(name) .. " })")
+    child.lua([[
+      _G.replacements = {}
+      for _, win in ipairs({ panel.win, panel.prompt_win }) do
+        vim.api.nvim_set_current_win(win)
+        local buf = vim.api.nvim_win_get_buf(win)
+        for _, command in ipairs({ "edit " .. vim.fn.fnameescape(path), "buffer " .. source_buf, "enew" }) do
+          local ok, err = pcall(vim.cmd, command)
+          replacements[#replacements + 1] = {
+            ok, tostring(err):find("winfixbuf", 1, true) ~= nil, vim.api.nvim_win_get_buf(win) == buf,
+          }
+        end
+      end
+    ]])
+    eq(child.lua_get("replacements"), {
+      { false, true, true },
+      { false, true, true },
+      { false, true, true },
+      { false, true, true },
+      { false, true, true },
+      { false, true, true },
+    })
+    child.lua("sidebar.focus_code(panel.name); vim.cmd.enew()")
+    eq(child.lua_get("vim.api.nvim_get_current_buf() ~= source_buf"), true)
+    eq(child.lua_get("panel.active"), true)
+  end
+
+  T[name .. " resize keeps the search row compact and preserves query focus and width"] = function()
+    child.lua("open({ name = " .. vim.inspect(name) .. " })")
+    child.type_keys("/", "Other")
+    child.lua([[
+      vim.api.nvim_win_set_width(panel.win, 32)
+      vim.api.nvim_win_set_height(panel.prompt_win, 5)
+      vim.cmd("redraw")
+    ]])
+    eq(child.lua_get("vim.api.nvim_win_get_height(panel.prompt_win)"), 1)
+    eq(child.lua_get("vim.api.nvim_win_get_width(panel.win)"), 32)
+    eq(child.lua_get("vim.api.nvim_win_get_width(panel.prompt_win)"), 32)
+    eq(child.lua_get("vim.api.nvim_get_current_win() == panel.prompt_win"), true)
+    eq(child.fn.mode(), "i")
+    child.lua("vim.o.lines = 24; vim.o.columns = 90; vim.cmd('redraw')")
+    eq(child.lua_get("vim.api.nvim_win_get_height(panel.prompt_win)"), 1)
+    eq(child.lua_get("vim.api.nvim_win_get_width(panel.win)"), 32)
+    eq(child.lua_get("panel.query"), "Other")
+    eq(child.lua_get("panel.filtered_items[1].text"), "Other")
+    eq(child.lua_get("vim.api.nvim_get_current_win() == panel.prompt_win"), true)
+    eq(child.fn.mode(), "i")
+    child.lua("vim.o.lines = 50; vim.o.columns = 140; vim.cmd('redraw')")
+    eq(child.lua_get("vim.api.nvim_win_get_height(panel.prompt_win)"), 1)
+    eq(child.lua_get("vim.api.nvim_win_get_width(panel.win)"), 32)
+    eq(child.lua_get("vim.api.nvim_win_get_height(panel.win) > 30"), true)
+  end
+end
+
+T["resizing updates visible jump labels without leaving insert mode in code"] = function()
+  child.lua([[
+    _G.many_items = {}
+    for i = 1, 30 do
+      many_items[i] = { text = "Item " .. i, bufnr = source_buf, value = { lnum = 1, col = 1 } }
+    end
+    _G.panel = sidebar.open(many_items, {
+      follow_cursor = { enabled = false }, preview = { highlight_on_move = false },
+      jump = { keys = "abcdefghijklmnopqrstuvwxyz", auto_activate = true },
+    })
+    _G.initial_label_count = #panel.jump.bound_keys
+    vim.api.nvim_set_current_win(source_win)
+  ]])
+  child.type_keys("i")
+  child.lua("vim.o.lines = 15; vim.cmd('redraw')")
+  eq(child.fn.mode(), "i")
+  eq(child.lua_get("vim.api.nvim_get_current_win() == source_win"), true)
+  eq(child.lua_get("#panel.jump.bound_keys == vim.api.nvim_win_get_height(panel.win)"), true)
+  child.lua("vim.o.lines = 40; vim.cmd('redraw')")
+  eq(child.lua_get("#panel.jump.bound_keys == initial_label_count"), true)
+  eq(child.fn.mode(), "i")
+  child.type_keys("<Esc>")
+  child.lua("_G.last_label_row = #panel.jump.bound_keys; vim.api.nvim_set_current_win(panel.win)")
+  child.type_keys("z")
+  eq(child.lua_get("vim.api.nvim_win_get_cursor(panel.win)[1] == last_label_row"), true)
+end
+
+T["help stays protected and fits the editor after shrinking and growing"] = function()
+  child.lua("open(); sidebar.show_help(); _G.help_win = panel.help.win")
+  eq(child.lua_get("vim.wo[help_win].winfixbuf"), true)
+  child.lua("vim.o.lines = 18; vim.o.columns = 55; vim.cmd('redraw')")
+  eq(child.lua_get("vim.api.nvim_get_current_win() == help_win"), true)
+  eq(child.lua_get("vim.api.nvim_win_get_width(help_win) <= 49"), true)
+  eq(child.lua_get("vim.api.nvim_win_get_height(help_win) <= 11"), true)
+  eq(child.lua_get("vim.api.nvim_win_get_position(help_win)[2]"), 3)
+  child.lua("vim.o.lines = 40; vim.o.columns = 120; vim.cmd('redraw')")
+  eq(child.lua_get("vim.api.nvim_win_get_width(help_win) > 49"), true)
+  eq(child.lua_get("vim.api.nvim_win_get_height(help_win) > 11"), true)
+end
+
 T["search filters live and Enter returns to normal navigation"] = function()
   child.lua("open()")
   child.type_keys("/", "Child")
